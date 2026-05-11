@@ -2,7 +2,7 @@
 #'
 #' Converts one row per compartment-age cell into deterministic
 #' compartment-major, age-group-minor order. For compartments `c("S", "I",
-#' "R")` and age labels `c("0-4", "5-9")`, the vector order is `S_0-4`,
+#' "R")` and age groups `c("0-4", "5-9")`, the vector order is `S_0-4`,
 #' `S_5-9`, `I_0-4`, `I_5-9`, `R_0-4`, `R_5-9`.
 #'
 #' @param state_long Data frame with `age_group`, `compartment`, and `value`.
@@ -47,8 +47,8 @@ state_vector_to_long <- function(state_vector, age_structure, compartments) {
   validate_state_vector(state_vector, age_structure, compartments)
 
   data.frame(
-    age_group = rep(age_structure$labels, times = length(compartments)),
-    compartment = rep(compartments, each = length(age_structure$labels)),
+    age_group = rep(age_structure$age_groups, times = length(compartments)),
+    compartment = rep(compartments, each = age_structure$n_age_groups),
     value = as.numeric(state_vector),
     stringsAsFactors = FALSE
   )
@@ -102,7 +102,7 @@ validate_state_long <- function(state_long, age_structure, compartments) {
     stop("state_long value must be numeric and cannot contain missing values.", call. = FALSE)
   }
 
-  unknown_ages <- setdiff(unique(state_long$age_group), age_structure$labels)
+  unknown_ages <- setdiff(unique(state_long$age_group), age_structure$age_groups)
   if (length(unknown_ages) > 0) {
     stop("state_long contains unknown age_group value(s): ", paste(unknown_ages, collapse = ", "), call. = FALSE)
   }
@@ -160,7 +160,7 @@ validate_state_vector <- function(state_vector, age_structure, compartments) {
     stop("state_vector must be numeric.", call. = FALSE)
   }
 
-  expected_length <- length(age_structure$labels) * length(compartments)
+  expected_length <- age_structure$n_age_groups * length(compartments)
   if (length(state_vector) != expected_length) {
     stop(
       "state_vector length must equal number of compartments times number of age groups: ",
@@ -179,20 +179,20 @@ validate_state_vector <- function(state_vector, age_structure, compartments) {
 
 # Deterministic compartment-major ordering:
 # S_1, S_2, ..., S_A, I_1, I_2, ..., I_A, etc.,
-# where compartments are supplied order and ages follow age_structure$labels.
+# where compartments are supplied order and ages follow age_structure$age_groups.
 state_order <- function(age_structure, compartments) {
   data.frame(
-    compartment = rep(compartments, each = length(age_structure$labels)),
-    age_group = rep(age_structure$labels, times = length(compartments)),
-    .order = seq_len(length(age_structure$labels) * length(compartments)),
+    compartment = rep(compartments, each = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, times = length(compartments)),
+    .order = seq_len(age_structure$n_age_groups * length(compartments)),
     stringsAsFactors = FALSE
   )
 }
 
 state_vector_names <- function(age_structure, compartments) {
   paste(
-    rep(compartments, each = length(age_structure$labels)),
-    rep(age_structure$labels, times = length(compartments)),
+    rep(compartments, each = age_structure$n_age_groups),
+    rep(age_structure$age_groups, times = length(compartments)),
     sep = "_"
   )
 }

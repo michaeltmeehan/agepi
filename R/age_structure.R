@@ -8,7 +8,8 @@
 #' @param lower_bounds Numeric vector of inclusive lower age bounds.
 #' @param upper_bounds Numeric vector of inclusive upper age bounds.
 #'
-#' @return An `AgeStructure` list with `lower`, `upper`, and `labels` fields.
+#' @return An `AgeStructure` list with `age_groups`, `n_age_groups`,
+#'   `lower_bounds`, and `upper_bounds` fields.
 #' @export
 AgeStructure <- function(age_groups, lower_bounds = NULL, upper_bounds = NULL) {
   if (is.null(lower_bounds) || is.null(upper_bounds)) {
@@ -19,9 +20,10 @@ AgeStructure <- function(age_groups, lower_bounds = NULL, upper_bounds = NULL) {
   }
 
   age_structure <- list(
-    lower = lower_bounds,
-    upper = upper_bounds,
-    labels = age_groups
+    age_groups = age_groups,
+    n_age_groups = length(age_groups),
+    lower_bounds = lower_bounds,
+    upper_bounds = upper_bounds
   )
 
   class(age_structure) <- "AgeStructure"
@@ -32,9 +34,11 @@ AgeStructure <- function(age_groups, lower_bounds = NULL, upper_bounds = NULL) {
 #' Validate an age structure
 #'
 #' Checks that an age structure has explicit numeric bounds and unique,
-#' non-missing character labels. Age bins must be sorted and non-overlapping.
+#' non-missing character age groups. Age bins must be sorted and
+#' non-overlapping.
 #'
-#' @param age_structure An object with `lower`, `upper`, and `labels` fields.
+#' @param age_structure An object with `age_groups`, `n_age_groups`,
+#'   `lower_bounds`, and `upper_bounds` fields.
 #'
 #' @return The input invisibly if validation succeeds.
 #' @export
@@ -43,7 +47,7 @@ validate_age_structure <- function(age_structure) {
     stop("age_structure must be a list.", call. = FALSE)
   }
 
-  required_fields <- c("lower", "upper", "labels")
+  required_fields <- c("age_groups", "n_age_groups", "lower_bounds", "upper_bounds")
   missing_fields <- setdiff(required_fields, names(age_structure))
   if (length(missing_fields) > 0) {
     stop(
@@ -53,70 +57,87 @@ validate_age_structure <- function(age_structure) {
     )
   }
 
-  lower <- age_structure$lower
-  upper <- age_structure$upper
-  labels <- age_structure$labels
+  lower_bounds <- age_structure$lower_bounds
+  upper_bounds <- age_structure$upper_bounds
+  age_groups <- age_structure$age_groups
+  n_age_groups <- age_structure$n_age_groups
 
-  if (!is.numeric(lower) || !is.numeric(upper)) {
-    stop("age_structure lower and upper bounds must be numeric.", call. = FALSE)
+  if (!is.numeric(lower_bounds) || !is.numeric(upper_bounds)) {
+    stop("age_structure lower_bounds and upper_bounds must be numeric.", call. = FALSE)
   }
 
-  if (!is.character(labels)) {
-    stop("age_structure labels must be a character vector.", call. = FALSE)
+  if (!is.character(age_groups)) {
+    stop("age_structure age_groups must be a character vector.", call. = FALSE)
   }
 
-  lengths <- c(length(lower), length(upper), length(labels))
+  if (!is.integer(n_age_groups) && !is.numeric(n_age_groups)) {
+    stop("age_structure n_age_groups must be a numeric scalar.", call. = FALSE)
+  }
+
+  if (length(n_age_groups) != 1 || anyNA(n_age_groups) || !is.finite(n_age_groups)) {
+    stop("age_structure n_age_groups must be a finite numeric scalar.", call. = FALSE)
+  }
+
+  if (n_age_groups != as.integer(n_age_groups)) {
+    stop("age_structure n_age_groups must be a whole number.", call. = FALSE)
+  }
+
+  if (n_age_groups != length(age_groups)) {
+    stop("age_structure n_age_groups must equal length(age_groups).", call. = FALSE)
+  }
+
+  lengths <- c(length(lower_bounds), length(upper_bounds), length(age_groups))
   if (length(unique(lengths)) != 1) {
     stop(
-      "age_structure lower, upper, and labels must have the same length.",
+      "age_structure lower_bounds, upper_bounds, and age_groups must have the same length.",
       call. = FALSE
     )
   }
 
-  if (length(labels) == 0) {
+  if (length(age_groups) == 0) {
     stop("age_structure must contain at least one age group.", call. = FALSE)
   }
 
-  if (anyNA(lower) || anyNA(upper) || anyNA(labels)) {
-    stop("age_structure lower, upper, and labels cannot contain missing values.", call. = FALSE)
+  if (anyNA(lower_bounds) || anyNA(upper_bounds) || anyNA(age_groups)) {
+    stop("age_structure lower_bounds, upper_bounds, and age_groups cannot contain missing values.", call. = FALSE)
   }
 
-  if (any(!is.finite(lower))) {
-    stop("age_structure lower bounds must be finite.", call. = FALSE)
+  if (any(!is.finite(lower_bounds))) {
+    stop("age_structure lower_bounds must be finite.", call. = FALSE)
   }
 
-  if (any(!is.finite(upper[-length(upper)]))) {
+  if (any(!is.finite(upper_bounds[-length(upper_bounds)]))) {
     stop(
-      "age_structure upper bounds must be finite except for the final open-ended bin.",
+      "age_structure upper_bounds must be finite except for the final open-ended bin.",
       call. = FALSE
     )
   }
 
-  if (length(upper) > 1 && is.infinite(upper[-length(upper)][1])) {
+  if (length(upper_bounds) > 1 && is.infinite(upper_bounds[-length(upper_bounds)][1])) {
     stop("Only the final age bin may be open-ended.", call. = FALSE)
   }
 
-  if (any(upper <= lower)) {
-    stop("Each age_structure upper bound must be greater than its lower bound.", call. = FALSE)
+  if (any(upper_bounds <= lower_bounds)) {
+    stop("Each age_structure upper_bound must be greater than its lower_bound.", call. = FALSE)
   }
 
-  if (any(diff(lower) <= 0)) {
-    stop("age_structure lower bounds must be strictly increasing.", call. = FALSE)
+  if (any(diff(lower_bounds) <= 0)) {
+    stop("age_structure lower_bounds must be strictly increasing.", call. = FALSE)
   }
 
-  if (length(lower) > 1 && any(lower[-1] <= upper[-length(upper)])) {
+  if (length(lower_bounds) > 1 && any(lower_bounds[-1] <= upper_bounds[-length(upper_bounds)])) {
     stop("age_structure age bins must be sorted and non-overlapping.", call. = FALSE)
   }
 
-  if (any(labels == "")) {
-    stop("age_structure labels cannot be empty strings.", call. = FALSE)
+  if (any(age_groups == "")) {
+    stop("age_structure age_groups cannot be empty strings.", call. = FALSE)
   }
 
-  duplicated_labels <- unique(labels[duplicated(labels)])
-  if (length(duplicated_labels) > 0) {
+  duplicated_age_groups <- unique(age_groups[duplicated(age_groups)])
+  if (length(duplicated_age_groups) > 0) {
     stop(
-      "age_structure labels must be unique; duplicate label(s): ",
-      paste(duplicated_labels, collapse = ", "),
+      "age_structure age_groups must be unique; duplicate age_group(s): ",
+      paste(duplicated_age_groups, collapse = ", "),
       call. = FALSE
     )
   }

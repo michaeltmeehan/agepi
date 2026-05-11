@@ -89,7 +89,7 @@ test_that("round trip works with more than two compartments and age groups", {
   )
   expect_equal(sum(round_trip$value), sum(state_long$value))
   expect_identical(round_trip$compartment, rep(compartments, each = 3))
-  expect_identical(round_trip$age_group, rep(ages$labels, times = 4))
+  expect_identical(round_trip$age_group, rep(ages$age_groups, times = 4))
 })
 
 test_that("state mapping requires exactly one row per compartment-age pair", {

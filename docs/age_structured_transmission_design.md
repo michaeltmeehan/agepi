@@ -129,20 +129,22 @@ Suggested fields:
 
 ```r
 age_structure <- list(
-  lower = c(0, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
-  upper = c(4, 9, 14, 19, 29, 39, 49, 59, 69, 79, Inf),
-  labels = c("0-4", "5-9", "10-14", "15-19", "20-29",
-             "30-39", "40-49", "50-59", "60-69", "70-79", "80+")
+  age_groups = c("0-4", "5-9", "10-14", "15-19", "20-29",
+                 "30-39", "40-49", "50-59", "60-69", "70-79", "80+"),
+  n_age_groups = 11,
+  lower_bounds = c(0, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80),
+  upper_bounds = c(4, 9, 14, 19, 29, 39, 49, 59, 69, 79, Inf)
 )
 ```
 
 Required checks:
 
-- `lower`, `upper`, and `labels` must have the same length.
+- `lower_bounds`, `upper_bounds`, and `age_groups` must have the same length.
+- `n_age_groups` must equal `length(age_groups)`.
 - Age bins must be non-overlapping.
 - Age bins must be sorted.
 - The final bin may be open-ended.
-- Labels must be unique.
+- Age groups must be unique.
 
 ---
 
@@ -515,7 +517,7 @@ Check that:
 - overlapping bins fail;
 - unsorted bins fail;
 - mismatched label lengths fail;
-- duplicate labels fail.
+- duplicate age groups fail.
 
 ### 11.2 State mapping tests
 

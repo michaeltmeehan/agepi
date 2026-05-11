@@ -6,8 +6,22 @@ test_that("valid age structures pass validation", {
   )
 
   expect_s3_class(ages, "AgeStructure")
-  expect_identical(ages$labels, c("0-4", "5-9", "10+"))
+  expect_identical(ages$age_groups, c("0-4", "5-9", "10+"))
+  expect_identical(ages$n_age_groups, 3L)
+  expect_identical(ages$lower_bounds, c(0, 5, 10))
+  expect_identical(ages$upper_bounds, c(4, 9, Inf))
   expect_silent(validate_age_structure(ages))
+})
+
+test_that("age structures validate n_age_groups consistency", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  ages$n_age_groups <- 3
+
+  expect_error(validate_age_structure(ages), "n_age_groups")
 })
 
 test_that("age structures require matching field lengths", {
@@ -32,7 +46,7 @@ test_that("age structures require at least one age group", {
   )
 })
 
-test_that("age group labels must be character values", {
+test_that("age groups must be character values", {
   expect_error(
     AgeStructure(
       age_groups = c(1, 2),
@@ -76,7 +90,7 @@ test_that("unsorted age bins fail validation", {
   )
 })
 
-test_that("duplicate age labels fail validation", {
+test_that("duplicate age groups fail validation", {
   expect_error(
     AgeStructure(
       age_groups = c("0-4", "0-4"),
