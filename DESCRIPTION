@@ -1,0 +1,10 @@
+Package: agepi
+Title: Age-Structured Infectious Disease Transmission Models
+Version: 0.0.0.9000
+Authors@R: 
+    person("Michael", "Meehan", email = "michael.meehan@my.jcu.edu.au", role = c("aut", "cre"))
+Description: Tools for implementing and simulating age-structured infectious disease transmission models.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
