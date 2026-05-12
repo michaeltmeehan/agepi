@@ -3,6 +3,7 @@
 export(AgeStructure)
 export(SIRModel)
 export(force_of_infection)
+export(rates_to_derivative)
 export(state_long_to_vector)
 export(state_vector_to_long)
 export(validate_age_structure)
