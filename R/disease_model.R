@@ -1,0 +1,120 @@
+#' Construct a minimal SIR disease model
+#'
+#' Creates a simple, inspectable disease-model object with compartments
+#' `S`, `I`, and `R`; transitions `S -> I` and `I -> R`; and recovery
+#' rate `gamma`.
+#'
+#' @param gamma Non-negative finite numeric scalar recovery rate.
+#'
+#' @return A `DiseaseModel` list describing an SIR model.
+#' @export
+SIRModel <- function(gamma) {
+  if (missing(gamma)) {
+    stop("gamma is required.", call. = FALSE)
+  }
+
+  gamma <- validate_sir_gamma(gamma)
+
+  model <- list(
+    model_type = "SIR",
+    compartments = c("S", "I", "R"),
+    transitions = data.frame(
+      from = c("S", "I"),
+      to = c("I", "R"),
+      stringsAsFactors = FALSE
+    ),
+    gamma = gamma
+  )
+
+  class(model) <- "DiseaseModel"
+  validate_disease_model(model)
+  model
+}
+
+#' Validate a disease model
+#'
+#' Checks the minimal disease-model fields currently required by `agepi`.
+#' At present, only SIR models are supported.
+#'
+#' @param model Disease-model object to validate.
+#'
+#' @return The input invisibly if validation succeeds.
+#' @export
+validate_disease_model <- function(model) {
+  if (!is.list(model)) {
+    stop("model must be a list.", call. = FALSE)
+  }
+
+  required_fields <- c("model_type", "compartments", "transitions", "gamma")
+  missing_fields <- setdiff(required_fields, names(model))
+  if (length(missing_fields) > 0) {
+    stop(
+      "model is missing required field(s): ",
+      paste(missing_fields, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!is.character(model$model_type) || length(model$model_type) != 1 ||
+      anyNA(model$model_type) || model$model_type == "") {
+    stop("model_type must be a non-missing character scalar.", call. = FALSE)
+  }
+
+  if (model$model_type != "SIR") {
+    stop("unsupported disease model type: ", model$model_type, call. = FALSE)
+  }
+
+  validate_compartments(model$compartments)
+
+  if (!identical(model$compartments, c("S", "I", "R"))) {
+    stop("SIR model compartments must be S, I, R.", call. = FALSE)
+  }
+
+  validate_sir_transitions(model$transitions)
+  validate_sir_gamma(model$gamma)
+
+  invisible(model)
+}
+
+validate_sir_gamma <- function(gamma) {
+  if (!is.numeric(gamma) || length(gamma) != 1 || anyNA(gamma) || !is.finite(gamma)) {
+    stop("gamma must be a finite numeric scalar.", call. = FALSE)
+  }
+
+  if (gamma < 0) {
+    stop("gamma cannot be negative.", call. = FALSE)
+  }
+
+  as.numeric(gamma)
+}
+
+validate_sir_transitions <- function(transitions) {
+  if (!is.data.frame(transitions)) {
+    stop("model transitions must be a data frame.", call. = FALSE)
+  }
+
+  required_columns <- c("from", "to")
+  missing_columns <- setdiff(required_columns, names(transitions))
+  if (length(missing_columns) > 0) {
+    stop(
+      "model transitions are missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  expected <- data.frame(
+    from = c("S", "I"),
+    to = c("I", "R"),
+    stringsAsFactors = FALSE
+  )
+
+  observed <- transitions[, required_columns]
+  row.names(observed) <- NULL
+
+  if (!identical(observed, expected)) {
+    stop("SIR model transitions must be S -> I and I -> R.", call. = FALSE)
+  }
+
+  invisible(transitions)
+}
