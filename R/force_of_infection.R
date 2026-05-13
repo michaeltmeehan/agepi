@@ -49,7 +49,8 @@ force_of_infection <- function(
     "population",
     allow_zero = FALSE
   )
-  contact_matrix <- validate_contact_matrix(contact_matrix, n_age_groups)
+  contact_matrix <- validate_contact_matrix(contact_matrix, age_structure)
+  validate_contact_matrix_length(contact_matrix, n_age_groups)
   beta <- validate_force_beta(beta)
   susceptibility <- validate_optional_force_vector(
     susceptibility,
@@ -133,7 +134,19 @@ validate_optional_force_vector <- function(x, expected_length, name) {
   )
 }
 
-validate_contact_matrix <- function(contact_matrix, expected_length) {
+#' Validate a contact matrix
+#'
+#' Checks that a contact matrix is numeric, finite, non-missing,
+#' non-negative, square, and optionally consistent with an age structure.
+#'
+#' @param contact_matrix Numeric square matrix. Rows are recipient age groups;
+#'   columns are source age groups.
+#' @param age_structure Optional valid age structure used to validate matrix
+#'   dimensions.
+#'
+#' @return The input invisibly if validation succeeds.
+#' @export
+validate_contact_matrix <- function(contact_matrix, age_structure = NULL) {
   if (!is.numeric(contact_matrix) || !is.matrix(contact_matrix)) {
     stop("contact_matrix must be a numeric matrix.", call. = FALSE)
   }
@@ -151,6 +164,16 @@ validate_contact_matrix <- function(contact_matrix, expected_length) {
     stop("contact_matrix must be square.", call. = FALSE)
   }
 
+  if (!is.null(age_structure)) {
+    validate_age_structure(age_structure)
+    validate_contact_matrix_length(contact_matrix, age_structure$n_age_groups)
+  }
+
+  invisible(contact_matrix)
+}
+
+validate_contact_matrix_length <- function(contact_matrix, expected_length) {
+  matrix_dimensions <- dim(contact_matrix)
   if (matrix_dimensions[1] != expected_length) {
     stop(
       "contact_matrix dimensions must match the number of age groups: ",
@@ -160,7 +183,7 @@ validate_contact_matrix <- function(contact_matrix, expected_length) {
     )
   }
 
-  contact_matrix
+  invisible(contact_matrix)
 }
 
 validate_force_beta <- function(beta) {
