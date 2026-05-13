@@ -203,6 +203,105 @@ transform_age_vector <- function(
   )
 }
 
+#' Transform a contact matrix between age structures
+#'
+#' Transforms a contact matrix from one age structure to another when every
+#' target age bin is an exact union of complete source age bins. Rows are
+#' recipient age groups and columns are source age groups.
+#'
+#' @param contact_matrix Numeric square matrix in agepi recipient-source
+#'   orientation.
+#' @param from_age_structure Source age structure for `contact_matrix` and
+#'   `population`.
+#' @param to_age_structure Target age structure.
+#' @param population Numeric non-negative population vector for
+#'   `from_age_structure`.
+#'
+#' @return Numeric square matrix in agepi recipient-source orientation, with
+#'   row and column names from `to_age_structure$age_groups`.
+#' @export
+transform_contact_matrix <- function(
+  contact_matrix,
+  from_age_structure,
+  to_age_structure,
+  population
+) {
+  validate_age_structure(from_age_structure)
+  validate_age_structure(to_age_structure)
+  contact_matrix <- validate_contact_matrix(contact_matrix, from_age_structure)
+  population <- validate_contact_transform_population(population, from_age_structure)
+
+  source_indices_by_target <- lapply(
+    seq_len(to_age_structure$n_age_groups),
+    function(i) {
+      exact_source_indices_for_target_bin(
+        from_age_structure,
+        to_age_structure$lower_bounds[i],
+        to_age_structure$upper_bounds[i],
+        to_age_structure$age_groups[i]
+      )
+    }
+  )
+
+  transformed <- matrix(
+    0,
+    nrow = to_age_structure$n_age_groups,
+    ncol = to_age_structure$n_age_groups,
+    dimnames = list(to_age_structure$age_groups, to_age_structure$age_groups)
+  )
+
+  for (recipient_target_index in seq_len(to_age_structure$n_age_groups)) {
+    recipient_source_indices <- source_indices_by_target[[recipient_target_index]]
+    recipient_population <- sum(population[recipient_source_indices])
+
+    if (recipient_population == 0) {
+      stop(
+        "population for to_age_structure recipient age group '",
+        to_age_structure$age_groups[recipient_target_index],
+        "' must sum to a positive value.",
+        call. = FALSE
+      )
+    }
+
+    for (source_target_index in seq_len(to_age_structure$n_age_groups)) {
+      source_source_indices <- source_indices_by_target[[source_target_index]]
+      transformed[recipient_target_index, source_target_index] <-
+        sum(
+          population[recipient_source_indices] *
+            rowSums(contact_matrix[recipient_source_indices, source_source_indices, drop = FALSE])
+        ) / recipient_population
+    }
+  }
+
+  validate_contact_matrix(transformed, to_age_structure)
+  transformed
+}
+
+validate_contact_transform_population <- function(population, from_age_structure) {
+  if (!is.numeric(population) || is.matrix(population) || is.data.frame(population)) {
+    stop("population must be a numeric vector.", call. = FALSE)
+  }
+
+  if (length(population) != from_age_structure$n_age_groups) {
+    stop(
+      "population length must equal from_age_structure$n_age_groups: ",
+      from_age_structure$n_age_groups,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(population) || any(!is.finite(population))) {
+    stop("population must be finite and cannot contain missing values.", call. = FALSE)
+  }
+
+  if (any(population < 0)) {
+    stop("population cannot contain negative values.", call. = FALSE)
+  }
+
+  as.numeric(population)
+}
+
 exact_source_indices_for_target_bin <- function(from_age_structure, target_lower, target_upper, target_age_group) {
   source_indices <- which(
     from_age_structure$lower_bounds >= target_lower &
