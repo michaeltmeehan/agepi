@@ -479,6 +479,24 @@ test_that("transform_age_vector can reject auto-detected splitting without weigh
   )
 })
 
+test_that("transform_age_vector requires weights when split_method is weights", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  to_ages <- AgeStructure(
+    age_groups = "0-9",
+    lower_bounds = 0,
+    upper_bounds = 9
+  )
+
+  expect_error(
+    transform_age_vector(c(100, 200), from_ages, to_ages, split_method = "weights"),
+    "weights must be supplied"
+  )
+})
+
 test_that("transform_age_vector rejects incompatible structures in auto mode", {
   from_ages <- AgeStructure(
     age_groups = "0-9",

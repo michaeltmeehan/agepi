@@ -190,6 +190,9 @@ transform_age_vector <- function(
   if (!is.null(weights)) {
     validate_age_transform_weights(weights, to_age_structure)
   }
+  if (split_method == "weights" && is.null(weights)) {
+    stop("weights must be supplied when split_method = 'weights'.", call. = FALSE)
+  }
 
   transform_age_vector_exact(
     values,
