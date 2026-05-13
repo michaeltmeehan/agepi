@@ -3,8 +3,9 @@
 ## Purpose
 
 This note records a narrow reconnaissance pass for future contact-matrix
-adapters. It does not propose adding package dependencies or changing the
-current `force_of_infection()` convention.
+adapters, plus the current dependency-free contact-matrix utilities. It does not
+propose adding package dependencies or changing the current
+`force_of_infection()` convention.
 
 Current agepi convention:
 
@@ -21,6 +22,7 @@ Local agepi files:
 - `docs/age_structured_transmission_design.md`
 - `R/force_of_infection.R`
 - `R/age_transform.R`
+- `R/contact_matrix.R`
 
 External package documentation:
 
@@ -199,25 +201,50 @@ using per-capita household size, especially through setting-level workflows.
 agepi should treat these as upstream modelling choices. A first adapter should
 not refit models, enforce reciprocity, or apply household-size corrections.
 
-## Recommended First Adapter API
+## Current Implemented API
 
-Do not add these yet; this is the suggested shape for a later implementation.
+agepi now includes a small dependency-free coercion layer:
 
 ```r
 as_agepi_contact_matrix <- function(
   x,
   age_structure = NULL,
-  source = c("matrix", "socialmixr", "conmat"),
-  setting = NULL,
-  combine_settings = c("error", "sum"),
-  orientation = c("auto", "recipient_by_source", "participant_by_contact"),
+  orientation = c("recipient_source", "source_recipient"),
   transpose = FALSE
 ) {
   # returns a numeric square matrix in agepi recipient-by-source orientation
 }
 ```
 
-Minimal source-specific helpers could be clearer:
+Current supported inputs:
+
+- numeric matrices;
+- numeric data frames;
+- socialmixr-like list objects with a numeric matrix at `x$matrix`;
+- conmat-style long data frames with `age_group_from`, `age_group_to`, and
+  `contacts` columns.
+
+For conmat-style long data, `age_group_to` is used for recipient rows and
+`age_group_from` is used for source columns.
+
+Matrix-like inputs default to agepi's recipient-source convention. Use
+`orientation = "source_recipient"` when rows are sources and columns are
+recipients. `transpose = TRUE` is an explicit final transposition escape hatch.
+
+Current contact-matrix aggregation is implemented as:
+
+```r
+transform_contact_matrix(contact_matrix, from_age_structure, to_age_structure, population)
+```
+
+`transform_contact_matrix()` supports exact fine-to-coarse aggregation only,
+where every target age bin is an exact union of complete source age bins. It
+does not split source bins or perform general rebinning.
+
+## Possible Future Source-Specific Adapters
+
+Source-specific helpers may still be useful later if agepi adds optional
+socialmixr or conmat integrations:
 
 ```r
 as_agepi_contact_matrix.socialmixr <- function(x, age_structure = NULL, transpose = FALSE) {
@@ -233,13 +260,9 @@ as_agepi_contact_matrix.conmat_matrix <- function(x, age_structure = NULL) {
 }
 ```
 
-The first implementation should return only the numeric matrix expected by
-`force_of_infection()`. If metadata is needed, return it as attributes or a
-small list only after the current modelling API has a place for mixing metadata.
-
 ## Minimal Validation Needed
 
-The first adapters should:
+The current coercion/validation layer should:
 
 - extract or construct a numeric matrix;
 - require square dimensions;
@@ -263,19 +286,20 @@ Keep the first implementation deliberately small. Defer:
   decomposition inside agepi;
 - applying conmat household-size adjustments inside agepi;
 - summing setting-specific matrices unless the caller explicitly requests it;
-- transforming matrices across incompatible age structures before the age
-  transformation API is final;
+- transforming matrices across incompatible age structures;
+- splitting source bins or general contact-matrix rebinning;
 - supporting non-square or rectangular cross-classification matrices;
 - storing time-varying contact matrices.
 
 ## Recommendation
 
-The first contact-matrix integration should be an optional, dependency-free
-coercion layer. It should accept already-created objects from socialmixr or
-conmat, extract a plain numeric square matrix, validate age labels, and return
-the matrix in agepi's recipient-by-source orientation.
+The current contact-matrix integration is an optional, dependency-free coercion
+layer. It accepts already-created matrix-like objects, socialmixr-like objects,
+or conmat-style long data, extracts or constructs a plain numeric square matrix,
+validates dimensions and age labels when an `AgeStructure` is supplied, and
+returns the matrix in agepi's recipient-by-source orientation.
 
-For both socialmixr's ordinary `x$matrix` and conmat's documented matrix
-outputs, the expected default is no transposition. The adapter should expose an
-explicit `transpose` escape hatch because matrix orientation is a common source
-of silent modelling errors.
+For socialmixr-like ordinary `x$matrix` inputs and conmat-style long data in the
+documented orientation, the expected default is no transposition. The API
+exposes explicit `orientation` and `transpose` controls because matrix
+orientation is a common source of silent modelling errors.

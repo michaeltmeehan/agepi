@@ -59,6 +59,102 @@ as_agepi_contact_matrix <- function(
   contact_matrix
 }
 
+#' Convert a socialmixr contact matrix output to an agepi contact matrix
+#'
+#' This is a narrow, dependency-free adapter for objects shaped like the output
+#' of `socialmixr::contact_matrix()`. It accepts either a numeric matrix or a
+#' list-like object with a numeric `matrix` element, then delegates validation,
+#' orientation handling, optional transposition, and age-structure labelling to
+#' [as_agepi_contact_matrix()].
+#'
+#' No reciprocity correction, population balancing, or age-bin splitting is
+#' applied.
+#'
+#' @param x A numeric matrix or socialmixr contact-matrix-like list object with
+#'   a numeric `matrix` element.
+#' @param age_structure Optional valid age structure used to validate dimensions
+#'   and age-group names.
+#' @param orientation Orientation of the extracted matrix. Use
+#'   `"recipient_source"` when rows are recipients and columns are sources. Use
+#'   `"source_recipient"` when rows are sources and columns are recipients.
+#' @param transpose Logical scalar. If `TRUE`, transpose the matrix after
+#'   `orientation` handling.
+#'
+#' @return A numeric square matrix in agepi recipient-source orientation.
+#' @export
+contact_matrix_from_socialmixr <- function(
+  x,
+  age_structure = NULL,
+  orientation = c("recipient_source", "source_recipient"),
+  transpose = FALSE
+) {
+  matrix_input <- x
+
+  if (is.list(x) && !is.data.frame(x)) {
+    if (is.null(x$matrix)) {
+      stop("socialmixr contact matrix output must contain a matrix element.", call. = FALSE)
+    }
+    matrix_input <- x$matrix
+  }
+
+  as_agepi_contact_matrix(
+    matrix_input,
+    age_structure = age_structure,
+    orientation = orientation,
+    transpose = transpose
+  )
+}
+
+#' Convert conmat-style output to an agepi contact matrix
+#'
+#' This is a narrow, dependency-free adapter for conmat-style long tables. It
+#' expects `age_group_from`, `age_group_to`, and `contacts` columns, then
+#' delegates conversion, validation, orientation handling, optional
+#' transposition, and age-structure labelling to [as_agepi_contact_matrix()].
+#'
+#' No reciprocity correction, population balancing, demographic prediction, or
+#' age-bin splitting is applied.
+#'
+#' @param x A conmat-style long table or object coercible with `as.data.frame()`.
+#' @param age_structure Optional valid age structure used to validate dimensions
+#'   and age-group names.
+#' @param orientation Orientation of the converted matrix. Use
+#'   `"recipient_source"` when rows are recipients and columns are sources. Use
+#'   `"source_recipient"` when rows are sources and columns are recipients.
+#' @param transpose Logical scalar. If `TRUE`, transpose the matrix after
+#'   `orientation` handling.
+#'
+#' @return A numeric square matrix in agepi recipient-source orientation.
+#' @export
+contact_matrix_from_conmat <- function(
+  x,
+  age_structure = NULL,
+  orientation = c("recipient_source", "source_recipient"),
+  transpose = FALSE
+) {
+  orientation <- match.arg(orientation)
+
+  conmat_data <- as.data.frame(x)
+  required_columns <- c("age_group_from", "age_group_to", "contacts")
+  missing_columns <- setdiff(required_columns, names(conmat_data))
+
+  if (length(missing_columns) > 0) {
+    stop(
+      "conmat-style input must contain columns: ",
+      paste(required_columns, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  as_agepi_contact_matrix(
+    conmat_data,
+    age_structure = age_structure,
+    orientation = orientation,
+    transpose = transpose
+  )
+}
+
 coerce_contact_matrix_input <- function(x, age_structure) {
   if (is_conmat_long_data_frame(x)) {
     return(conmat_long_to_contact_matrix(x, age_structure))
@@ -105,6 +201,10 @@ conmat_long_to_contact_matrix <- function(x, age_structure) {
 
   if (!is.numeric(contacts)) {
     stop("conmat-style contacts column must be numeric.", call. = FALSE)
+  }
+
+  if (anyNA(contacts) || any(!is.finite(contacts))) {
+    stop("conmat-style contacts column cannot contain missing or non-finite values.", call. = FALSE)
   }
 
   if (anyNA(age_group_from) || anyNA(age_group_to)) {

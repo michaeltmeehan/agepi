@@ -2,7 +2,7 @@
 
 ## 1. Project aim
 
-Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation is a deterministic age-structured SIR model using mock inputs only; demographic data integration remains future work.
+Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation is a deterministic age-structured SIR model using mock inputs only, with small utility layers for simulation summaries, age-vector transformation, demography-table storage/access, and contact-matrix validation/coercion/aggregation.
 
 The first implementation should be deliberately simple: a deterministic age-structured SIR model with one static contact matrix. However, the code should be designed so that later extensions can support:
 
@@ -36,8 +36,9 @@ The prototype should prioritise clean abstractions and testable model components
 
 | Component | Reason deferred |
 |---|---|
-| Demography, WPP integration, ageing, births, deaths, and migration | Requires a separate demography layer |
-| `socialmixr` or `conmat` integration | Contact matrices are currently supplied directly |
+| WPP integration, ageing, births, deaths, fertility, mortality, migration, and demographic projection dynamics | Current demography support is validation, storage, sorting, and exact-time population access only |
+| `socialmixr` or `conmat` package dependencies | Current contact support is dependency-free coercion and exact aggregation |
+| Contact-matrix splitting or general rebinning | Current `transform_contact_matrix()` supports exact aggregation only |
 | SEIR and other compartment structures | Current disease model support is SIR only |
 | Adaptive or external ODE solver backends | Current simulator uses explicit Euler only |
 | Stochastic simulation | Design for it, but do not implement yet |
@@ -145,55 +146,54 @@ Required checks:
 
 ---
 
-### 5.2 Future `Demography`
+### 5.2 `Demography`
 
-Would store time-varying demographic information aligned to the model age bins. This object is not currently implemented.
+Stores validated age-specific population tables aligned to the model age bins.
+Current support is deliberately minimal: validation, sorted storage, and exact-time
+population accessors. It does not project demography or affect simulation
+dynamics.
 
-Suggested fields:
+Current constructor:
 
 ```r
-demography <- list(
-  age_structure = age_structure,
-  times = times,
-  population = population_matrix,
-  mortality = mortality_matrix,
-  births = births_vector,
-  ageing_rates = ageing_rate_vector
-)
+Demography(demography, age_structure)
 ```
 
-Expected dimensions:
+where `demography` is a data frame with:
 
 | Field | Shape |
 |---|---|
-| `population` | `length(times) × number_of_age_groups` |
-| `mortality` | `length(times) × number_of_age_groups` |
-| `births` | `length(times)` |
-| `ageing_rates` | `number_of_age_groups` |
+| `time` | numeric time point |
+| `age_group` | one of `age_structure$age_groups` |
+| `population` | non-negative finite population value |
 
-Notes:
+Implemented helpers:
 
-- `population[t, a]` is the projected population in age group `a` at time `t`.
-- `mortality[t, a]` is the background mortality rate for age group `a` at time `t`.
-- `births[t]` is the number/rate of births entering the youngest age group.
-- `ageing_rates[a]` controls ageing out of age group `a`.
+```r
+validate_demography_table(demography, age_structure)
+demography_times(demography)
+demography_population_vector(demography, time)
+demography_population_table(demography, time = NULL)
+```
 
-The first version may use interpolation or nearest-year lookup for time-varying demographic quantities.
+The current accessors require exact available time points. Interpolation,
+nearest-year lookup, WPP integration, fertility, mortality, births, deaths,
+ageing, migration, and demographic projection dynamics remain future work.
 
 ---
 
-### 5.3 Future `MixingModel`
+### 5.3 Contact matrices and future `MixingModel`
 
-Would store or generate the age-specific contact matrix. This object is not currently implemented; current functions accept a contact matrix directly.
+A `MixingModel` object is not currently implemented; current functions accept a
+contact matrix directly. The package does include contact-matrix validation,
+coercion, and exact aggregation helpers.
 
-Initial version:
+Current helpers:
 
 ```r
-mixing_model <- list(
-  age_structure = age_structure,
-  contact_matrix = C,
-  time_varying = FALSE
-)
+validate_contact_matrix(contact_matrix, age_structure = NULL)
+as_agepi_contact_matrix(x, age_structure = NULL, orientation = ..., transpose = FALSE)
+transform_contact_matrix(contact_matrix, from_age_structure, to_age_structure, population)
 ```
 
 Expected dimensions:
@@ -204,12 +204,21 @@ number_of_age_groups × number_of_age_groups
 
 The entry `C[a, b]` represents contacts made by individuals in recipient age group `a` with individuals in source age group `b`. This matches the implemented force-of-infection convention: rows are recipients and columns are sources.
 
-Required checks:
+Implemented validation checks:
 
 - Contact matrix must be square.
 - Matrix dimensions must match the number of model age groups.
 - Entries must be non-negative.
 - Missing values are not allowed.
+
+`as_agepi_contact_matrix()` currently supports numeric matrices, numeric data
+frames, socialmixr-like lists with a numeric `matrix` element, and conmat-style
+long data frames with `age_group_from`, `age_group_to`, and `contacts` columns.
+It does not add `socialmixr` or `conmat` dependencies.
+
+`transform_contact_matrix()` currently supports exact fine-to-coarse
+aggregation only, where every target age bin is an exact union of complete
+source age bins. Source-bin splitting and general rebinning remain future work.
 
 Later versions may allow:
 
@@ -335,11 +344,23 @@ Implemented helper functions:
 state_long_to_vector(state_long, age_structure, compartments)
 state_vector_to_long(state_vector, age_structure, compartments)
 aggregate_age_vector(values, from_age_structure, to_age_structure)
+segregate_age_vector(values, from_age_structure, to_age_structure, weights)
+transform_age_vector(values, from_age_structure, to_age_structure, weights = NULL, split_method = ...)
 ```
 
 No matrix state helper is currently implemented. Numeric state vectors are interpreted by position only; names on numeric vectors are ignored when converting back to long form or simulating.
 
-`aggregate_age_vector()` supports aggregation only when every target age bin is an exact union of complete source age bins.
+`aggregate_age_vector()` supports aggregation only when every target age bin is
+an exact union of complete source age bins.
+
+`segregate_age_vector()` supports coarse-to-fine splitting when every target age
+bin is fully nested inside exactly one source age bin and explicit target
+weights are supplied.
+
+`transform_age_vector()` supports identity, aggregation, segregation, and mixed
+exact transformations when source and target bins align to a common set of
+boundaries. Its `split_method` controls source-bin splitting for mixed exact
+transformations.
 
 ---
 
@@ -470,6 +491,8 @@ age-transmission-prototype/
     disease_model.R
     state_mapping.R
     age_transform.R
+    demography.R
+    contact_matrix.R
     force_of_infection.R
     transition_rates.R
     derivative.R
@@ -487,7 +510,8 @@ age-transmission-prototype/
     age_structured_transmission_design.md
 ```
 
-The current example uses mock data only. WPP-derived demographic inputs remain future work.
+The current example uses mock data only. WPP-derived demographic inputs and
+demographic projection dynamics remain future work.
 
 ---
 
@@ -563,6 +587,7 @@ Implemented:
 - validation helpers;
 - state conversion helpers;
 - exact age-vector aggregation helper;
+- exact age-vector segregation and mixed transformation helper;
 - basic tests.
 
 Acceptance criteria:
@@ -606,30 +631,47 @@ Acceptance criteria:
 
 ### Milestone 4: Demographic input layer
 
-Future work:
+Implemented:
 
-- functions to construct a `Demography` object from already-cleaned population, mortality, and births data;
-- interpolation or lookup of demographic quantities at time `t`;
-- mock demography inputs.
+- `validate_demography_table()`;
+- `Demography()` for already-cleaned age-specific population tables;
+- sorted storage by time and age-group order;
+- exact-time population accessors.
 
 Acceptance criteria:
 
-- simulation code does not care whether demography comes from mock or external data.
+- demography table validation catches missing, duplicate, extra, negative, or non-finite population rows;
+- accessors return populations in age-structure order.
+
+Still future work:
+
+- WPP integration;
+- interpolation or nearest-year lookup;
+- fertility, mortality, births, deaths, ageing, migration, and demographic projection dynamics;
+- using demographic dynamics inside the simulator.
 
 ---
 
 ### Milestone 5: Contact matrix integration
 
-Future work:
+Implemented:
 
-- `MixingModel`;
-- contact matrix validation;
+- `validate_contact_matrix()`;
+- `as_agepi_contact_matrix()` for dependency-free coercion of supported inputs;
+- `transform_contact_matrix()` for exact fine-to-coarse aggregation;
 - compatibility with externally prepared age-aligned contact matrices.
 
 Acceptance criteria:
 
 - model accepts any valid age-aligned contact matrix;
 - contact matrix construction remains separate from disease simulation.
+
+Still future work:
+
+- `MixingModel`;
+- socialmixr/conmat package-specific adapters or dependencies;
+- contact-matrix splitting and general rebinning;
+- reciprocity correction and population balancing.
 
 ---
 

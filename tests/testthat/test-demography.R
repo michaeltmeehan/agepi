@@ -47,6 +47,174 @@ test_that("Demography constructs a valid inspectable object", {
   expect_identical(names(demography$demography), c("time", "age_group", "population"))
 })
 
+test_wpp_table <- function() {
+  data.frame(
+    location_name = rep("Fiji", 6),
+    year = c(2020, 2020, 2020, 2025, 2025, 2025),
+    wpp_age = c("10+", "0-4", "5-9", "5-9", "10+", "0-4"),
+    pop_total = c(80, 110, 95, 90, 85, 115),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("demography_from_wpp converts clean WPP-like tables", {
+  demography <- demography_from_wpp(
+    data = test_wpp_table(),
+    age_structure = test_age_structure(),
+    time_col = "year",
+    age_group_col = "wpp_age",
+    population_col = "pop_total",
+    location = "Fiji",
+    location_col = "location_name"
+  )
+
+  expect_s3_class(demography, "agepi_demography")
+  expect_identical(demography_times(demography), c(2020, 2025))
+  expect_identical(
+    demography_population_vector(demography, time = 2020),
+    c("0-4" = 110, "5-9" = 95, "10+" = 80)
+  )
+})
+
+test_that("demography_from_wpp requires declared WPP columns", {
+  wpp <- test_wpp_table()
+  wpp$pop_total <- NULL
+
+  expect_error(
+    demography_from_wpp(
+      data = wpp,
+      age_structure = test_age_structure(),
+      time_col = "year",
+      age_group_col = "wpp_age",
+      population_col = "pop_total"
+    ),
+    "missing required column"
+  )
+})
+
+test_that("demography_from_wpp rejects duplicate time-age rows via Demography", {
+  wpp <- rbind(test_wpp_table(), test_wpp_table()[1, ])
+
+  expect_error(
+    demography_from_wpp(
+      data = wpp,
+      age_structure = test_age_structure(),
+      time_col = "year",
+      age_group_col = "wpp_age",
+      population_col = "pop_total",
+      location = "Fiji",
+      location_col = "location_name"
+    ),
+    "duplicate time-age_group"
+  )
+})
+
+test_that("demography_from_wpp rejects incomplete age-group coverage", {
+  wpp <- test_wpp_table()
+  wpp <- wpp[-1, ]
+
+  expect_error(
+    demography_from_wpp(
+      data = wpp,
+      age_structure = test_age_structure(),
+      time_col = "year",
+      age_group_col = "wpp_age",
+      population_col = "pop_total",
+      location = "Fiji",
+      location_col = "location_name"
+    ),
+    "missing age_group"
+  )
+})
+
+test_that("demography_from_wpp population ordering matches age_structure", {
+  demography <- demography_from_wpp(
+    data = test_wpp_table(),
+    age_structure = test_age_structure(),
+    time_col = "year",
+    age_group_col = "wpp_age",
+    population_col = "pop_total"
+  )
+
+  population_table <- demography_population_table(demography, time = 2025)
+  expect_identical(population_table$age_group, c("0-4", "5-9", "10+"))
+  expect_identical(population_table$population, c(115, 90, 85))
+})
+
+test_that("demography_from_wpp requires location when selector is ambiguous", {
+  wpp <- rbind(
+    test_wpp_table(),
+    transform(test_wpp_table(), location_name = "Tonga")
+  )
+
+  expect_error(
+    demography_from_wpp(
+      data = wpp,
+      age_structure = test_age_structure(),
+      time_col = "year",
+      age_group_col = "wpp_age",
+      population_col = "pop_total",
+      location_col = "location_name"
+    ),
+    "multiple location values"
+  )
+})
+
+test_that("demography_from_wpp optional wpp2024 dataset path skips cleanly when unavailable", {
+  if (requireNamespace("wpp2024", quietly = TRUE)) {
+    skip("wpp2024 is installed")
+  }
+
+  expect_error(
+    demography_from_wpp(
+      dataset = "missing_dataset",
+      age_structure = test_age_structure(),
+      time_col = "year",
+      age_group_col = "age",
+      population_col = "population"
+    ),
+    "Package wpp2024 is required"
+  )
+})
+
+test_that("demography_from_wpp can use an installed wpp2024 dataset", {
+  testthat::skip_if_not_installed("wpp2024")
+
+  wpp_datasets <- utils::data(package = "wpp2024")$results[, "Item"]
+  testthat::skip_if_not("popAge5dt" %in% wpp_datasets)
+
+  age_groups <- c(
+    "0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34",
+    "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", "65-69",
+    "70-74", "75-79", "80-84", "85-89", "90-94", "95-99", "100+"
+  )
+  lower_bounds <- c(seq(0, 95, by = 5), 100)
+  upper_bounds <- c(seq(4, 99, by = 5), Inf)
+  ages <- AgeStructure(
+    age_groups = age_groups,
+    lower_bounds = lower_bounds,
+    upper_bounds = upper_bounds
+  )
+
+  demography <- demography_from_wpp(
+    dataset = "popAge5dt",
+    age_structure = ages,
+    time_col = "year",
+    age_group_col = "age",
+    population_col = "pop",
+    location = "World",
+    location_col = "name"
+  )
+
+  expect_s3_class(demography, "agepi_demography")
+  expect_identical(demography$age_structure, ages)
+  expect_true(all(c(1950, 2020) %in% demography_times(demography)))
+  expect_identical(
+    demography_population_table(demography, time = 1950)$age_group,
+    age_groups
+  )
+})
+
 test_that("demography validation rejects non-data-frame input", {
   expect_error(
     validate_demography_table(list(), test_age_structure()),
@@ -187,7 +355,12 @@ test_that("demography_population_vector preserves age-group ordering", {
   )
   demography <- Demography(input, ages)
 
-  expect_identical(names(demography_population_vector(demography, time = 0)), ages$age_groups)
+  demography$demography <- demography$demography[c(3, 1, 2), ]
+
+  expect_identical(
+    demography_population_vector(demography, time = 0),
+    c("0-4" = 110, "5-9" = 95, "10+" = 85)
+  )
 })
 
 test_that("demography accessors reject unavailable times without interpolation", {

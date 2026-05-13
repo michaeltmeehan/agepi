@@ -134,6 +134,129 @@ Demography <- function(demography, age_structure) {
   demography_object
 }
 
+#' Construct demography from WPP-style tabular data
+#'
+#' Converts an already-loaded WPP-like table, or an optional dataset from the
+#' `wpp2024` package, into the simple `time`, `age_group`, `population` table
+#' expected by [Demography()]. This is only an adapter: it does not project,
+#' interpolate, age, or otherwise modify population trajectories.
+#'
+#' @param data Optional data frame containing WPP-like population data.
+#' @param dataset Optional dataset name to load from `wpp2024` when `data` is
+#'   not supplied.
+#' @param age_structure Target age-structure object validated by
+#'   [validate_age_structure()].
+#' @param time_col,age_group_col,population_col Column names in `data`
+#'   containing time/year, age-group, and population values.
+#' @param location Optional single country or location value to select.
+#' @param location_col Optional column name containing country or location
+#'   values.
+#'
+#' @return An `agepi_demography` object.
+#' @export
+demography_from_wpp <- function(data = NULL,
+                                dataset = NULL,
+                                age_structure,
+                                time_col,
+                                age_group_col,
+                                population_col,
+                                location = NULL,
+                                location_col = NULL) {
+  missing_arguments <- c(
+    if (missing(age_structure)) "age_structure",
+    if (missing(time_col)) "time_col",
+    if (missing(age_group_col)) "age_group_col",
+    if (missing(population_col)) "population_col"
+  )
+  if (length(missing_arguments) > 0) {
+    stop(
+      "demography_from_wpp() requires argument(s): ",
+      paste(missing_arguments, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  validate_age_structure(age_structure)
+
+  if (is.null(data)) {
+    if (is.null(dataset) || length(dataset) != 1 || is.na(dataset) || !nzchar(dataset)) {
+      stop("demography_from_wpp() requires either data or a single dataset name.", call. = FALSE)
+    }
+
+    if (!requireNamespace("wpp2024", quietly = TRUE)) {
+      stop(
+        "Package wpp2024 is required to load dataset '",
+        dataset,
+        "'. Install wpp2024 or supply data directly.",
+        call. = FALSE
+      )
+    }
+
+    dataset_environment <- new.env(parent = baseenv())
+    utils::data(
+      list = dataset,
+      package = "wpp2024",
+      envir = dataset_environment
+    )
+    if (!exists(dataset, envir = dataset_environment, inherits = FALSE)) {
+      stop("Dataset not found in wpp2024: ", dataset, call. = FALSE)
+    }
+    data <- get(dataset, envir = dataset_environment, inherits = FALSE)
+  } else if (!is.null(dataset)) {
+    stop("Supply either data or dataset, not both.", call. = FALSE)
+  }
+
+  if (!is.data.frame(data)) {
+    stop("WPP data must be a data frame.", call. = FALSE)
+  }
+
+  required_columns <- c(time_col, age_group_col, population_col)
+
+  selector_columns <- character(0)
+  if (!is.null(location_col)) {
+    selector_columns <- location_col
+  }
+  missing_columns <- setdiff(c(required_columns, selector_columns), names(data))
+  if (length(missing_columns) > 0) {
+    stop(
+      "WPP data is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(location_col)) {
+    locations <- unique(data[[location_col]])
+    if (is.null(location)) {
+      if (length(locations) > 1) {
+        stop(
+          "WPP data contains multiple location values; provide location to select one.",
+          call. = FALSE
+        )
+      }
+    } else {
+      if (length(location) != 1 || is.na(location)) {
+        stop("location must be a single non-missing value.", call. = FALSE)
+      }
+      data <- data[data[[location_col]] == location, , drop = FALSE]
+      if (nrow(data) == 0) {
+        stop("No WPP rows matched location: ", location, call. = FALSE)
+      }
+    }
+  } else if (!is.null(location)) {
+    stop("location_col must be supplied when location is supplied.", call. = FALSE)
+  }
+
+  demography <- data.frame(
+    time = data[[time_col]],
+    age_group = data[[age_group_col]],
+    population = data[[population_col]],
+    stringsAsFactors = FALSE
+  )
+
+  Demography(demography, age_structure)
+}
+
 #' Get demography time points
 #'
 #' @param demography An `agepi_demography` object.
@@ -160,6 +283,9 @@ demography_population_vector <- function(demography, time) {
   validate_demography_time(time, demography$times)
 
   population_table <- demography_population_table(demography, time = time)
+  population_table <- population_table[
+    match(demography$age_groups, population_table$age_group),
+  ]
   population <- population_table$population
   names(population) <- demography$age_groups
   population

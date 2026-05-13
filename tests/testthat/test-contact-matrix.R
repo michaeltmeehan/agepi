@@ -133,6 +133,115 @@ test_that("socialmixr-like list with matrix works", {
   expect_equal(as_agepi_contact_matrix(socialmixr_like), contact_matrix)
 })
 
+test_that("contact_matrix_from_socialmixr extracts a plain matrix", {
+  contact_matrix <- matrix(c(
+    1, 2,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+
+  expect_equal(contact_matrix_from_socialmixr(contact_matrix), contact_matrix)
+})
+
+test_that("contact_matrix_from_socialmixr extracts list matrix element", {
+  contact_matrix <- matrix(c(
+    1, 2,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+  socialmixr_like <- structure(
+    list(matrix = contact_matrix, participants = data.frame()),
+    class = "contact_matrix"
+  )
+
+  expect_equal(contact_matrix_from_socialmixr(socialmixr_like), contact_matrix)
+})
+
+test_that("contact_matrix_from_socialmixr handles explicit orientation", {
+  contact_matrix <- matrix(c(
+    1, 2,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+  socialmixr_like <- list(matrix = contact_matrix)
+
+  expect_equal(
+    contact_matrix_from_socialmixr(socialmixr_like, orientation = "source_recipient"),
+    t(contact_matrix)
+  )
+})
+
+test_that("contact_matrix_from_socialmixr applies and checks age_structure labels", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  contact_matrix <- contact_matrix_from_socialmixr(list(matrix = diag(2)), age_structure = ages)
+
+  expect_identical(rownames(contact_matrix), ages$age_groups)
+  expect_identical(colnames(contact_matrix), ages$age_groups)
+
+  labelled_matrix <- diag(2)
+  dimnames(labelled_matrix) <- list(c("5-9", "0-4"), c("5-9", "0-4"))
+
+  expect_error(
+    contact_matrix_from_socialmixr(list(matrix = labelled_matrix), age_structure = ages),
+    "rownames"
+  )
+})
+
+test_that("contact_matrix_from_socialmixr rejects invalid matrices", {
+  expect_error(
+    contact_matrix_from_socialmixr(list(matrix = matrix(1, nrow = 2, ncol = 3))),
+    "square"
+  )
+
+  expect_error(
+    contact_matrix_from_socialmixr(list(matrix = matrix(c(1, Inf, 0, 1), nrow = 2))),
+    "non-finite"
+  )
+
+  expect_error(
+    contact_matrix_from_socialmixr(list(matrix = matrix(c(1, NA, 0, 1), nrow = 2))),
+    "missing"
+  )
+
+  expect_error(
+    contact_matrix_from_socialmixr(list(participants = data.frame())),
+    "matrix element"
+  )
+})
+
+test_that("contact_matrix_from_socialmixr example skips cleanly without socialmixr", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  expect_true(requireNamespace("socialmixr", quietly = TRUE))
+})
+
+test_that("contact_matrix_from_socialmixr accepts a small socialmixr result", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
+  testthat::skip_if_not("polymod" %in% socialmixr_datasets)
+
+  data_environment <- new.env(parent = emptyenv())
+  utils::data("polymod", package = "socialmixr", envir = data_environment)
+
+  socialmixr_matrix <- suppressWarnings(
+    socialmixr::contact_matrix(
+      get("polymod", envir = data_environment),
+      countries = "United Kingdom",
+      age_limits = c(0, 5, 10),
+      symmetric = FALSE
+    )
+  )
+
+  contact_matrix <- contact_matrix_from_socialmixr(socialmixr_matrix)
+
+  expect_type(contact_matrix, "double")
+  expect_equal(dim(contact_matrix), c(3L, 3L))
+  expect_false(anyNA(contact_matrix))
+})
+
 test_that("conmat-style long table is converted correctly", {
   conmat_long <- data.frame(
     age_group_from = c("0-4", "5-9", "0-4", "5-9"),
@@ -148,6 +257,140 @@ test_that("conmat-style long table is converted correctly", {
   )
 
   expect_equal(as_agepi_contact_matrix(conmat_long), expected)
+})
+
+test_that("contact_matrix_from_conmat converts conmat-style long table", {
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "5-9", "0-4", "5-9"),
+    age_group_to = c("0-4", "0-4", "5-9", "5-9"),
+    contacts = c(1, 2, 3, 4)
+  )
+
+  expected <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(c("0-4", "5-9"), c("0-4", "5-9"))
+  )
+
+  expect_equal(contact_matrix_from_conmat(conmat_long), expected)
+})
+
+test_that("contact_matrix_from_conmat delegates orientation handling", {
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "5-9", "0-4", "5-9"),
+    age_group_to = c("0-4", "0-4", "5-9", "5-9"),
+    contacts = c(1, 2, 3, 4)
+  )
+
+  expected_recipient_source <- contact_matrix_from_conmat(conmat_long)
+
+  expect_equal(
+    contact_matrix_from_conmat(conmat_long, orientation = "source_recipient"),
+    t(expected_recipient_source)
+  )
+})
+
+test_that("contact_matrix_from_conmat rejects missing required long-table columns", {
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "5-9"),
+    age_group_to = c("0-4", "0-4")
+  )
+
+  expect_error(
+    contact_matrix_from_conmat(conmat_long),
+    "age_group_from, age_group_to, contacts"
+  )
+})
+
+test_that("contact_matrix_from_conmat rejects duplicate age-pair records", {
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "0-4"),
+    age_group_to = c("5-9", "5-9"),
+    contacts = c(1, 2)
+  )
+
+  expect_error(
+    contact_matrix_from_conmat(conmat_long),
+    "duplicate"
+  )
+})
+
+test_that("contact_matrix_from_conmat checks age labels against age_structure", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "10-14", "0-4", "10-14"),
+    age_group_to = c("0-4", "0-4", "10-14", "10-14"),
+    contacts = c(1, 2, 3, 4)
+  )
+
+  expect_error(
+    contact_matrix_from_conmat(conmat_long, age_structure = ages),
+    "age groups must match"
+  )
+})
+
+test_that("contact_matrix_from_conmat rejects invalid contacts values", {
+  conmat_long <- data.frame(
+    age_group_from = c("0-4", "5-9", "0-4", "5-9"),
+    age_group_to = c("0-4", "0-4", "5-9", "5-9"),
+    contacts = c(1, 2, 3, 4)
+  )
+
+  nonnumeric_contacts <- conmat_long
+  nonnumeric_contacts$contacts <- as.character(nonnumeric_contacts$contacts)
+  expect_error(
+    contact_matrix_from_conmat(nonnumeric_contacts),
+    "contacts column must be numeric"
+  )
+
+  missing_contacts <- conmat_long
+  missing_contacts$contacts[1] <- NA_real_
+  expect_error(
+    contact_matrix_from_conmat(missing_contacts),
+    "missing"
+  )
+
+  infinite_contacts <- conmat_long
+  infinite_contacts$contacts[1] <- Inf
+  expect_error(
+    contact_matrix_from_conmat(infinite_contacts),
+    "non-finite"
+  )
+
+  negative_contacts <- conmat_long
+  negative_contacts$contacts[1] <- -1
+  expect_error(
+    contact_matrix_from_conmat(negative_contacts),
+    "negative"
+  )
+})
+
+test_that("contact_matrix_from_conmat example skips cleanly without conmat", {
+  testthat::skip_if_not_installed("conmat")
+
+  expect_true(requireNamespace("conmat", quietly = TRUE))
+})
+
+test_that("contact_matrix_from_conmat accepts a small conmat-generated long table", {
+  testthat::skip_if_not_installed("conmat")
+
+  source_matrix <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(c("0-4", "5-9"), c("0-4", "5-9"))
+  )
+
+  conmat_long <- suppressWarnings(conmat::matrix_to_predictions(source_matrix))
+  contact_matrix <- contact_matrix_from_conmat(conmat_long)
+
+  expect_equal(contact_matrix, source_matrix)
 })
 
 test_that("conmat-style long table uses age_structure order", {
