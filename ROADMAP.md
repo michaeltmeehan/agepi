@@ -10,6 +10,7 @@ Implemented:
 - `validate_age_structure()`;
 - `state_long_to_vector()`;
 - `state_vector_to_long()`;
+- `aggregate_age_vector()`;
 - tests for age validation and state mapping.
 
 ### Milestone 2A: Force of infection
@@ -42,6 +43,7 @@ Implemented:
 
 - `simulate_deterministic()` using explicit Euler time steps;
 - tidy long-format simulation outputs;
+- `compartment_totals()`, `age_group_totals()`, and `total_population()`;
 - mock deterministic SIR example.
 
 ## Future Work

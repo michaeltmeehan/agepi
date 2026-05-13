@@ -334,9 +334,12 @@ Implemented helper functions:
 ```r
 state_long_to_vector(state_long, age_structure, compartments)
 state_vector_to_long(state_vector, age_structure, compartments)
+aggregate_age_vector(values, from_age_structure, to_age_structure)
 ```
 
 No matrix state helper is currently implemented. Numeric state vectors are interpreted by position only; names on numeric vectors are ignored when converting back to long form or simulating.
+
+`aggregate_age_vector()` supports aggregation only when every target age bin is an exact union of complete source age bins.
 
 ---
 
@@ -444,6 +447,16 @@ time, age_group, incidence, morbidity, infection_mortality
 
 Derived outputs are future work.
 
+Implemented summary helpers for deterministic simulation output:
+
+```r
+compartment_totals(simulation_output)
+age_group_totals(simulation_output)
+total_population(simulation_output)
+```
+
+These helpers summarise the `time`, `compartment`, `age_group`, and `value` output produced by `simulate_deterministic()`. They do not add new model dynamics.
+
 ---
 
 ## 10. File structure
@@ -456,10 +469,12 @@ age-transmission-prototype/
     age_structure.R
     disease_model.R
     state_mapping.R
+    age_transform.R
     force_of_infection.R
     transition_rates.R
     derivative.R
     simulate_deterministic.R
+    simulation_summaries.R
     ...
 
   examples/
@@ -547,6 +562,7 @@ Implemented:
 - `AgeStructure`;
 - validation helpers;
 - state conversion helpers;
+- exact age-vector aggregation helper;
 - basic tests.
 
 Acceptance criteria:
@@ -577,6 +593,7 @@ Implemented:
 
 - `rates_to_derivative()`;
 - `simulate_deterministic()`;
+- simulation summary helpers;
 - one complete SIR example using mock demographic data.
 
 Acceptance criteria:

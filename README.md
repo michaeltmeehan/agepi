@@ -10,7 +10,8 @@ The current implementation supports a narrow deterministic age-structured SIR wo
 - construct a minimal SIR model with `SIRModel()`;
 - compute SIR infection and recovery transition rates;
 - convert transition rates to deterministic derivatives;
-- run a deterministic SIR simulation with explicit Euler time steps.
+- run a deterministic SIR simulation with explicit Euler time steps;
+- summarise deterministic simulation output with `compartment_totals()`, `age_group_totals()`, and `total_population()`.
 
 ## Current limitations
 
@@ -96,6 +97,10 @@ head(simulation)
 ```
 
 See `examples/mock_sir_deterministic.R` for a slightly larger mock-only example.
+
+## Small utilities
+
+`aggregate_age_vector()` aggregates a numeric vector from one age structure to a coarser age structure when each target age bin is an exact union of complete source age bins.
 
 ## Design notes
 
