@@ -1,47 +1,92 @@
 # Roadmap
 
-## Milestone 1: Project skeleton and age/state infrastructure
+## Completed
 
-Implement:
+### Milestone 1: Age structure and state mapping
 
-- source folder structure;
-- age-structure constructor and validator;
-- state long-to-vector and vector-to-long mapping;
+Implemented:
+
+- `AgeStructure()`;
+- `validate_age_structure()`;
+- `state_long_to_vector()`;
+- `state_vector_to_long()`;
 - tests for age validation and state mapping.
 
-Do not implement disease transmission yet.
+### Milestone 2A: Force of infection
 
-## Milestone 2: Force of infection and SIR transition rates
+Implemented:
 
-Implement:
+- reusable `force_of_infection()`;
+- recipient-row, source-column contact-matrix convention;
+- age-specific susceptibility and infectiousness vectors.
 
-- reusable force-of-infection function;
-- SIR disease model constructor;
-- transition-rate table for infection, recovery, ageing, births, and background deaths;
+### Milestone 2B: SIR model and transition rates
+
+Implemented:
+
+- `SIRModel()`;
+- `validate_disease_model()`;
+- `transition_rates()` for SIR infection and recovery rates;
 - tests using small manually checkable examples.
 
-## Milestone 3: Deterministic simulation
+### Milestone 3A: Deterministic derivative
 
-Implement:
+Implemented:
 
-- conversion from transition rates to derivatives;
-- deterministic ODE simulation;
+- `rates_to_derivative()`;
+- deterministic derivative construction from transition-rate tables.
+
+### Milestone 3B: Deterministic Euler simulation
+
+Implemented:
+
+- `simulate_deterministic()` using explicit Euler time steps;
 - tidy long-format simulation outputs;
-- smoke test using mock demographic data.
+- mock deterministic SIR example.
 
-## Milestone 4: Demography layer
+## Future Work
 
-Implement:
+### Milestone 4: Package-level documentation
+
+Planned:
+
+- package overview documentation;
+- function examples aligned with the current deterministic SIR scope;
+- clearer user-facing notes on current limitations.
+
+### Milestone 5: Deterministic solver backend
+
+Planned:
+
+- solver interface for deterministic simulation;
+- optional non-Euler backend after the current explicit Euler path is stable;
+- tests that preserve the transition-rate to derivative spine.
+
+### Milestone 6: Minimal demography layer
+
+Planned:
 
 - demography object constructor;
-- demographic quantity lookup/interpolation;
-- mock WPP-style input format;
-- tests showing simulation code is independent of data source.
+- demographic quantity lookup or interpolation;
+- mock demography inputs that remain separate from simulation code.
 
-## Milestone 5: Contact matrix integration
+This does not currently include WPP integration, ageing, births, deaths, or migration in the implemented simulator.
 
-Implement:
+### Milestone 7: Contact matrix integration
 
-- mixing model constructor;
-- contact matrix validation;
-- compatibility with externally generated contact matrices.
+Planned:
+
+- mixing/contact object constructor;
+- contact matrix validation at the package boundary;
+- compatibility with externally prepared contact matrices.
+
+This does not currently include `socialmixr` or `conmat` integration.
+
+### Milestone 8: Stochastic simulation infrastructure
+
+Planned:
+
+- stochastic event-intensity interface based on transition rates;
+- stochastic simulator design and tests.
+
+No stochastic simulation is currently implemented.

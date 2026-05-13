@@ -2,9 +2,9 @@
 
 ## 1. Project aim
 
-Build a small but extensible R prototype for age-structured infectious disease transmission models using projected demographic data, initially from the World Population Prospects 2024 data ecosystem.
+Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation is a deterministic age-structured SIR model using mock inputs only; demographic data integration remains future work.
 
-The first implementation should be deliberately simple: a deterministic age-structured SIR or SEIR model for one country, one demographic scenario, and one contact matrix. However, the code should be designed so that later extensions can support:
+The first implementation should be deliberately simple: a deterministic age-structured SIR model with one static contact matrix. However, the code should be designed so that later extensions can support:
 
 - different disease compartment structures;
 - different age-bin definitions;
@@ -22,32 +22,29 @@ The prototype should prioritise clean abstractions and testable model components
 
 ### Included in first prototype
 
-| Component | Initial implementation |
+| Component | Current implementation |
 |---|---|
 | Language | R |
-| Disease model | Age-structured SIR, with design compatible with SEIR |
-| Simulation | Deterministic ODE |
-| Geography | One country |
-| Demography | WPP 2024 population projections, initially one projection scenario |
+| Disease model | Age-structured SIR only |
+| Simulation | Deterministic explicit Euler only |
 | Age bins | User-defined model age bins |
 | Mixing | Static age-specific contact matrix |
 | Susceptibility | Age-specific vector |
 | Infectiousness | Age-specific vector, default all ones |
-| Infection morbidity/mortality | Derived outputs, not yet disease-state transitions |
-| Births | Births enter youngest susceptible age group |
-| Background mortality | Age-specific demographic mortality |
-| Ageing | Movement between age groups |
 
-### Not included initially
+### Not currently implemented
 
 | Component | Reason deferred |
 |---|---|
-| Stochastic simulation | Design for it, but do not implement initially |
+| Demography, WPP integration, ageing, births, deaths, and migration | Requires a separate demography layer |
+| `socialmixr` or `conmat` integration | Contact matrices are currently supplied directly |
+| SEIR and other compartment structures | Current disease model support is SIR only |
+| Adaptive or external ODE solver backends | Current simulator uses explicit Euler only |
+| Stochastic simulation | Design for it, but do not implement yet |
 | Vaccination | Requires additional compartment conventions |
 | Waning immunity | Can be added once transition framework is stable |
 | Calibration/inference | Depends on stable model/simulation interface |
 | Multi-country batching | Should come after one-country workflow is correct |
-| Full R package structure | Start as a prototype R project; convert later if needed |
 | Julia implementation | Design should make later port straightforward |
 
 ---
@@ -71,7 +68,7 @@ transition rates
       ↓
 deterministic derivatives
       ↓
-ODE simulation
+Euler simulation
 ```
 
 Later:
@@ -148,9 +145,9 @@ Required checks:
 
 ---
 
-### 5.2 `Demography`
+### 5.2 Future `Demography`
 
-Stores time-varying demographic information aligned to the model age bins.
+Would store time-varying demographic information aligned to the model age bins. This object is not currently implemented.
 
 Suggested fields:
 
@@ -185,9 +182,9 @@ The first version may use interpolation or nearest-year lookup for time-varying 
 
 ---
 
-### 5.3 `MixingModel`
+### 5.3 Future `MixingModel`
 
-Stores or generates the age-specific contact matrix.
+Would store or generate the age-specific contact matrix. This object is not currently implemented; current functions accept a contact matrix directly.
 
 Initial version:
 
@@ -205,7 +202,7 @@ Expected dimensions:
 number_of_age_groups × number_of_age_groups
 ```
 
-The entry `C[a, b]` should represent contacts made by individuals in recipient age group `a` with individuals in source age group `b`.
+The entry `C[a, b]` represents contacts made by individuals in recipient age group `a` with individuals in source age group `b`. This matches the implemented force-of-infection convention: rows are recipients and columns are sources.
 
 Required checks:
 
@@ -224,9 +221,9 @@ get_contact_matrix <- function(t, mixing_model, demography) {
 
 ---
 
-### 5.4 `RiskModel`
+### 5.4 Future `RiskModel`
 
-Stores age-specific susceptibility, infectiousness, and severity parameters.
+Would store age-specific susceptibility, infectiousness, and severity parameters. This object is not currently implemented; current functions accept susceptibility and infectiousness vectors directly.
 
 Initial version:
 
@@ -279,9 +276,9 @@ Design requirements:
 
 ---
 
-### 5.6 `SimulationProblem`
+### 5.6 Future `SimulationProblem`
 
-Combines all components needed to run a simulation.
+Would combine all components needed to run a simulation. This object is not currently implemented; `simulate_deterministic()` currently takes explicit arguments.
 
 ```r
 problem <- list(
@@ -332,28 +329,14 @@ R_1, R_2, ..., R_A
 
 where `A` is the number of age groups.
 
-Required helper functions:
+Implemented helper functions:
 
 ```r
 state_long_to_vector(state_long, age_structure, compartments)
-state_vector_to_matrix(state_vector, age_structure, compartments)
 state_vector_to_long(state_vector, age_structure, compartments)
 ```
 
-The matrix representation should have:
-
-```text
-rows = compartments
-columns = age groups
-```
-
-or vice versa, but the choice must be documented and used consistently.
-
-Recommended:
-
-```r
-state_matrix[compartment, age_group]
-```
+No matrix state helper is currently implemented. Numeric state vectors are interpreted by position only; names on numeric vectors are ignored when converting back to long form or simulating.
 
 ---
 
@@ -361,43 +344,43 @@ state_matrix[compartment, age_group]
 
 The central model function should return a transition table.
 
-Suggested function signature:
+Current function signature:
 
 ```r
-transition_rates <- function(t, state, problem) {
+transition_rates <- function(
+  state,
+  model,
+  age_structure,
+  contact_matrix,
+  beta = 1,
+  susceptibility = NULL,
+  infectiousness = NULL
+) {
   ...
 }
 ```
 
-Suggested output:
+Current output:
 
 ```r
 data.frame(
-  transition = character(),
-  age_from = character(),
-  age_to = character(),
-  compartment_from = character(),
-  compartment_to = character(),
+  from = character(),
+  to = character(),
+  age_group = character(),
   rate = numeric()
 )
 ```
 
-For the initial SIR model, include:
+For the current SIR model, include:
 
 | Transition | From | To | Rate |
 |---|---|---|---|
 | Infection | `S[a]` | `I[a]` | `lambda[a] * S[a]` |
 | Recovery | `I[a]` | `R[a]` | `gamma * I[a]` |
-| Ageing | `X[a]` | `X[a+1]` | `ageing_rate[a] * X[a]` |
-| Background death | `X[a]` | outside system | `mortality[a] * X[a]` |
-| Birth | outside system | `S[1]` | `births[t]` |
 
 Notes:
 
-- For births and deaths, `compartment_from` or `compartment_to` may be `NA`.
-- For ageing, transitions should apply to all compartments.
-- The final age group should not age into a further group.
-- Infection-induced morbidity/mortality should initially be calculated as derived outputs from infections, not as state transitions.
+- Ageing, births, background deaths, and infection-induced morbidity/mortality are not currently implemented.
 
 ---
 
@@ -406,7 +389,7 @@ Notes:
 Implement:
 
 ```r
-rates_to_derivative <- function(rates, state, problem) {
+rates_to_derivative <- function(transition_rate_table, compartments, age_structure) {
   ...
 }
 ```
@@ -416,18 +399,7 @@ This function should:
 1. start with a zero derivative for every compartment-age cell;
 2. subtract rates from origin cells;
 3. add rates to destination cells;
-4. ignore missing origin or destination cells for births/deaths;
-5. return a numeric vector in the same ordering as the solver state vector.
-
-Then implement:
-
-```r
-sir_derivatives <- function(t, state, parameters) {
-  problem <- parameters$problem
-  rates <- transition_rates(t, state, problem)
-  rates_to_derivative(rates, state, problem)
-}
-```
+4. return derivatives in the same compartment-major, age-group-minor ordering as the solver state vector.
 
 This keeps the deterministic solver separated from the transition-rate logic.
 
@@ -438,16 +410,26 @@ This keeps the deterministic solver separated from the transition-rate logic.
 Initial deterministic simulation function:
 
 ```r
-simulate_deterministic <- function(problem) {
+simulate_deterministic <- function(
+  initial_state,
+  times,
+  model,
+  age_structure,
+  contact_matrix,
+  beta = 1,
+  susceptibility = NULL,
+  infectiousness = NULL,
+  method = "euler"
+) {
   ...
 }
 ```
 
 Expected behaviour:
 
-- Validate the problem.
+- Validate inputs.
 - Convert initial state to solver vector if needed.
-- Use `deSolve::ode()` or equivalent.
+- Use explicit Euler time steps. Currently only `method = "euler"` is supported.
 - Return output in long format, with columns:
 
 ```text
@@ -460,6 +442,8 @@ Optional derived outputs:
 time, age_group, incidence, morbidity, infection_mortality
 ```
 
+Derived outputs are future work.
+
 ---
 
 ## 10. File structure
@@ -470,40 +454,25 @@ Use a lightweight R project structure.
 age-transmission-prototype/
   R/
     age_structure.R
-    demography.R
-    mixing.R
-    risk_model.R
     disease_model.R
-    state.R
+    state_mapping.R
     force_of_infection.R
     transition_rates.R
-    derivatives.R
+    derivative.R
     simulate_deterministic.R
-    outputs.R
-    validate.R
+    ...
 
-  scripts/
-    01_define_age_structure.R
-    02_load_or_mock_demography.R
-    03_define_mixing_model.R
-    04_run_sir_example.R
+  examples/
+    mock_sir_deterministic.R
 
   tests/
-    test_age_structure.R
-    test_state_mapping.R
-    test_force_of_infection.R
-    test_transition_rates.R
-    test_derivatives.R
-    test_simulation_smoke.R
+    testthat/
 
   docs/
-    model_design.md
-    age_mapping.md
-
-  outputs/
+    age_structured_transmission_design.md
 ```
 
-For the very first implementation, mock demographic data may be used before connecting to WPP 2024. However, the code should be written so that WPP-derived demographic inputs can replace mock inputs without changing the simulation code.
+The current example uses mock data only. WPP-derived demographic inputs remain future work.
 
 ---
 
@@ -546,9 +515,7 @@ For a small SIR model:
 
 - infection rates are created for each age group;
 - recovery rates are created for each age group;
-- ageing transitions are created for all but the final age group;
-- births enter the youngest susceptible group;
-- background deaths remove people from each compartment and age group.
+- unsupported disease models are rejected.
 
 ### 11.5 Derivative tests
 
@@ -557,9 +524,6 @@ Check conservation properties in simplified cases:
 | Case | Expected result |
 |---|---|
 | Infection + recovery only | Total population conserved |
-| Add background mortality | Total population decreases |
-| Add births only | Total population increases |
-| Ageing only | Total population conserved |
 | No infected individuals | No new infections |
 
 ### 11.6 Simulation smoke test
@@ -568,9 +532,9 @@ Run a small deterministic simulation and check that:
 
 - the solver completes;
 - outputs contain expected columns;
-- all state values are non-negative or close to non-negative within numerical tolerance;
+- all state values are non-negative;
 - output includes all requested times;
-- total population behaves sensibly under births/deaths.
+- unsupported methods are rejected.
 
 ---
 
@@ -578,7 +542,7 @@ Run a small deterministic simulation and check that:
 
 ### Milestone 1: Skeleton and validation
 
-Implement:
+Implemented:
 
 - `AgeStructure`;
 - validation helpers;
@@ -594,7 +558,7 @@ Acceptance criteria:
 
 ### Milestone 2: Force of infection and SIR transition rates
 
-Implement:
+Implemented:
 
 - `force_of_infection()`;
 - simple `DiseaseModel` constructor for SIR;
@@ -609,7 +573,7 @@ Acceptance criteria:
 
 ### Milestone 3: Deterministic derivative and simulation
 
-Implement:
+Implemented:
 
 - `rates_to_derivative()`;
 - `simulate_deterministic()`;
@@ -625,25 +589,25 @@ Acceptance criteria:
 
 ### Milestone 4: Demographic input layer
 
-Implement:
+Future work:
 
 - functions to construct a `Demography` object from already-cleaned population, mortality, and births data;
 - interpolation or lookup of demographic quantities at time `t`;
-- basic mock WPP-style data loader.
+- mock demography inputs.
 
 Acceptance criteria:
 
-- simulation code does not care whether demography comes from mock data or WPP-derived data.
+- simulation code does not care whether demography comes from mock or external data.
 
 ---
 
 ### Milestone 5: Contact matrix integration
 
-Implement:
+Future work:
 
 - `MixingModel`;
 - contact matrix validation;
-- placeholder support for matrices created externally by `socialmixr` or `conmat`.
+- compatibility with externally prepared age-aligned contact matrices.
 
 Acceptance criteria:
 
@@ -668,7 +632,7 @@ Preferred style:
 - keep plotting separate from simulation;
 - write tests for each model component.
 
-Do not build a full R package yet unless requested. A structured R project with source files and tests is sufficient.
+Keep the package structure lightweight and avoid adding dependencies until a milestone requires them.
 
 ---
 
@@ -684,7 +648,7 @@ The R design should map naturally onto Julia types later.
 | `risk_model` list | `struct RiskModel` |
 | `disease_model` list | `abstract type AbstractDiseaseModel end` |
 | `transition_rates()` | multiple dispatch on disease model |
-| `simulate_deterministic()` | `ODEProblem` using DifferentialEquations.jl |
+| future solver-backed `simulate_deterministic()` | `ODEProblem` using DifferentialEquations.jl |
 | future stochastic simulation | Gillespie or tau-leaping using same transition rates |
 
 The R prototype should therefore avoid design choices that would make later Julia translation awkward, such as relying on loosely structured global data frames inside the simulation engine.
@@ -696,14 +660,13 @@ The R prototype should therefore avoid design choices that would make later Juli
 The first complete runnable example should:
 
 1. define model age bins;
-2. create mock demographic projections for one country;
+2. create mock population and infection inputs;
 3. create a simple age-specific contact matrix;
 4. define age-specific susceptibility and infectiousness vectors;
 5. define an SIR disease model;
 6. seed infections in one or more age groups;
 7. run the deterministic simulation;
-8. return tidy long-format outputs;
-9. calculate derived incidence and infection mortality outputs.
+8. return tidy long-format outputs.
 
 The example should be small enough to run quickly and simple enough to use in tests.
 
