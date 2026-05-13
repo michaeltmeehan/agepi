@@ -168,6 +168,24 @@ test_that("transform_contact_matrix rejects incompatible age structures", {
   )
 })
 
+test_that("transform_contact_matrix rejects transformations requiring source-bin splitting", {
+  from_ages <- AgeStructure(
+    age_groups = "0-9",
+    lower_bounds = 0,
+    upper_bounds = 9
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    transform_contact_matrix(matrix(1, nrow = 1, ncol = 1), from_ages, to_ages, population = 100),
+    "exact union"
+  )
+})
+
 test_that("transform_contact_matrix returns target row and column names", {
   from_ages <- AgeStructure(
     age_groups = c("a", "b"),
