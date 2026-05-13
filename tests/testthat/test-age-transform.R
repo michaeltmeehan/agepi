@@ -169,3 +169,232 @@ test_that("aggregate_age_vector validates unordered or invalid age structures", 
     "strictly increasing"
   )
 })
+
+test_that("segregate_age_vector performs simple exact segregation", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-9", "10-19"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, 19)
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10-14", "15-19"),
+    lower_bounds = c(0, 5, 10, 15),
+    upper_bounds = c(4, 9, 14, 19)
+  )
+
+  expect_identical(
+    segregate_age_vector(c(100, 300), from_ages, to_ages, weights = c(1, 3, 2, 4)),
+    c("0-4" = 25, "5-9" = 75, "10-14" = 100, "15-19" = 200)
+  )
+})
+
+test_that("segregate_age_vector supports identity transformations", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10+"),
+    lower_bounds = c(0, 5, 10),
+    upper_bounds = c(4, 9, Inf)
+  )
+
+  expect_identical(
+    segregate_age_vector(c(10, 20, 30), ages, ages, weights = c(1, 2, 3)),
+    c("0-4" = 10, "5-9" = 20, "10+" = 30)
+  )
+})
+
+test_that("segregate_age_vector validates value length", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(1, ages, ages, weights = c(1, 1)),
+    "values length"
+  )
+})
+
+test_that("segregate_age_vector requires numeric finite non-missing values", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(c("1", "2"), ages, ages, weights = c(1, 1)),
+    "values must be numeric"
+  )
+  expect_error(
+    segregate_age_vector(c(1, NA_real_), ages, ages, weights = c(1, 1)),
+    "values must be finite"
+  )
+  expect_error(
+    segregate_age_vector(c(1, Inf), ages, ages, weights = c(1, 1)),
+    "values must be finite"
+  )
+})
+
+test_that("segregate_age_vector validates weight length", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(c(1, 2), ages, ages, weights = 1),
+    "weights length"
+  )
+})
+
+test_that("segregate_age_vector requires numeric finite non-missing non-negative weights", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(c(1, 2), ages, ages, weights = c("1", "1")),
+    "weights must be numeric"
+  )
+  expect_error(
+    segregate_age_vector(c(1, 2), ages, ages, weights = c(1, NA_real_)),
+    "weights must be finite"
+  )
+  expect_error(
+    segregate_age_vector(c(1, 2), ages, ages, weights = c(1, Inf)),
+    "weights must be finite"
+  )
+  expect_error(
+    segregate_age_vector(c(1, 2), ages, ages, weights = c(1, -1)),
+    "negative"
+  )
+})
+
+test_that("segregate_age_vector rejects zero total weights within a source bin", {
+  from_ages <- AgeStructure(
+    age_groups = "0-9",
+    lower_bounds = 0,
+    upper_bounds = 9
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(100, from_ages, to_ages, weights = c(0, 0)),
+    "positive"
+  )
+})
+
+test_that("segregate_age_vector rejects target bins partially overlapping two source bins", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-9", "10-19"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, 19)
+  )
+  to_ages <- AgeStructure(
+    age_groups = "5-14",
+    lower_bounds = 5,
+    upper_bounds = 14
+  )
+
+  expect_error(
+    segregate_age_vector(c(100, 300), from_ages, to_ages, weights = 1),
+    "fully contained"
+  )
+})
+
+test_that("segregate_age_vector rejects target bins outside upper source range", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "5-14"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 14)
+  )
+
+  expect_error(
+    segregate_age_vector(c(100, 200), from_ages, to_ages, weights = c(1, 1)),
+    "fully contained"
+  )
+})
+
+test_that("segregate_age_vector rejects target bins outside lower source range", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("under-4", "5-9"),
+    lower_bounds = c(-1, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_error(
+    segregate_age_vector(c(100, 200), from_ages, to_ages, weights = c(1, 1)),
+    "fully contained"
+  )
+})
+
+test_that("segregate_age_vector rejects target gaps within a source bin", {
+  from_ages <- AgeStructure(
+    age_groups = "0-14",
+    lower_bounds = 0,
+    upper_bounds = 14
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "10-14"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(4, 14)
+  )
+
+  expect_error(
+    segregate_age_vector(100, from_ages, to_ages, weights = c(1, 1)),
+    "exactly covered"
+  )
+})
+
+test_that("segregate_age_vector rejects source bins not fully covered by target bins", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-9", "10-19"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, 19)
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10-14"),
+    lower_bounds = c(0, 5, 10),
+    upper_bounds = c(4, 9, 14)
+  )
+
+  expect_error(
+    segregate_age_vector(c(100, 300), from_ages, to_ages, weights = c(1, 1, 1)),
+    "exactly covered"
+  )
+})
+
+test_that("segregate_age_vector preserves target age-group names", {
+  from_ages <- AgeStructure(
+    age_groups = "children",
+    lower_bounds = 0,
+    upper_bounds = 9
+  )
+  to_ages <- AgeStructure(
+    age_groups = c("early", "late"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+
+  expect_identical(
+    names(segregate_age_vector(100, from_ages, to_ages, weights = c(2, 3))),
+    c("early", "late")
+  )
+})
