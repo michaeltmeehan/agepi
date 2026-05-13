@@ -133,3 +133,100 @@ Demography <- function(demography, age_structure) {
   class(demography_object) <- "agepi_demography"
   demography_object
 }
+
+#' Get demography time points
+#'
+#' @param demography An `agepi_demography` object.
+#'
+#' @return Numeric vector of available time points.
+#' @export
+demography_times <- function(demography) {
+  validate_agepi_demography(demography)
+  demography$times
+}
+
+#' Get an age-specific population vector
+#'
+#' Returns population values for one exact time point. Values are ordered
+#' and named by the demography object's age groups.
+#'
+#' @param demography An `agepi_demography` object.
+#' @param time Exact time point to retrieve.
+#'
+#' @return Numeric vector of population values.
+#' @export
+demography_population_vector <- function(demography, time) {
+  validate_agepi_demography(demography)
+  validate_demography_time(time, demography$times)
+
+  population_table <- demography_population_table(demography, time = time)
+  population <- population_table$population
+  names(population) <- demography$age_groups
+  population
+}
+
+#' Get the demography table
+#'
+#' Returns the internal tidy demography table, optionally filtered to one
+#' exact time point.
+#'
+#' @param demography An `agepi_demography` object.
+#' @param time Optional exact time point to retrieve.
+#'
+#' @return Data frame with `time`, `age_group`, and `population` columns.
+#' @export
+demography_population_table <- function(demography, time = NULL) {
+  validate_agepi_demography(demography)
+
+  if (is.null(time)) {
+    return(demography$demography)
+  }
+
+  validate_demography_time(time, demography$times)
+  population_table <- demography$demography[demography$demography$time == time, ]
+  row.names(population_table) <- NULL
+  population_table
+}
+
+validate_agepi_demography <- function(demography) {
+  if (!inherits(demography, "agepi_demography")) {
+    stop("demography must be an agepi_demography object.", call. = FALSE)
+  }
+
+  required_fields <- c(
+    "demography",
+    "age_structure",
+    "times",
+    "n_times",
+    "age_groups",
+    "n_age_groups"
+  )
+  missing_fields <- setdiff(required_fields, names(demography))
+  if (length(missing_fields) > 0) {
+    stop(
+      "demography is missing required field(s): ",
+      paste(missing_fields, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(demography)
+}
+
+validate_demography_time <- function(time, available_times) {
+  if (!is.numeric(time) || length(time) != 1 || anyNA(time) || !is.finite(time)) {
+    stop("time must be a finite numeric scalar.", call. = FALSE)
+  }
+
+  if (!time %in% available_times) {
+    stop(
+      "time is not available in demography: ",
+      time,
+      ". Available time point(s): ",
+      paste(available_times, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(time)
+}

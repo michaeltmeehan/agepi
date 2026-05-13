@@ -161,3 +161,71 @@ test_that("Demography sorts rows by increasing time and age-structure order", {
     c("0-4", "5-9", "10+", "0-4", "5-9", "10+")
   )
 })
+
+test_that("demography_times returns available times", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_identical(demography_times(demography), c(0, 1))
+})
+
+test_that("demography_population_vector returns named population values", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_identical(
+    demography_population_vector(demography, time = 0),
+    c("0-4" = 110, "5-9" = 95, "10+" = 85)
+  )
+})
+
+test_that("demography_population_vector preserves age-group ordering", {
+  ages <- test_age_structure()
+  input <- data.frame(
+    time = c(0, 0, 0),
+    age_group = c("10+", "0-4", "5-9"),
+    population = c(85, 110, 95),
+    stringsAsFactors = FALSE
+  )
+  demography <- Demography(input, ages)
+
+  expect_identical(names(demography_population_vector(demography, time = 0)), ages$age_groups)
+})
+
+test_that("demography accessors reject unavailable times without interpolation", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_error(
+    demography_population_vector(demography, time = 0.5),
+    "time is not available"
+  )
+  expect_error(
+    demography_population_table(demography, time = 0.5),
+    "time is not available"
+  )
+})
+
+test_that("demography accessors reject invalid demography objects", {
+  expect_error(demography_times(list()), "agepi_demography object")
+  expect_error(
+    demography_population_vector(list(), time = 0),
+    "agepi_demography object"
+  )
+  expect_error(
+    demography_population_table(list()),
+    "agepi_demography object"
+  )
+})
+
+test_that("demography_population_table returns the full internal table", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_identical(demography_population_table(demography), demography$demography)
+})
+
+test_that("demography_population_table filters to one exact time point", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+  population_table <- demography_population_table(demography, time = 1)
+
+  expect_identical(unique(population_table$time), 1)
+  expect_identical(population_table$age_group, demography$age_groups)
+  expect_identical(population_table$population, c(100, 90, 80))
+})
