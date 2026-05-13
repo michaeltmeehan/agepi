@@ -33,6 +33,17 @@ test_that("Demography constructs a valid inspectable object", {
   expect_identical(demography$n_times, 2L)
   expect_identical(demography$age_groups, ages$age_groups)
   expect_identical(demography$n_age_groups, ages$n_age_groups)
+  expect_identical(
+    names(demography),
+    c(
+      "demography",
+      "age_structure",
+      "times",
+      "n_times",
+      "age_groups",
+      "n_age_groups"
+    )
+  )
   expect_identical(names(demography$demography), c("time", "age_group", "population"))
 })
 
@@ -47,6 +58,20 @@ test_that("demography validation requires time, age_group, and population column
   demography <- test_demography_table()
   demography$population <- NULL
 
+  expect_error(
+    validate_demography_table(demography, test_age_structure()),
+    "missing required column"
+  )
+
+  demography <- test_demography_table()
+  demography$time <- NULL
+  expect_error(
+    validate_demography_table(demography, test_age_structure()),
+    "missing required column"
+  )
+
+  demography <- test_demography_table()
+  demography$age_group <- NULL
   expect_error(
     validate_demography_table(demography, test_age_structure()),
     "missing required column"
