@@ -81,6 +81,24 @@ test_that("aggregate_age_vector rejects non-exact target bins", {
   )
 })
 
+test_that("aggregate_age_vector rejects partial overlaps", {
+  from_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  to_ages <- AgeStructure(
+    age_groups = "1-9",
+    lower_bounds = 1,
+    upper_bounds = 9
+  )
+
+  expect_error(
+    aggregate_age_vector(c(100, 200), from_ages, to_ages),
+    "exact union"
+  )
+})
+
 test_that("aggregate_age_vector rejects target bins outside source range", {
   from_ages <- AgeStructure(
     age_groups = c("0-4", "5-9"),
@@ -91,6 +109,17 @@ test_that("aggregate_age_vector rejects target bins outside source range", {
     age_groups = "0-14",
     lower_bounds = 0,
     upper_bounds = 14
+  )
+
+  expect_error(
+    aggregate_age_vector(c(100, 200), from_ages, to_ages),
+    "exact union"
+  )
+
+  to_ages <- AgeStructure(
+    age_groups = "under-9",
+    lower_bounds = -1,
+    upper_bounds = 9
   )
 
   expect_error(
