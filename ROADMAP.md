@@ -11,6 +11,8 @@ Implemented:
 - `state_long_to_vector()`;
 - `state_vector_to_long()`;
 - `aggregate_age_vector()`;
+- `segregate_age_vector()`;
+- `transform_age_vector()`;
 - tests for age validation and state mapping.
 
 ### Milestone 2A: Force of infection
@@ -46,9 +48,40 @@ Implemented:
 - `compartment_totals()`, `age_group_totals()`, and `total_population()`;
 - mock deterministic SIR example.
 
+### Milestone 4A: Minimal demography layer
+
+Implemented:
+
+- `validate_demography_table()`;
+- `Demography()`;
+- sorted storage of tidy `time`, `age_group`, and `population` tables;
+- `demography_times()`;
+- `demography_population_vector()`;
+- `demography_population_table()`.
+
+Current demography support is validation, storage, sorting, and exact-time
+population access only. It does not include WPP integration, interpolation,
+fertility, mortality, births, deaths, ageing, migration, or demographic
+projection dynamics.
+
+### Milestone 4B: Contact matrix utilities
+
+Implemented:
+
+- `validate_contact_matrix()`;
+- `as_agepi_contact_matrix()`;
+- dependency-free coercion for numeric matrices, numeric data frames,
+  socialmixr-like lists with `x$matrix`, and conmat-style long data frames;
+- `transform_contact_matrix()` for exact fine-to-coarse contact-matrix
+  aggregation.
+
+Current contact-matrix support does not include reciprocity correction,
+population balancing, package dependencies, socialmixr/conmat-specific S3
+adapters, or contact-matrix splitting/rebinning.
+
 ## Future Work
 
-### Milestone 4: Package-level documentation
+### Milestone 5: Package-level documentation
 
 Planned:
 
@@ -56,7 +89,7 @@ Planned:
 - function examples aligned with the current deterministic SIR scope;
 - clearer user-facing notes on current limitations.
 
-### Milestone 5: Deterministic solver backend
+### Milestone 6: Deterministic solver backend
 
 Planned:
 
@@ -64,27 +97,39 @@ Planned:
 - optional non-Euler backend after the current explicit Euler path is stable;
 - tests that preserve the transition-rate to derivative spine.
 
-### Milestone 6: Minimal demography layer
+### Milestone 7: Demography extensions
 
 Planned:
 
-- demography object constructor;
-- demographic quantity lookup or interpolation;
-- mock demography inputs that remain separate from simulation code.
+- WPP integration;
+- demographic interpolation or projection helpers;
+- births, deaths, ageing, migration, fertility, and mortality dynamics;
+- integration of demographic dynamics into future simulators.
 
-This does not currently include WPP integration, ageing, births, deaths, or migration in the implemented simulator.
+These are not part of the current deterministic SIR simulator.
 
-### Milestone 7: Contact matrix integration
+### Milestone 8: Contact matrix integration
 
 Planned:
 
-- mixing/contact object constructor;
-- contact matrix validation at the package boundary;
-- compatibility with externally prepared contact matrices.
+- socialmixr-specific adapters;
+- conmat-specific adapters;
+- contact-matrix splitting and general rebinning;
+- reciprocity correction or population balancing if explicitly needed;
+- optional mixing/contact object constructor.
 
-This does not currently include `socialmixr` or `conmat` integration.
+No `socialmixr` or `conmat` dependency is currently included.
 
-### Milestone 8: Stochastic simulation infrastructure
+### Milestone 9: SEIR and additional disease structures
+
+Planned:
+
+- SEIR model support;
+- broader transition-rate validation for additional compartment structures.
+
+Only SIR is currently implemented.
+
+### Milestone 10: Stochastic simulation infrastructure
 
 Planned:
 
