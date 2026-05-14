@@ -199,6 +199,88 @@ contact_matrix_from_conmat <- function(
   )
 }
 
+#' Construct a contact schedule
+#'
+#' Stores externally supplied contact matrices indexed by time. Matrices use the
+#' agepi force-of-infection convention: rows are recipient age groups and
+#' columns are source age groups. No interpolation, reciprocity correction, or
+#' population balancing is applied.
+#'
+#' @param data Either a named list of contact matrices with names coercible to
+#'   numeric times, or a long data frame with columns `time`, `age_group_from`,
+#'   `age_group_to`, and `contacts`.
+#' @param age_structure Age-structure object validated by
+#'   [validate_age_structure()].
+#'
+#' @return An `agepi_contact_schedule` list.
+#'
+#' @examples
+#' age_structure <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#'
+#' contacts <- list(
+#'   "0" = matrix(c(4, 2, 1, 5), nrow = 2, byrow = TRUE),
+#'   "1" = matrix(c(3, 2, 2, 4), nrow = 2, byrow = TRUE)
+#' )
+#'
+#' schedule <- ContactSchedule(contacts, age_structure)
+#' contact_matrix_at(schedule, time = 1)
+#' @export
+ContactSchedule <- function(data, age_structure) {
+  validate_age_structure(age_structure)
+
+  if (is_contact_schedule_long_data_frame(data)) {
+    contacts <- contact_schedule_from_long_table(data, age_structure)
+  } else if (is.list(data) && !is.data.frame(data)) {
+    contacts <- contact_schedule_from_named_list(data, age_structure)
+  } else {
+    stop(
+      "data must be a named list of contact matrices or a long data frame with ",
+      "time, age_group_from, age_group_to, and contacts columns.",
+      call. = FALSE
+    )
+  }
+
+  times <- as.numeric(names(contacts))
+  time_order <- order(times)
+  times <- times[time_order]
+  contacts <- contacts[time_order]
+  names(contacts) <- as.character(times)
+
+  contact_schedule <- list(
+    contacts = contacts,
+    age_structure = age_structure,
+    times = times,
+    age_groups = age_structure$age_groups,
+    n_times = length(times),
+    n_age_groups = age_structure$n_age_groups
+  )
+
+  class(contact_schedule) <- c("agepi_contact_schedule", "list")
+  contact_schedule
+}
+
+#' Get a contact matrix at an exact time
+#'
+#' Retrieves an externally supplied contact matrix at one exact available time
+#' point. No interpolation or nearest-time lookup is applied.
+#'
+#' @param contact_schedule An `agepi_contact_schedule` object.
+#' @param time Exact time point to retrieve.
+#'
+#' @return Numeric contact matrix ordered by `contact_schedule$age_groups`.
+#' @export
+contact_matrix_at <- function(contact_schedule, time) {
+  validate_agepi_contact_schedule(contact_schedule)
+  validate_contact_schedule_time(time, contact_schedule$times)
+
+  time_index <- match(time, contact_schedule$times)
+  contact_schedule$contacts[[time_index]]
+}
+
 coerce_contact_matrix_input <- function(x, age_structure) {
   if (is_conmat_long_data_frame(x)) {
     return(conmat_long_to_contact_matrix(x, age_structure))
@@ -297,6 +379,7 @@ apply_contact_matrix_age_structure <- function(contact_matrix, age_structure) {
     return(contact_matrix)
   }
 
+  validate_contact_matrix(contact_matrix)
   validate_contact_matrix_length(contact_matrix, age_structure$n_age_groups)
   age_groups <- age_structure$age_groups
 
@@ -313,4 +396,111 @@ apply_contact_matrix_age_structure <- function(contact_matrix, age_structure) {
   }
 
   contact_matrix
+}
+
+is_contact_schedule_long_data_frame <- function(x) {
+  is.data.frame(x) &&
+    all(c("time", "age_group_from", "age_group_to", "contacts") %in% names(x))
+}
+
+contact_schedule_from_named_list <- function(data, age_structure) {
+  if (length(data) == 0) {
+    stop("contact schedule list cannot be empty.", call. = FALSE)
+  }
+
+  if (is.null(names(data)) || any(names(data) == "")) {
+    stop("contact schedule list must have one name per time point.", call. = FALSE)
+  }
+
+  times <- suppressWarnings(as.numeric(names(data)))
+  if (anyNA(times) || any(!is.finite(times))) {
+    stop("contact schedule list names must be finite numeric times.", call. = FALSE)
+  }
+
+  if (any(duplicated(times))) {
+    stop("contact schedule cannot contain duplicate time points.", call. = FALSE)
+  }
+
+  contacts <- lapply(data, as_agepi_contact_matrix, age_structure = age_structure)
+  names(contacts) <- as.character(times)
+  contacts
+}
+
+contact_schedule_from_long_table <- function(data, age_structure) {
+  required_columns <- c("time", "age_group_from", "age_group_to", "contacts")
+  missing_columns <- setdiff(required_columns, names(data))
+  if (length(missing_columns) > 0) {
+    stop(
+      "contact schedule data is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!is.numeric(data$time)) {
+    stop("contact schedule time must be numeric.", call. = FALSE)
+  }
+
+  if (anyNA(data$time) || any(!is.finite(data$time))) {
+    stop("contact schedule time must be finite and non-missing.", call. = FALSE)
+  }
+
+  if (nrow(data) == 0) {
+    stop("contact schedule long table cannot be empty.", call. = FALSE)
+  }
+
+  times <- sort(unique(data$time))
+  contacts <- vector("list", length(times))
+  names(contacts) <- as.character(times)
+
+  for (i in seq_along(times)) {
+    this_time <- times[i]
+    time_data <- data[data$time == this_time, required_columns[-1], drop = FALSE]
+    contacts[[i]] <- as_agepi_contact_matrix(time_data, age_structure = age_structure)
+  }
+
+  contacts
+}
+
+validate_agepi_contact_schedule <- function(contact_schedule) {
+  if (!inherits(contact_schedule, "agepi_contact_schedule")) {
+    stop("contact_schedule must be an agepi_contact_schedule object.", call. = FALSE)
+  }
+
+  required_fields <- c(
+    "contacts",
+    "age_structure",
+    "times",
+    "age_groups",
+    "n_times",
+    "n_age_groups"
+  )
+  missing_fields <- setdiff(required_fields, names(contact_schedule))
+  if (length(missing_fields) > 0) {
+    stop(
+      "contact_schedule is missing required field(s): ",
+      paste(missing_fields, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(contact_schedule)
+}
+
+validate_contact_schedule_time <- function(time, available_times) {
+  if (!is.numeric(time) || length(time) != 1 || anyNA(time) || !is.finite(time)) {
+    stop("time must be a finite numeric scalar.", call. = FALSE)
+  }
+
+  if (!time %in% available_times) {
+    stop(
+      "time is not available in contact_schedule: ",
+      time,
+      ". Available time point(s): ",
+      paste(available_times, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(time)
 }

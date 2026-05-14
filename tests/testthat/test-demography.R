@@ -345,6 +345,15 @@ test_that("demography_population_vector returns named population values", {
   )
 })
 
+test_that("demography_population_at returns exact-time named population values", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_identical(
+    demography_population_at(demography, time = 1),
+    c("0-4" = 100, "5-9" = 90, "10+" = 80)
+  )
+})
+
 test_that("demography_population_vector preserves age-group ordering", {
   ages <- test_age_structure()
   input <- data.frame(
@@ -361,6 +370,10 @@ test_that("demography_population_vector preserves age-group ordering", {
     demography_population_vector(demography, time = 0),
     c("0-4" = 110, "5-9" = 95, "10+" = 85)
   )
+  expect_identical(
+    demography_population_at(demography, time = 0),
+    c("0-4" = 110, "5-9" = 95, "10+" = 85)
+  )
 })
 
 test_that("demography accessors reject unavailable times without interpolation", {
@@ -374,12 +387,20 @@ test_that("demography accessors reject unavailable times without interpolation",
     demography_population_table(demography, time = 0.5),
     "time is not available"
   )
+  expect_error(
+    demography_population_at(demography, time = 0.5),
+    "time is not available"
+  )
 })
 
 test_that("demography accessors reject invalid demography objects", {
   expect_error(demography_times(list()), "agepi_demography object")
   expect_error(
     demography_population_vector(list(), time = 0),
+    "agepi_demography object"
+  )
+  expect_error(
+    demography_population_at(list(), time = 0),
     "agepi_demography object"
   )
   expect_error(

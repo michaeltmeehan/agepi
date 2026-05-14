@@ -536,3 +536,182 @@ test_that("returned matrix works with force_of_infection", {
 
   expect_equal(lambda, c(0.3, 0.7), ignore_attr = TRUE)
 })
+
+test_contact_schedule_age_structure <- function() {
+  AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+}
+
+test_contact_schedule_list <- function() {
+  list(
+    "1" = matrix(c(
+      3, 1,
+      2, 4
+    ), nrow = 2, byrow = TRUE),
+    "0" = matrix(c(
+      4, 2,
+      1, 5
+    ), nrow = 2, byrow = TRUE)
+  )
+}
+
+test_contact_schedule_long <- function() {
+  data.frame(
+    time = c(1, 1, 1, 1, 0, 0, 0, 0),
+    age_group_from = c("0-4", "5-9", "0-4", "5-9", "0-4", "5-9", "0-4", "5-9"),
+    age_group_to = c("0-4", "0-4", "5-9", "5-9", "0-4", "0-4", "5-9", "5-9"),
+    contacts = c(3, 1, 2, 4, 4, 2, 1, 5)
+  )
+}
+
+test_that("ContactSchedule constructs from named list of matrices", {
+  ages <- test_contact_schedule_age_structure()
+  schedule <- ContactSchedule(test_contact_schedule_list(), ages)
+
+  expect_s3_class(schedule, "agepi_contact_schedule")
+  expect_identical(schedule$age_structure, ages)
+  expect_identical(schedule$times, c(0, 1))
+  expect_identical(schedule$age_groups, ages$age_groups)
+  expect_identical(schedule$n_times, 2L)
+  expect_identical(schedule$n_age_groups, 2L)
+  expect_equal(
+    schedule$contacts[[1]],
+    matrix(
+      c(4, 2, 1, 5),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(ages$age_groups, ages$age_groups)
+    )
+  )
+})
+
+test_that("ContactSchedule constructs from long table", {
+  ages <- test_contact_schedule_age_structure()
+  schedule <- ContactSchedule(test_contact_schedule_long(), ages)
+
+  expect_s3_class(schedule, "agepi_contact_schedule")
+  expect_identical(schedule$times, c(0, 1))
+  expect_equal(
+    schedule$contacts[[2]],
+    matrix(
+      c(3, 1, 2, 4),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(ages$age_groups, ages$age_groups)
+    )
+  )
+})
+
+test_that("ContactSchedule stores matrices in age-structure order", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  ages$age_groups <- c("5-9", "0-4")
+  long <- data.frame(
+    time = c(0, 0, 0, 0),
+    age_group_from = c("0-4", "5-9", "0-4", "5-9"),
+    age_group_to = c("0-4", "0-4", "5-9", "5-9"),
+    contacts = c(1, 2, 3, 4)
+  )
+
+  schedule <- ContactSchedule(long, ages)
+
+  expect_equal(
+    contact_matrix_at(schedule, time = 0),
+    matrix(
+      c(4, 3, 2, 1),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(c("5-9", "0-4"), c("5-9", "0-4"))
+    )
+  )
+})
+
+test_that("ContactSchedule rejects missing age-pair records", {
+  long <- test_contact_schedule_long()
+  long <- long[-1, ]
+
+  expect_error(
+    ContactSchedule(long, test_contact_schedule_age_structure()),
+    "every age_group_from/age_group_to combination"
+  )
+})
+
+test_that("ContactSchedule rejects duplicate age-pair records", {
+  long <- test_contact_schedule_long()
+  long <- rbind(long, long[1, ])
+
+  expect_error(
+    ContactSchedule(long, test_contact_schedule_age_structure()),
+    "duplicate"
+  )
+})
+
+test_that("ContactSchedule rejects invalid contact values", {
+  long <- test_contact_schedule_long()
+  long$contacts[1] <- -1
+
+  expect_error(
+    ContactSchedule(long, test_contact_schedule_age_structure()),
+    "negative"
+  )
+})
+
+test_that("ContactSchedule rejects mismatched age labels", {
+  long <- test_contact_schedule_long()
+  long$age_group_from[1] <- "10-14"
+
+  expect_error(
+    ContactSchedule(long, test_contact_schedule_age_structure()),
+    "age groups must match"
+  )
+})
+
+test_that("ContactSchedule rejects non-square matrices", {
+  contacts <- list("0" = matrix(1, nrow = 2, ncol = 3))
+
+  expect_error(
+    ContactSchedule(contacts, test_contact_schedule_age_structure()),
+    "square"
+  )
+})
+
+test_that("ContactSchedule preserves recipient-row source-column orientation", {
+  schedule <- ContactSchedule(test_contact_schedule_long(), test_contact_schedule_age_structure())
+  contact_matrix <- contact_matrix_at(schedule, time = 0)
+
+  expect_identical(unname(contact_matrix["5-9", "0-4"]), 1)
+  expect_identical(unname(contact_matrix["0-4", "5-9"]), 2)
+})
+
+test_that("contact_matrix_at returns exact-time matrix in schedule order", {
+  ages <- test_contact_schedule_age_structure()
+  schedule <- ContactSchedule(test_contact_schedule_list(), ages)
+
+  expect_equal(
+    contact_matrix_at(schedule, time = 1),
+    matrix(
+      c(3, 1, 2, 4),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(ages$age_groups, ages$age_groups)
+    )
+  )
+})
+
+test_that("contact_matrix_at rejects unavailable times without interpolation", {
+  schedule <- ContactSchedule(
+    test_contact_schedule_list(),
+    test_contact_schedule_age_structure()
+  )
+
+  expect_error(
+    contact_matrix_at(schedule, time = 0.5),
+    "time is not available"
+  )
+})

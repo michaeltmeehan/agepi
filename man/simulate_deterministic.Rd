@@ -38,7 +38,8 @@ group.}
 \item{infectiousness}{Optional non-negative numeric vector by source age
 group.}
 
-\item{method}{Simulation method. Currently only \code{"euler"} is supported.}
+\item{method}{Simulation method. \code{"euler"} is the default. \code{"deSolve"} and
+\code{"ode"} request the optional \code{deSolve::ode()} backend.}
 }
 \value{
 Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
@@ -46,16 +47,22 @@ Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
 innermost.
 }
 \description{
-Runs a simple deterministic prototype simulation using explicit Euler time
-steps. The initial state may be supplied either as long-form state data or as
-a numeric vector in the existing compartment-major, age-group-minor ordering.
-Names on numeric state vectors are ignored, matching the state-mapping
-helpers.
+Runs a simple deterministic prototype simulation. The default
+\code{method = "euler"} uses explicit Euler time steps. Optional
+\code{method = "deSolve"} uses \code{deSolve::ode()} when the suggested \code{deSolve}
+package is installed.
 }
 \details{
-Currently only \code{method = "euler"} is supported. The initial state is included
-in the returned output. Euler updates are intentionally not truncated: if a
-step would produce negative compartment values, simulation stops with an
-error. This function is a transparent prototype layer, not a final production
-ODE backend.
+The initial state may be supplied either as long-form state data or as a
+numeric vector in the existing compartment-major, age-group-minor ordering.
+Names on numeric state vectors are ignored, matching the state-mapping
+helpers. The initial state is included in the returned output.
+
+The deSolve backend currently supports the same static deterministic SIR
+model as the Euler backend: static contact matrix, static \code{beta}, static
+susceptibility, and static infectiousness. It does not add time-varying
+demography, time-varying contacts, interpolation, or demographic dynamics.
+
+Euler updates are intentionally not truncated: if a step would produce
+negative compartment values, simulation stops with an error.
 }

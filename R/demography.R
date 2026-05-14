@@ -320,6 +320,39 @@ demography_population_vector <- function(demography, time) {
   population
 }
 
+#' Get population at an exact time
+#'
+#' Retrieves an externally supplied age-specific population vector at one exact
+#' available time point. No interpolation or nearest-time lookup is applied.
+#'
+#' @param demography An `agepi_demography` object.
+#' @param time Exact time point to retrieve.
+#'
+#' @return Numeric vector of population values, ordered and named by
+#'   `demography$age_groups`.
+#'
+#' @examples
+#' age_structure <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#'
+#' demography <- Demography(
+#'   data.frame(
+#'     time = c(0, 0, 1, 1),
+#'     age_group = c("0-4", "5-9", "0-4", "5-9"),
+#'     population = c(1000, 1200, 980, 1250)
+#'   ),
+#'   age_structure
+#' )
+#'
+#' demography_population_at(demography, time = 1)
+#' @export
+demography_population_at <- function(demography, time) {
+  demography_population_vector(demography, time = time)
+}
+
 #' Get the demography table
 #'
 #' Returns the internal tidy demography table, optionally filtered to one

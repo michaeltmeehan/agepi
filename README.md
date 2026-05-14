@@ -11,7 +11,8 @@ The current implementation supports a deterministic age-structured SIR workflow:
 - construct a minimal SIR model with `SIRModel()`;
 - compute SIR infection and recovery transition rates;
 - convert transition rates to deterministic derivatives;
-- run a deterministic SIR simulation with explicit Euler time steps;
+- run a deterministic SIR simulation with explicit Euler time steps, or with
+  optional `deSolve::ode()` integration when `deSolve` is installed;
 - summarise deterministic simulation output with `compartment_totals()`, `age_group_totals()`, and `total_population()`.
 
 It also includes small utility layers for age-bin transformations, demography
@@ -21,7 +22,7 @@ add demographic projection dynamics or additional disease models.
 
 ## Current limitations
 
-The package currently supports deterministic SIR only. `simulate_deterministic()` currently supports only `method = "euler"`.
+The package currently supports deterministic SIR only. `simulate_deterministic()` defaults to `method = "euler"` and can optionally use `method = "deSolve"` when the suggested `deSolve` package is installed.
 
 The current scope is deliberately small:
 
@@ -29,7 +30,7 @@ The current scope is deliberately small:
 - static `beta`, susceptibility, and infectiousness inputs;
 - mock examples only;
 - no SEIR models or stochastic simulation;
-- no adaptive or external deterministic solver backend;
+- optional `deSolve` backend for the same static deterministic SIR model only;
 - no births, deaths, ageing, migration, fertility, mortality, or demographic projection dynamics;
 - optional external-data adapters only; no required WPP, `socialmixr`, or `conmat` dependency;
 - no reciprocity correction or population balancing for contact matrices;
@@ -138,8 +139,9 @@ when the source and target bins align to a common set of boundaries. Its
 `population` columns against an age structure.
 
 `Demography()` stores a validated demography table sorted by time and age-group
-order. `demography_times()`, `demography_population_vector()`, and
-`demography_population_table()` provide exact-time accessors.
+order. `demography_times()`, `demography_population_at()`/
+`demography_population_vector()`, and `demography_population_table()` provide
+exact-time accessors.
 
 Current demography support is validation, storage, sorting, and population
 access only. It does not implement demographic projection, interpolation,
@@ -163,6 +165,12 @@ structure to a coarser target age structure when every target age bin is an exac
 union of source age bins. It currently supports exact aggregation only and
 rejects transformations that would require source-bin splitting or general
 rebinning.
+
+`ContactSchedule()` stores externally supplied contact matrices by time, and
+`contact_matrix_at()` retrieves a matrix at an exact available time point. This
+prepares agepi for later time-varying simulation work without adding
+interpolation, reciprocity correction, population balancing, or simulator
+integration.
 
 ### External data adapters
 

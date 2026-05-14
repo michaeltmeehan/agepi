@@ -39,11 +39,13 @@ Implemented:
 - `rates_to_derivative()`;
 - deterministic derivative construction from transition-rate tables.
 
-### Milestone 3B: Deterministic Euler simulation
+### Milestone 3B: Deterministic simulation
 
 Implemented:
 
 - `simulate_deterministic()` using explicit Euler time steps;
+- optional `method = "deSolve"` backend using the suggested `deSolve` package
+  for the same static deterministic SIR model;
 - tidy long-format simulation outputs;
 - `compartment_totals()`, `age_group_totals()`, and `total_population()`;
 - mock deterministic SIR example.
@@ -81,6 +83,18 @@ Current contact-matrix support does not include reciprocity correction,
 population balancing, package dependencies, socialmixr/conmat-specific S3
 methods, or contact-matrix splitting/rebinning.
 
+### Milestone 4C: Exact-time external input accessors
+
+Implemented:
+
+- `demography_population_at()` for exact-time population-vector lookup;
+- `ContactSchedule()` for externally supplied contact matrices indexed by time;
+- `contact_matrix_at()` for exact-time contact-matrix lookup.
+
+This is the first step toward time-varying simulations. Simulator integration,
+interpolation, demographic projection dynamics, reciprocity correction, and
+population balancing remain future work.
+
 ## Future Work
 
 ### Milestone 5: Package-level documentation
@@ -96,15 +110,13 @@ Planned:
 
 Planned:
 
-- solver interface for deterministic simulation;
-- optional non-Euler backend after the current explicit Euler path is stable;
+- broader solver interface for deterministic simulation;
 - tests that preserve the transition-rate to derivative spine.
 
 ### Milestone 7: Demography extensions
 
 Planned:
 
-- time-varying demographic accessors;
 - demographic interpolation or projection helpers;
 - births, deaths, ageing, migration, fertility, and mortality dynamics;
 - integration of demographic dynamics into future simulators.
@@ -115,7 +127,7 @@ These are not part of the current deterministic SIR simulator.
 
 Planned:
 
-- time-varying contact matrix accessors;
+- integration of contact schedules into future simulators;
 - contact-matrix splitting and general rebinning;
 - reciprocity correction or population balancing if explicitly needed;
 - optional mixing/contact object constructor.

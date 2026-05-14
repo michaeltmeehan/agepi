@@ -64,6 +64,20 @@ test_that("one-step Euler update matches hand-calculated SIR example", {
   expect_equal(final_rows$value, c(87.3, 167.4, 12.5, 32.2, 0.2, 0.4))
 })
 
+test_that("method euler remains the default", {
+  default_output <- simulate_test_run(times = c(0, 0.1, 0.2))
+  explicit_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
+  )
+
+  expect_equal(default_output, explicit_output)
+})
+
 test_that("multi-step simulation runs end-to-end", {
   output <- simulate_test_run(times = seq(0, 0.3, by = 0.1))
 
@@ -135,6 +149,154 @@ test_that("simulate_deterministic ignores state vector names intentionally", {
   expect_equal(output$value[output$time == 0.1], c(87.3, 167.4, 12.5, 32.2, 0.2, 0.4))
 })
 
+test_that("simulate_deterministic ignores state vector names with deSolve", {
+  skip_if_not_installed("deSolve")
+
+  named_state <- c(
+    not_s_0_4 = 90, not_s_5_9 = 180,
+    not_i_0_4 = 10, not_i_5_9 = 20,
+    not_r_0_4 = 0, not_r_5_9 = 0
+  )
+  unnamed_state <- as.numeric(named_state)
+
+  named_output <- simulate_deterministic(
+    initial_state = named_state,
+    times = c(0, 0.1),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+  unnamed_output <- simulate_deterministic(
+    initial_state = unnamed_state,
+    times = c(0, 0.1),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+
+  expect_equal(named_output, unnamed_output)
+})
+
+test_that("method deSolve works when deSolve is installed", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+
+  expect_identical(names(output), c("time", "compartment", "age_group", "value"))
+  expect_equal(unique(output$time), c(0, 0.1, 0.2))
+  expect_true(all(is.finite(output$value)))
+})
+
+test_that("method ode aliases the optional deSolve backend", {
+  skip_if_not_installed("deSolve")
+
+  desolve_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+  ode_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "ode"
+  )
+
+  expect_equal(ode_output, desolve_output)
+})
+
+test_that("method deSolve errors clearly when deSolve is unavailable", {
+  local_mocked_bindings(desolve_is_available = function() FALSE)
+
+  expect_error(
+    simulate_deterministic(
+      initial_state = simulate_test_state(),
+      times = c(0, 0.1),
+      model = SIRModel(gamma = 0.2),
+      age_structure = simulate_test_ages(),
+      contact_matrix = simulate_test_contacts(),
+      method = "deSolve"
+    ),
+    "requires the optional deSolve package"
+  )
+})
+
+test_that("method ode errors clearly when deSolve is unavailable", {
+  local_mocked_bindings(desolve_is_available = function() FALSE)
+
+  expect_error(
+    simulate_deterministic(
+      initial_state = simulate_test_state(),
+      times = c(0, 0.1),
+      model = SIRModel(gamma = 0.2),
+      age_structure = simulate_test_ages(),
+      contact_matrix = simulate_test_contacts(),
+      method = "ode"
+    ),
+    "requires the optional deSolve package"
+  )
+})
+
+test_that("deSolve output has the same columns and ordering as Euler output", {
+  skip_if_not_installed("deSolve")
+
+  times <- c(-1, 0.1, 0.25)
+  euler_output <- simulate_test_run(times = times)
+  desolve_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+
+  expect_identical(names(desolve_output), names(euler_output))
+  expect_identical(desolve_output$time, euler_output$time)
+  expect_identical(desolve_output$compartment, euler_output$compartment)
+  expect_identical(desolve_output$age_group, euler_output$age_group)
+})
+
+test_that("deSolve approximately agrees with Euler for small time steps", {
+  skip_if_not_installed("deSolve")
+
+  times <- seq(0, 0.01, by = 0.001)
+  euler_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.001,
+    method = "euler"
+  )
+  desolve_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.001,
+    method = "deSolve"
+  )
+
+  expect_equal(desolve_output$value, euler_output$value, tolerance = 1e-4)
+})
+
 test_that("invalid times are rejected", {
   expect_error(simulate_test_run(times = 0), "at least two")
   expect_error(simulate_test_run(times = c("0", "1")), "numeric vector")
@@ -155,6 +317,17 @@ test_that("unsupported method is rejected", {
       method = "rk4"
     ),
     "unsupported simulation method"
+  )
+  expect_error(
+    simulate_deterministic(
+      initial_state = simulate_test_state(),
+      times = c(0, 1),
+      model = SIRModel(gamma = 0.2),
+      age_structure = simulate_test_ages(),
+      contact_matrix = simulate_test_contacts(),
+      method = NA_character_
+    ),
+    "method must be a non-missing character scalar"
   )
 })
 
@@ -217,6 +390,47 @@ test_that("Euler steps that produce negative values are rejected", {
   expect_error(
     simulate_test_run(times = c(0, 2)),
     "Euler step produced negative compartment value"
+  )
+})
+
+test_that("simulate_deterministic does not accept contact schedules as contact matrices", {
+  contact_schedule <- ContactSchedule(
+    list("0" = simulate_test_contacts()),
+    simulate_test_ages()
+  )
+
+  expect_error(
+    simulate_deterministic(
+      initial_state = simulate_test_state(),
+      times = c(0, 0.1),
+      model = SIRModel(gamma = 0.2),
+      age_structure = simulate_test_ages(),
+      contact_matrix = contact_schedule
+    ),
+    "contact_matrix must be a numeric matrix"
+  )
+})
+
+test_that("simulate_deterministic does not accept demography objects as initial state", {
+  ages <- simulate_test_ages()
+  demography <- Demography(
+    data.frame(
+      time = c(0, 0),
+      age_group = ages$age_groups,
+      population = c(100, 200)
+    ),
+    ages
+  )
+
+  expect_error(
+    simulate_deterministic(
+      initial_state = demography,
+      times = c(0, 0.1),
+      model = SIRModel(gamma = 0.2),
+      age_structure = ages,
+      contact_matrix = simulate_test_contacts()
+    ),
+    "initial_state must be a long-form data frame or a numeric vector"
   )
 })
 
