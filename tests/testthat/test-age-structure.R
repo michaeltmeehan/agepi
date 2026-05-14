@@ -68,14 +68,23 @@ test_that("overlapping age bins fail validation", {
   )
 })
 
-test_that("age bins must have upper bounds greater than lower bounds", {
+test_that("age bins may be single-year but cannot have upper bounds below lower bounds", {
+  ages <- AgeStructure(
+    age_groups = c("0", "1"),
+    lower_bounds = c(0, 1),
+    upper_bounds = c(0, 1)
+  )
+
+  expect_s3_class(ages, "AgeStructure")
+  expect_identical(ages$upper_bounds, c(0, 1))
+
   expect_error(
     AgeStructure(
       age_groups = c("0"),
       lower_bounds = c(0),
-      upper_bounds = c(0)
+      upper_bounds = c(-1)
     ),
-    "greater than"
+    "greater than or equal"
   )
 })
 

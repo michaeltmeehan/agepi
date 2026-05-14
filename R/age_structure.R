@@ -117,8 +117,8 @@ validate_age_structure <- function(age_structure) {
     stop("Only the final age bin may be open-ended.", call. = FALSE)
   }
 
-  if (any(upper_bounds <= lower_bounds)) {
-    stop("Each age_structure upper_bound must be greater than its lower_bound.", call. = FALSE)
+  if (any(upper_bounds < lower_bounds)) {
+    stop("Each age_structure upper_bound must be greater than or equal to its lower_bound.", call. = FALSE)
   }
 
   if (any(diff(lower_bounds) <= 0)) {
