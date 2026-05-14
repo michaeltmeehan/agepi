@@ -54,15 +54,15 @@ Implemented:
 
 - `validate_demography_table()`;
 - `Demography()`;
+- optional `demography_from_wpp()` adapter for WPP-style tabular data;
 - sorted storage of tidy `time`, `age_group`, and `population` tables;
 - `demography_times()`;
 - `demography_population_vector()`;
 - `demography_population_table()`.
 
 Current demography support is validation, storage, sorting, and exact-time
-population access only. It does not include WPP integration, interpolation,
-fertility, mortality, births, deaths, ageing, migration, or demographic
-projection dynamics.
+population access only. It does not include interpolation, fertility, mortality,
+births, deaths, ageing, migration, or demographic projection dynamics.
 
 ### Milestone 4B: Contact matrix utilities
 
@@ -70,6 +70,8 @@ Implemented:
 
 - `validate_contact_matrix()`;
 - `as_agepi_contact_matrix()`;
+- optional `contact_matrix_from_socialmixr()` adapter;
+- optional `contact_matrix_from_conmat()` adapter;
 - dependency-free coercion for numeric matrices, numeric data frames,
   socialmixr-like lists with `x$matrix`, and conmat-style long data frames;
 - `transform_contact_matrix()` for exact fine-to-coarse contact-matrix
@@ -77,7 +79,7 @@ Implemented:
 
 Current contact-matrix support does not include reciprocity correction,
 population balancing, package dependencies, socialmixr/conmat-specific S3
-adapters, or contact-matrix splitting/rebinning.
+methods, or contact-matrix splitting/rebinning.
 
 ## Future Work
 
@@ -87,7 +89,8 @@ Planned:
 
 - package overview documentation;
 - function examples aligned with the current deterministic SIR scope;
-- clearer user-facing notes on current limitations.
+- clearer user-facing notes on current limitations, including optional external
+  data adapters.
 
 ### Milestone 6: Deterministic solver backend
 
@@ -101,7 +104,7 @@ Planned:
 
 Planned:
 
-- WPP integration;
+- time-varying demographic accessors;
 - demographic interpolation or projection helpers;
 - births, deaths, ageing, migration, fertility, and mortality dynamics;
 - integration of demographic dynamics into future simulators.
@@ -112,13 +115,13 @@ These are not part of the current deterministic SIR simulator.
 
 Planned:
 
-- socialmixr-specific adapters;
-- conmat-specific adapters;
+- time-varying contact matrix accessors;
 - contact-matrix splitting and general rebinning;
 - reciprocity correction or population balancing if explicitly needed;
 - optional mixing/contact object constructor.
 
-No `socialmixr` or `conmat` dependency is currently included.
+No `socialmixr` or `conmat` dependency is currently included. Projection
+dynamics and reciprocity correction remain future work.
 
 ### Milestone 9: SEIR and additional disease structures
 

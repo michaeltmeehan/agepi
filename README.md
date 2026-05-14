@@ -31,8 +31,7 @@ The current scope is deliberately small:
 - no SEIR models or stochastic simulation;
 - no adaptive or external deterministic solver backend;
 - no births, deaths, ageing, migration, fertility, mortality, or demographic projection dynamics;
-- no WPP integration;
-- no `socialmixr` or `conmat` dependency or package-specific import workflow;
+- optional external-data adapters only; no required WPP, `socialmixr`, or `conmat` dependency;
 - no reciprocity correction or population balancing for contact matrices;
 - no plotting or fitting.
 
@@ -144,7 +143,7 @@ order. `demography_times()`, `demography_population_vector()`, and
 
 Current demography support is validation, storage, sorting, and population
 access only. It does not implement demographic projection, interpolation,
-fertility, mortality, births, deaths, ageing, migration, or WPP integration.
+fertility, mortality, births, deaths, ageing, or migration.
 
 ### Contact matrices
 
@@ -164,6 +163,19 @@ structure to a coarser target age structure when every target age bin is an exac
 union of source age bins. It currently supports exact aggregation only and
 rejects transformations that would require source-bin splitting or general
 rebinning.
+
+### External data adapters
+
+`demography_from_wpp()` converts WPP-style tabular population data into a
+`Demography()` object. `contact_matrix_from_socialmixr()` and
+`contact_matrix_from_conmat()` convert socialmixr-like and conmat-style contact
+outputs into agepi contact matrices. These adapters are optional: `wpp2024`,
+`socialmixr`, and `conmat` are not required for core agepi functionality.
+
+The adapters only reshape and validate supplied data. They do not implement
+projection dynamics, interpolation, reciprocity correction, or population
+balancing. Contact matrix rows are recipient age groups and columns are source
+age groups.
 
 ## Design notes
 

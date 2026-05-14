@@ -61,14 +61,16 @@ as_agepi_contact_matrix <- function(
 
 #' Convert a socialmixr contact matrix output to an agepi contact matrix
 #'
-#' This is a narrow, dependency-free adapter for objects shaped like the output
-#' of `socialmixr::contact_matrix()`. It accepts either a numeric matrix or a
+#' Optional, dependency-free adapter for objects shaped like the output of
+#' `socialmixr::contact_matrix()`. The `socialmixr` package is not required for
+#' core agepi functionality. This adapter accepts either a numeric matrix or a
 #' list-like object with a numeric `matrix` element, then delegates validation,
 #' orientation handling, optional transposition, and age-structure labelling to
 #' [as_agepi_contact_matrix()].
 #'
-#' No reciprocity correction, population balancing, or age-bin splitting is
-#' applied.
+#' Returned matrices use the agepi convention: rows are recipient age groups and
+#' columns are source age groups. No interpolation, reciprocity correction,
+#' population balancing, or age-bin splitting is applied.
 #'
 #' @param x A numeric matrix or socialmixr contact-matrix-like list object with
 #'   a numeric `matrix` element.
@@ -81,6 +83,27 @@ as_agepi_contact_matrix <- function(
 #'   `orientation` handling.
 #'
 #' @return A numeric square matrix in agepi recipient-source orientation.
+#'
+#' @examples
+#' age_structure <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#'
+#' socialmixr_like <- list(
+#'   matrix = matrix(
+#'     c(4, 2,
+#'       1, 5),
+#'     nrow = 2,
+#'     byrow = TRUE
+#'   )
+#' )
+#'
+#' contact_matrix_from_socialmixr(
+#'   socialmixr_like,
+#'   age_structure = age_structure
+#' )
 #' @export
 contact_matrix_from_socialmixr <- function(
   x,
@@ -107,13 +130,16 @@ contact_matrix_from_socialmixr <- function(
 
 #' Convert conmat-style output to an agepi contact matrix
 #'
-#' This is a narrow, dependency-free adapter for conmat-style long tables. It
-#' expects `age_group_from`, `age_group_to`, and `contacts` columns, then
-#' delegates conversion, validation, orientation handling, optional
-#' transposition, and age-structure labelling to [as_agepi_contact_matrix()].
+#' Optional, dependency-free adapter for conmat-style long tables. The `conmat`
+#' package is not required for core agepi functionality. This adapter expects
+#' `age_group_from`, `age_group_to`, and `contacts` columns, then delegates
+#' conversion, validation, orientation handling, optional transposition, and
+#' age-structure labelling to [as_agepi_contact_matrix()].
 #'
-#' No reciprocity correction, population balancing, demographic prediction, or
-#' age-bin splitting is applied.
+#' In conmat-style long input, `age_group_to` becomes recipient rows and
+#' `age_group_from` becomes source columns. No interpolation, reciprocity
+#' correction, population balancing, demographic prediction, or age-bin
+#' splitting is applied.
 #'
 #' @param x A conmat-style long table or object coercible with `as.data.frame()`.
 #' @param age_structure Optional valid age structure used to validate dimensions
@@ -125,6 +151,24 @@ contact_matrix_from_socialmixr <- function(
 #'   `orientation` handling.
 #'
 #' @return A numeric square matrix in agepi recipient-source orientation.
+#'
+#' @examples
+#' age_structure <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#'
+#' conmat_like <- data.frame(
+#'   age_group_from = c("0-4", "5-9", "0-4", "5-9"),
+#'   age_group_to = c("0-4", "0-4", "5-9", "5-9"),
+#'   contacts = c(4, 2, 1, 5)
+#' )
+#'
+#' contact_matrix_from_conmat(
+#'   conmat_like,
+#'   age_structure = age_structure
+#' )
 #' @export
 contact_matrix_from_conmat <- function(
   x,

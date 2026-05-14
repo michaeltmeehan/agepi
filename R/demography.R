@@ -136,10 +136,15 @@ Demography <- function(demography, age_structure) {
 
 #' Construct demography from WPP-style tabular data
 #'
-#' Converts an already-loaded WPP-like table, or an optional dataset from the
-#' `wpp2024` package, into the simple `time`, `age_group`, `population` table
-#' expected by [Demography()]. This is only an adapter: it does not project,
-#' interpolate, age, or otherwise modify population trajectories.
+#' Optional adapter for converting an already-loaded WPP-style table, or an
+#' optional dataset from the `wpp2024` package, into the simple `time`,
+#' `age_group`, `population` table expected by [Demography()]. The external
+#' package is not required for core agepi functionality when `data` is supplied
+#' directly.
+#'
+#' This is only a data-shaping adapter. It does not implement projection
+#' dynamics, interpolation, ageing, births, deaths, migration, fertility,
+#' mortality, or any other modification of population trajectories.
 #'
 #' @param data Optional data frame containing WPP-like population data.
 #' @param dataset Optional dataset name to load from `wpp2024` when `data` is
@@ -153,6 +158,30 @@ Demography <- function(demography, age_structure) {
 #'   values.
 #'
 #' @return An `agepi_demography` object.
+#'
+#' @examples
+#' age_structure <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#'
+#' wpp_like <- data.frame(
+#'   year = c(2020, 2020, 2025, 2025),
+#'   age = c("0-4", "5-9", "0-4", "5-9"),
+#'   population = c(1000, 1200, 980, 1250),
+#'   location = "Exampleland"
+#' )
+#'
+#' demography_from_wpp(
+#'   data = wpp_like,
+#'   age_structure = age_structure,
+#'   time_col = "year",
+#'   age_group_col = "age",
+#'   population_col = "population",
+#'   location = "Exampleland",
+#'   location_col = "location"
+#' )
 #' @export
 demography_from_wpp <- function(data = NULL,
                                 dataset = NULL,
