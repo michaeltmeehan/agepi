@@ -1,0 +1,275 @@
+simulate_demography_test_ages <- function() {
+  AgeStructure(
+    age_groups = c("0-4", "5-9", "10+"),
+    lower_bounds = c(0, 5, 10),
+    upper_bounds = c(4, 9, Inf)
+  )
+}
+
+simulate_demography_process <- function(
+  ages = simulate_demography_test_ages(),
+  fertility = NULL,
+  mortality = NULL,
+  migration = NULL
+) {
+  DemographicProcess(
+    age_structure = ages,
+    fertility_schedule = fertility,
+    mortality_schedule = mortality,
+    migration_schedule = migration,
+    mode = if (is.null(migration)) "closed" else "migration"
+  )
+}
+
+test_that("ageing-only Euler simulation moves people into the open-ended final bin", {
+  process <- simulate_demography_process()
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1))
+
+  final <- output[output$time == 1, ]
+
+  expect_equal(final$population, c(80, 60, 35))
+})
+
+test_that("fertility-only Euler simulation adds births to youngest group", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "5-9",
+      fertility_rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    fertility_schedule = fertility
+  )
+
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1))
+
+  expect_equal(output$population[output$time == 1], c(105, 50, 25))
+})
+
+test_that("mortality-only Euler simulation subtracts mortality by age", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      mortality_rate = c(0.01, 0.02, 0.03),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    mortality_schedule = mortality
+  )
+
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 2))
+
+  expect_equal(output$population[output$time == 2], c(98, 48, 23.5))
+})
+
+test_that("migration-count Euler simulation adds counts directly over dt", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(5, -10, 2),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 2))
+
+  expect_equal(output$population[output$time == 2], c(110, 30, 29))
+})
+
+test_that("migration-rate Euler simulation multiplies rates by population over dt", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_rate = c(0.1, -0.2, 0),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 2))
+
+  expect_equal(output$population[output$time == 2], c(120, 30, 25))
+})
+
+test_that("combined Euler simulation matches hand-computable example", {
+  ages <- simulate_demography_test_ages()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "5-9",
+      fertility_rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      mortality_rate = c(0.01, 0.02, 0.03),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(1, -2, 3),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- simulate_demography_process(
+    ages = ages,
+    fertility = fertility,
+    mortality = mortality,
+    migration = migration
+  )
+
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1))
+
+  expect_equal(output$population[output$time == 1], c(85, 57, 37.25))
+})
+
+test_that("simulate_demography returns tidy output ordered by time then age group", {
+  process <- simulate_demography_process()
+  output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1, 2))
+
+  expect_identical(names(output), c("time", "age_group", "population"))
+  expect_identical(output$time, rep(c(0, 1, 2), each = 3))
+  expect_identical(output$age_group, rep(process$age_structure$age_groups, times = 3))
+  expect_equal(output$population[output$time == 0], c(100, 50, 25))
+  expect_type(output$population, "double")
+})
+
+test_that("simulate_demography validates process initial state times schedules and method", {
+  process <- simulate_demography_process()
+
+  invalid_process <- process
+  class(invalid_process) <- "list"
+  expect_error(
+    simulate_demography(invalid_process, c(100, 50, 25), c(0, 1)),
+    "agepi_demographic_process"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50), c(0, 1)),
+    "initial_state length"
+  )
+  expect_error(
+    simulate_demography(process, c(100, -50, 25), c(0, 1)),
+    "non-negative"
+  )
+  expect_error(
+    simulate_demography(process, c(100, Inf, 25), c(0, 1)),
+    "finite"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(0, 0)),
+    "strictly increasing"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(0, NA_real_)),
+    "missing"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(0, 1), method = "rk4"),
+    "unsupported simulation method"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(0, 1), method = c("euler", "deSolve")),
+    "method must be a non-missing character scalar"
+  )
+
+  ages <- simulate_demography_test_ages()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      mortality_rate = c(0.01, 0.02, 0.03),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  scheduled_process <- simulate_demography_process(ages = ages, mortality = mortality)
+  expect_error(
+    simulate_demography(scheduled_process, c(100, 50, 25), c(1, 2)),
+    "Exact time 1 is not available.*no interpolation"
+  )
+})
+
+test_that("Euler steps that produce negative populations are rejected", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(0, -100, 0),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  expect_error(
+    simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1)),
+    "negative population value"
+  )
+})
+
+test_that("method deSolve and ode error clearly for deferred exact-time support", {
+  process <- simulate_demography_process()
+
+  expect_error(
+    simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "deSolve"),
+    "not yet supported.*exact-time lookup.*no interpolation"
+  )
+  expect_error(
+    simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "ode"),
+    "not yet supported.*exact-time lookup.*no interpolation"
+  )
+})
