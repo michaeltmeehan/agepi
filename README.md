@@ -147,6 +147,11 @@ Current demography support is validation, storage, sorting, and population
 access only. It does not implement demographic projection, interpolation,
 fertility, mortality, births, deaths, ageing, or migration.
 
+See `examples/mock_demographic_workflow.R` for a small dependency-free
+demographic-only workflow using invented WPP-like fertility, mortality, and
+migration tables. The example demonstrates standardisation, process assembly,
+simulation, and diagnostic comparison; it is not a WPP projection reproduction.
+
 ### Contact matrices
 
 `validate_contact_matrix()` checks that a contact matrix is numeric, finite,
