@@ -151,6 +151,8 @@ See `examples/mock_demographic_workflow.R` for a small dependency-free
 demographic-only workflow using invented WPP-like fertility, mortality, and
 migration tables. The example demonstrates standardisation, process assembly,
 simulation, and diagnostic comparison; it is not a WPP projection reproduction.
+See `docs/demographic_residuals.md` for the residual diagnostic and
+residual-derived migration schedule conventions.
 
 ### Contact matrices
 
