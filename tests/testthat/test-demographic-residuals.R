@@ -173,3 +173,124 @@ test_that("implied_demographic_residual is relative to processes that include mi
   expect_equal(residual$predicted_end, c(85, 210))
   expect_equal(residual$residual_count, c(0, -5))
 })
+
+test_that("residual_to_migration_schedule converts interval counts to per-time flows", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0, 2, 2),
+    time_end = c(2, 2, 4, 4),
+    dt = c(2, 2, 2, 2),
+    age_group = rep(ages$age_groups, times = 2),
+    residual_count = c(10, -4, 6, -2),
+    residual_rate = c(0.05, -0.01, 0.03, -0.005),
+    stringsAsFactors = FALSE
+  )
+
+  migration <- residual_to_migration_schedule(residual, ages, use = "count")
+
+  expect_s3_class(migration, "agepi_migration_schedule")
+  expect_identical(migration$migration_type, "count")
+  expect_identical(migration$data$time, c(0, 0, 2, 2))
+  expect_identical(migration$data$age_group, rep(ages$age_groups, times = 2))
+  expect_equal(migration$data$migration_count, c(5, -2, 3, -1))
+})
+
+test_that("residual_to_migration_schedule converts residual rates directly", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0),
+    time_end = c(1, 1),
+    dt = c(1, 1),
+    age_group = ages$age_groups,
+    residual_count = c(10, -4),
+    residual_rate = c(0.1, -0.02),
+    stringsAsFactors = FALSE
+  )
+
+  migration <- residual_to_migration_schedule(residual, ages, use = "rate")
+
+  expect_s3_class(migration, "agepi_migration_schedule")
+  expect_identical(migration$migration_type, "rate")
+  expect_identical(migration$data$time, c(0, 0))
+  expect_equal(migration$data$migration_rate, c(0.1, -0.02))
+})
+
+test_that("residual_to_migration_schedule errors for age structure mismatches", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0),
+    time_end = c(1, 1),
+    dt = c(1, 1),
+    age_group = c("0-4", "10+"),
+    residual_count = c(1, 2),
+    residual_rate = c(0.01, 0.02),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    residual_to_migration_schedule(residual, ages),
+    "not in age_structure"
+  )
+})
+
+test_that("residual_to_migration_schedule errors for missing columns", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0),
+    time_end = c(1, 1),
+    dt = c(1, 1),
+    age_group = ages$age_groups,
+    residual_count = c(1, 2),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    residual_to_migration_schedule(residual, ages),
+    "missing required column"
+  )
+})
+
+test_that("residual_to_migration_schedule rejects NA rates for rate conversion", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0),
+    time_end = c(1, 1),
+    dt = c(1, 1),
+    age_group = ages$age_groups,
+    residual_count = c(1, 2),
+    residual_rate = c(NA_real_, 0.02),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    residual_to_migration_schedule(residual, ages, use = "rate"),
+    "residual_rate cannot contain NA"
+  )
+  expect_silent(residual_to_migration_schedule(residual, ages, use = "count"))
+})
+
+test_that("residual_to_migration_schedule count conversion closes one Euler interval", {
+  ages <- residual_test_age_structure()
+  base_process <- build_demographic_process(ages)
+  observed <- residual_test_demography(
+    times = c(0, 2),
+    population = c(100, 200, 70, 250),
+    ages = ages
+  )
+
+  residual <- implied_demographic_residual(observed, base_process)
+  migration <- residual_to_migration_schedule(residual, ages, use = "count")
+  process_with_residual_migration <- build_demographic_process(
+    age_structure = ages,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  simulated <- simulate_demography(
+    process = process_with_residual_migration,
+    initial_state = c(100, 200),
+    times = c(0, 2)
+  )
+
+  expect_equal(simulated$population[simulated$time == 2], c(70, 250))
+})

@@ -135,3 +135,12 @@ print(residual[, c(
   "residual_count",
   "residual_rate"
 ) ])
+
+residual_migration <- residual_to_migration_schedule(
+  residual,
+  age_structure = age_structure,
+  use = "count"
+)
+
+cat("\nResidual converted to per-time migration_count flow:\n")
+print(residual_migration$data)
