@@ -107,6 +107,7 @@ observed <- Demography(
 
 comparison <- compare_demography_to_observed(simulated, observed)
 summary <- summarise_demography_comparison(comparison)
+residual <- implied_demographic_residual(observed, process)
 
 cat("Demographic process mode:\n")
 print(process$mode)
@@ -124,4 +125,13 @@ print(comparison[comparison$time %in% c(2021, 2022), c(
   "simulated_population",
   "observed_population",
   "absolute_error"
+) ])
+
+cat("\nImplied remaining residual by interval:\n")
+print(residual[, c(
+  "time_start",
+  "time_end",
+  "age_group",
+  "residual_count",
+  "residual_rate"
 ) ])
