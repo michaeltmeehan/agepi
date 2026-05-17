@@ -6,14 +6,13 @@
 #' infection-demography coupling, residual forcing, WPP validation diagnostics,
 #' or WPP parsing.
 #'
-#' Schedule lookup is exact-time only. No interpolation is performed. With the
-#' Euler method, schedules are evaluated at the left endpoint of each interval,
-#' `times[i]`. If a required schedule is not available at that exact time,
-#' simulation errors through [demographic_derivative()]. The optional
-#' `method = "deSolve"` and its alias `method = "ode"` are reserved for future
-#' support and currently error clearly because adaptive solver time points are
-#' not compatible with exact-time schedules without interpolation or another
-#' explicit time-handling rule.
+#' Schedule lookup is exact-time only by default. With `time_policy = "exact"`,
+#' derivative evaluation times must exactly match required schedule times. With
+#' `time_policy = "step"`, schedules use left-continuous interval-start lookup:
+#' a row at schedule time `t_i` applies over `[t_i, t_{i + 1})`, and Euler
+#' intervals are evaluated at their left endpoints, `times[i]`. No interpolation
+#' is performed. The optional `method = "deSolve"` and its alias `method =
+#' "ode"` are reserved for future support and currently error clearly.
 #'
 #' Euler updates are not truncated: if an update would produce a negative
 #' population value, simulation stops with an error.
@@ -27,6 +26,8 @@
 #' @param method Simulation method. `"euler"` is the default. `"deSolve"` and
 #'   `"ode"` are accepted for future compatibility but currently error for this
 #'   demographic wrapper.
+#' @param time_policy Schedule lookup policy. `"exact"` requires exact schedule
+#'   times and remains the default. `"step"` uses interval-start stepwise lookup.
 #' @param ... Reserved for future method-specific arguments. Currently unused.
 #'
 #' @return Data frame with columns `time`, `age_group`, and `population`,
@@ -49,6 +50,7 @@ simulate_demography <- function(
   initial_state,
   times,
   method = c("euler", "deSolve", "ode"),
+  time_policy = c("exact", "step"),
   ...
 ) {
   if (missing(method)) {
@@ -58,6 +60,7 @@ simulate_demography <- function(
   }
   validate_demographic_process(process)
   validate_simulation_times(times)
+  time_policy <- validate_demographic_time_policy(time_policy)
   check_dots_empty(...)
 
   state <- validate_demography_initial_state(initial_state, process)
@@ -74,18 +77,27 @@ simulate_demography <- function(
   simulate_demography_euler(
     process = process,
     initial_state = state,
-    times = times
+    times = times,
+    time_policy = time_policy
   )
 }
 
-simulate_demography_euler <- function(process, initial_state, times) {
+simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step")) {
+  time_policy <- validate_demographic_time_policy(time_policy)
+  validate_demography_schedule_coverage(process, times, time_policy)
+
   output <- vector("list", length(times))
   output[[1]] <- demographic_state_output(initial_state, time = times[1], process = process)
 
   current_state <- initial_state
   for (i in seq_len(length(times) - 1)) {
     dt <- times[i + 1] - times[i]
-    derivative <- demographic_derivative(current_state, time = times[i], process = process)
+    derivative <- demographic_derivative(
+      current_state,
+      time = times[i],
+      process = process,
+      time_policy = time_policy
+    )
     next_state <- as.numeric(current_state) + dt * as.numeric(derivative)
     validate_non_negative_demography_euler_state(next_state, time = times[i + 1])
 
@@ -96,6 +108,31 @@ simulate_demography_euler <- function(process, initial_state, times) {
   result <- do.call(rbind, output)
   row.names(result) <- NULL
   result
+}
+
+validate_demography_schedule_coverage <- function(process, times, time_policy = c("exact", "step")) {
+  time_policy <- validate_demographic_time_policy(time_policy)
+  left_endpoints <- times[-length(times)]
+
+  validate_one_demography_schedule_coverage(process$fertility_schedule, left_endpoints, time_policy)
+  validate_one_demography_schedule_coverage(process$mortality_schedule, left_endpoints, time_policy)
+  validate_one_demography_schedule_coverage(process$migration_schedule, left_endpoints, time_policy)
+
+  invisible(NULL)
+}
+
+validate_one_demography_schedule_coverage <- function(schedule, times, time_policy = c("exact", "step")) {
+  time_policy <- validate_demographic_time_policy(time_policy)
+
+  if (is.null(schedule)) {
+    return(invisible(NULL))
+  }
+
+  for (time in times) {
+    lookup_demographic_schedule_time(schedule, time, time_policy)
+  }
+
+  invisible(NULL)
 }
 
 demographic_state_output <- function(state, time, process) {

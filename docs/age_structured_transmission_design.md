@@ -4,6 +4,12 @@
 
 Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation is a deterministic age-structured SIR model using mock inputs only, with small utility layers for simulation summaries, age-vector transformation, demography-table storage/access, and contact-matrix validation/coercion/aggregation.
 
+Checkpoint note: this design document preserves the initial prototype scope.
+Demographic-only ODE components, WPP-like demographic input standardisers, and
+residual diagnostics have since been added outside the infection simulator; see
+`README.md`, `docs/demographic_residuals.md`, and
+`examples/mock_demographic_workflow.R` for the current demographic backbone.
+
 The first implementation should be deliberately simple: a deterministic age-structured SIR model with one static contact matrix. However, the code should be designed so that later extensions can support:
 
 - different disease compartment structures;
@@ -36,7 +42,7 @@ The prototype should prioritise clean abstractions and testable model components
 
 | Component | Reason deferred |
 |---|---|
-| WPP integration, ageing, births, deaths, fertility, mortality, migration, and demographic projection dynamics | Current demography support is validation, storage, sorting, and exact-time population access only |
+| Infection-demography coupling, WPP projection matching, interpolation, and automatic residual forcing | Demographic-only ODE components now exist, but they remain separate from the infection simulator |
 | `socialmixr` or `conmat` package dependencies | Current contact support is dependency-free coercion and exact aggregation |
 | Contact-matrix splitting or general rebinning | Current `transform_contact_matrix()` supports exact aggregation only |
 | SEIR and other compartment structures | Current disease model support is SIR only |
@@ -149,9 +155,9 @@ Required checks:
 ### 5.2 `Demography`
 
 Stores validated age-specific population tables aligned to the model age bins.
-Current support is deliberately minimal: validation, sorted storage, and exact-time
-population accessors. It does not project demography or affect simulation
-dynamics.
+Current `Demography()` support is deliberately minimal: validation, sorted
+storage, and exact-time population accessors. Demographic-only ODE components
+are implemented separately and do not affect infection simulation dynamics.
 
 Current constructor:
 
@@ -645,10 +651,10 @@ Acceptance criteria:
 
 Still future work:
 
-- WPP integration;
 - interpolation or nearest-year lookup;
-- fertility, mortality, births, deaths, ageing, migration, and demographic projection dynamics;
-- using demographic dynamics inside the simulator.
+- WPP projection matching;
+- automatic residual forcing;
+- infection-demography coupling.
 
 ---
 

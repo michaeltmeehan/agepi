@@ -13,7 +13,9 @@ simulate_deterministic(
   beta = 1,
   susceptibility = NULL,
   infectiousness = NULL,
-  method = "euler"
+  method = "euler",
+  demographic_process = NULL,
+  time_policy = c("exact", "step")
 )
 }
 \arguments{
@@ -40,6 +42,14 @@ group.}
 
 \item{method}{Simulation method. \code{"euler"} is the default. \code{"deSolve"} and
 \code{"ode"} request the optional \code{deSolve::ode()} backend.}
+
+\item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
+first-pass deterministic SIR-demography coupling. Defaults to \code{NULL},
+which preserves infection-only simulation.}
+
+\item{time_policy}{Demographic schedule lookup policy used only when
+\code{demographic_process} is supplied. \code{"exact"} requires exact schedule times;
+\code{"step"} uses left-continuous interval-start lookup.}
 }
 \value{
 Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
@@ -62,6 +72,16 @@ The deSolve backend currently supports the same static deterministic SIR
 model as the Euler backend: static contact matrix, static \code{beta}, static
 susceptibility, and static infectiousness. It does not add time-varying
 demography, time-varying contacts, interpolation, or demographic dynamics.
+
+A first-pass SIR-demography coupling is available for Euler simulations via
+\code{demographic_process}. In this coupled mode, births enter the youngest
+susceptible age group, deaths apply proportionally to \code{S}, \code{I}, and \code{R},
+ageing moves each compartment independently using the process
+\code{\link[=AgeingOperator]{AgeingOperator()}} convention, and net migration is applied to susceptible
+compartments only. Fertility and migration-rate exposure use the current
+total infection-state population \code{S + I + R}. This is not WPP projection
+matching, and \code{method = "deSolve"}/\code{"ode"} is not supported when
+\code{demographic_process} is supplied.
 
 Euler updates are intentionally not truncated: if a step would produce
 negative compartment values, simulation stops with an error.

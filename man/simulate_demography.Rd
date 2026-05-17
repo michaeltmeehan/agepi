@@ -9,6 +9,7 @@ simulate_demography(
   initial_state,
   times,
   method = c("euler", "deSolve", "ode"),
+  time_policy = c("exact", "step"),
   ...
 )
 }
@@ -26,6 +27,9 @@ points. Must have length at least two.}
 \code{"ode"} are accepted for future compatibility but currently error for this
 demographic wrapper.}
 
+\item{time_policy}{Schedule lookup policy. \code{"exact"} requires exact schedule
+times and remains the default. \code{"step"} uses interval-start stepwise lookup.}
+
 \item{...}{Reserved for future method-specific arguments. Currently unused.}
 }
 \value{
@@ -40,14 +44,13 @@ infection-demography coupling, residual forcing, WPP validation diagnostics,
 or WPP parsing.
 }
 \details{
-Schedule lookup is exact-time only. No interpolation is performed. With the
-Euler method, schedules are evaluated at the left endpoint of each interval,
-\code{times[i]}. If a required schedule is not available at that exact time,
-simulation errors through \code{\link[=demographic_derivative]{demographic_derivative()}}. The optional
-\code{method = "deSolve"} and its alias \code{method = "ode"} are reserved for future
-support and currently error clearly because adaptive solver time points are
-not compatible with exact-time schedules without interpolation or another
-explicit time-handling rule.
+Schedule lookup is exact-time only by default. With \code{time_policy = "exact"},
+derivative evaluation times must exactly match required schedule times. With
+\code{time_policy = "step"}, schedules use left-continuous interval-start lookup:
+a row at schedule time \code{t_i} applies over \code{[t_i, t_{i + 1})}, and Euler
+intervals are evaluated at their left endpoints, \code{times[i]}. No interpolation
+is performed. The optional \code{method = "deSolve"} and its alias \code{method =
+"ode"} are reserved for future support and currently error clearly.
 
 Euler updates are not truncated: if an update would produce a negative
 population value, simulation stops with an error.

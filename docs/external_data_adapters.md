@@ -3,18 +3,18 @@
 ## Purpose
 
 This note records the intended boundary for future external data adapters. The
-next phase can connect agepi to WPP demographic data, socialmixr contact
-matrices, and conmat contact predictions without changing the deterministic SIR
-simulation workflow.
+adapter layer can connect agepi to WPP-style demographic data, socialmixr
+contact matrices, and conmat contact predictions without changing the
+deterministic SIR simulation workflow.
 
 External package integrations should remain optional initially. The core package
 should continue to accept agepi-native objects and dependency-free inputs.
 
 ## Adapter Scope
 
-### WPP Demography Adapter
+### WPP Population Adapter
 
-A WPP adapter should convert external WPP-like age, year, and population tables
+A WPP population adapter should convert external WPP-like age, year, and population tables
 into a validated `Demography()` object aligned to an `AgeStructure()`.
 
 The adapter should handle data-shape translation only:
@@ -24,8 +24,10 @@ The adapter should handle data-shape translation only:
 - map population values to the required `population` column;
 - call existing demography validation and construction helpers.
 
-It should not implement demographic projection dynamics, interpolation,
-fertility, mortality, births, deaths, ageing, or migration.
+It should not implement demographic projection dynamics, interpolation, or WPP
+projection matching. Separate WPP-style standardisers can adapt already supplied
+fertility, mortality, and migration tables into agepi schedule objects without
+requiring `wpp2024`.
 
 ### socialmixr Contact Adapter
 
@@ -73,8 +75,10 @@ already consume.
 The following remain out of scope for the initial adapter phase:
 
 - mandatory WPP, socialmixr, or conmat dependencies;
-- demographic projection dynamics;
-- WPP fertility, mortality, births, deaths, ageing, or migration dynamics;
+- WPP projection matching;
+- interpolation or nearest-time lookup;
+- infection-demography coupling;
+- automatic demographic residual forcing;
 - contact-matrix reciprocity correction;
 - contact-matrix population balancing;
 - source-bin splitting or general contact-matrix rebinning;

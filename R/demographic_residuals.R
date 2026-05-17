@@ -249,6 +249,10 @@ validate_residual_to_migration_inputs <- function(residual, age_structure, use) 
   if (any(residual$dt <= 0)) {
     stop("residual dt must be positive.", call. = FALSE)
   }
+  interval_dt <- residual$time_end - residual$time_start
+  if (any(abs(residual$dt - interval_dt) > sqrt(.Machine$double.eps))) {
+    stop("residual dt must equal time_end - time_start.", call. = FALSE)
+  }
 
   residual_age_groups <- as.character(residual$age_group)
   if (anyNA(residual_age_groups)) {

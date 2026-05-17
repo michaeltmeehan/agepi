@@ -180,6 +180,132 @@ test_that("demographic_derivative uses exact-time schedule lookup only", {
   )
 })
 
+test_that("demographic_derivative exact time_policy preserves exact-time errors", {
+  ages <- test_derivative_age_structure()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.02, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- test_derivative_process(ages, mortality = mortality)
+
+  expect_silent(demographic_derivative(c(100, 50, 25), 2020, process, time_policy = "exact"))
+  expect_error(
+    demographic_derivative(c(100, 50, 25), 2022.5, process, time_policy = "exact"),
+    "Exact time 2022.5 is not available.*no interpolation"
+  )
+})
+
+test_that("demographic_derivative step time_policy is left-continuous", {
+  ages <- test_derivative_age_structure()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.02, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    mortality_schedule = mortality
+  )
+
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2020, process, time_policy = "step"),
+    c("0-4" = -1, "5-9" = -0.5, "10+" = -0.25)
+  )
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2022.5, process, time_policy = "step"),
+    c("0-4" = -1, "5-9" = -0.5, "10+" = -0.25)
+  )
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2025, process, time_policy = "step"),
+    c("0-4" = -2, "5-9" = -1, "10+" = -0.5)
+  )
+})
+
+test_that("demographic_derivative step time_policy rejects times outside schedule coverage", {
+  ages <- test_derivative_age_structure()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = rep(0.01, 2 * ages$n_age_groups),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- test_derivative_process(ages, mortality = mortality)
+
+  expect_error(
+    demographic_derivative(c(100, 50, 25), 2019, process, time_policy = "step"),
+    "before the first available schedule time 2020"
+  )
+  expect_error(
+    demographic_derivative(c(100, 50, 25), 2026, process, time_policy = "step"),
+    "after the final available schedule time 2025"
+  )
+})
+
+test_that("demographic_derivative step time_policy is consistent across schedules", {
+  ages <- test_derivative_age_structure()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = c(2020, 2025),
+      age_group = c("5-9", "5-9"),
+      fertility_rate = c(0.1, 0.2),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.02, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      migration_count = c(c(1, 2, 3), c(4, 5, 6)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    fertility_schedule = fertility,
+    mortality_schedule = mortality,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2022.5, process, time_policy = "step"),
+    c("0-4" = 5, "5-9" = 1.5, "10+" = 2.75)
+  )
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2025, process, time_policy = "step"),
+    c("0-4" = 12, "5-9" = 4, "10+" = 5.5)
+  )
+})
+
 test_that("demographic_derivative validates state time and process inputs", {
   ages <- test_derivative_age_structure()
   process <- test_derivative_process(ages)

@@ -269,6 +269,24 @@ test_that("residual_to_migration_schedule rejects NA rates for rate conversion",
   expect_silent(residual_to_migration_schedule(residual, ages, use = "count"))
 })
 
+test_that("residual_to_migration_schedule checks dt against interval length", {
+  ages <- residual_test_age_structure()
+  residual <- data.frame(
+    time_start = c(0, 0),
+    time_end = c(1, 1),
+    dt = c(2, 2),
+    age_group = ages$age_groups,
+    residual_count = c(1, 2),
+    residual_rate = c(0.01, 0.02),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    residual_to_migration_schedule(residual, ages, use = "count"),
+    "residual dt must equal time_end - time_start"
+  )
+})
+
 test_that("residual_to_migration_schedule count conversion closes one Euler interval", {
   ages <- residual_test_age_structure()
   base_process <- build_demographic_process(ages)
@@ -290,6 +308,33 @@ test_that("residual_to_migration_schedule count conversion closes one Euler inte
     process = process_with_residual_migration,
     initial_state = c(100, 200),
     times = c(0, 2)
+  )
+
+  expect_equal(simulated$population[simulated$time == 2], c(70, 250))
+})
+
+test_that("residual-derived migration closes the intended interval with step lookup", {
+  ages <- residual_test_age_structure()
+  base_process <- build_demographic_process(ages)
+  observed <- residual_test_demography(
+    times = c(0, 2),
+    population = c(100, 200, 70, 250),
+    ages = ages
+  )
+
+  residual <- implied_demographic_residual(observed, base_process)
+  migration <- residual_to_migration_schedule(residual, ages, use = "count")
+  process_with_residual_migration <- build_demographic_process(
+    age_structure = ages,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  simulated <- simulate_demography(
+    process = process_with_residual_migration,
+    initial_state = c(100, 200),
+    times = c(0, 2),
+    time_policy = "step"
   )
 
   expect_equal(simulated$population[simulated$time == 2], c(70, 250))

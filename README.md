@@ -13,16 +13,21 @@ The current implementation supports a deterministic age-structured SIR workflow:
 - convert transition rates to deterministic derivatives;
 - run a deterministic SIR simulation with explicit Euler time steps, or with
   optional `deSolve::ode()` integration when `deSolve` is installed;
+- optionally couple Euler SIR simulation to a first-pass demographic process;
 - summarise deterministic simulation output with `compartment_totals()`, `age_group_totals()`, and `total_population()`.
 
-It also includes small utility layers for age-bin transformations, demography
-tables, and contact-matrix handling. These utilities are deliberately separate
-from the current simulator: they help prepare or inspect inputs, but they do not
-add demographic projection dynamics or additional disease models.
+It also includes utility layers for age-bin transformations, demographic-only
+ODE components, demography tables, residual diagnostics, and contact-matrix
+handling. These utilities are deliberately separate from the current infection
+simulator: they help prepare or inspect inputs, can run demographic-only
+workflows, and can now be coupled to deterministic SIR in a narrow Euler-only
+mode. They do not add additional disease models.
 
 ## Current limitations
 
-The package currently supports deterministic SIR only. `simulate_deterministic()` defaults to `method = "euler"` and can optionally use `method = "deSolve"` when the suggested `deSolve` package is installed.
+The infection simulator currently supports deterministic SIR only.
+`simulate_deterministic()` defaults to `method = "euler"` and can optionally
+use `method = "deSolve"` when the suggested `deSolve` package is installed.
 
 The current scope is deliberately small:
 
@@ -31,7 +36,10 @@ The current scope is deliberately small:
 - mock examples only;
 - no SEIR models or stochastic simulation;
 - optional `deSolve` backend for the same static deterministic SIR model only;
-- no births, deaths, ageing, migration, fertility, mortality, or demographic projection dynamics;
+- first-pass SIR-demography coupling is Euler-only; births enter `S`, deaths
+  apply proportionally to `S`/`I`/`R`, ageing applies independently to
+  `S`/`I`/`R`, and migration applies to `S` only;
+- no demographic residual forcing or WPP projection matching;
 - optional external-data adapters only; no required WPP, `socialmixr`, or `conmat` dependency;
 - no reciprocity correction or population balancing for contact matrices;
 - no plotting or fitting.
@@ -143,9 +151,17 @@ order. `demography_times()`, `demography_population_at()`/
 `demography_population_vector()`, and `demography_population_table()` provide
 exact-time accessors.
 
-Current demography support is validation, storage, sorting, and population
-access only. It does not implement demographic projection, interpolation,
-fertility, mortality, births, deaths, ageing, or migration.
+Demographic-only helpers now cover age grids, ageing operators, fertility,
+mortality, migration, demographic process assembly, Euler simulation,
+comparison, and residual diagnostics. `simulate_demography()` uses exact-time
+schedule lookup by default and offers opt-in interval-start stepwise lookup via
+`time_policy = "step"`. Stepwise schedules are left-continuous: a schedule row
+at `t_i` applies from `t_i` up to the next schedule time. No interpolation is
+performed, and `migration_count` remains a per-time additive flow rather than an
+interval total. `simulate_deterministic()` can optionally use a
+`DemographicProcess()` for first-pass Euler-only SIR-demography coupling. This
+coupling is not WPP projection matching and does not support `deSolve`/`ode`,
+interpolation, time-varying contact matrices, or additional disease structures.
 
 See `examples/mock_demographic_workflow.R` for a small dependency-free
 demographic-only workflow using invented WPP-like fertility, mortality, and

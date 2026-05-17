@@ -62,9 +62,11 @@ Implemented:
 - `demography_population_vector()`;
 - `demography_population_table()`.
 
-Current demography support is validation, storage, sorting, and exact-time
-population access only. It does not include interpolation, fertility, mortality,
-births, deaths, ageing, migration, or demographic projection dynamics.
+This milestone established population trajectory storage and exact-time access.
+Later completed demographic-only helpers add ageing, fertility, mortality,
+migration, simulation, comparison, and residual diagnostics without adding
+interpolation, WPP projection matching, residual forcing, or infection-demography
+coupling.
 
 ### Milestone 4B: Contact matrix utilities
 
@@ -91,9 +93,49 @@ Implemented:
 - `ContactSchedule()` for externally supplied contact matrices indexed by time;
 - `contact_matrix_at()` for exact-time contact-matrix lookup.
 
-This is the first step toward time-varying simulations. Simulator integration,
-interpolation, demographic projection dynamics, reciprocity correction, and
-population balancing remain future work.
+This is the first step toward time-varying infection inputs. Infection-simulator
+integration, interpolation, reciprocity correction, and population balancing
+remain future work.
+
+### Milestone 4D: Demographic-only process components
+
+Implemented:
+
+- WPP-style one-year and five-year age-grid helpers;
+- `AgeingOperator()` and `validate_ageing_operator()`;
+- `FertilitySchedule()`, `MortalitySchedule()`, and `MigrationSchedule()`;
+- `DemographicProcess()` and `build_demographic_process()`;
+- `demographic_derivative()` and `simulate_demography()` using exact-time Euler
+  semantics by default, with opt-in interval-start stepwise schedule lookup via
+  `time_policy = "step"`;
+- `compare_demography_to_observed()` and
+  `summarise_demography_comparison()`;
+- `standardise_wpp_fertility()`, `standardise_wpp_mortality()`, and
+  `standardise_wpp_migration()` as dependency-free adapters for supplied
+  WPP-like tables;
+- `implied_demographic_residual()` and
+  `residual_to_migration_schedule()` for diagnostic residual accounting.
+
+These helpers are demographic-only. Stepwise schedule lookup does not implement
+interpolation, automatic residual forcing, WPP projection matching, or
+infection-demography coupling.
+
+### Milestone 4E: First-pass SIR-demography coupling
+
+Implemented:
+
+- optional `demographic_process` argument for `simulate_deterministic()`;
+- Euler-only deterministic coupling for SIR models;
+- demographic schedule lookup via `time_policy = c("exact", "step")`;
+- births entering the youngest susceptible age group;
+- mortality applied proportionally to `S`, `I`, and `R`;
+- ageing applied independently to `S`, `I`, and `R`;
+- net migration applied to susceptible compartments only;
+- force of infection continuing to use current `S + I + R` by age group.
+
+This is not WPP projection matching. Coupled demography does not support
+`deSolve`/`ode`, interpolation, time-varying contact matrices, SEIR, or
+stochastic simulation.
 
 ## Future Work
 
@@ -117,9 +159,11 @@ Planned:
 
 Planned:
 
-- demographic interpolation or projection helpers;
-- births, deaths, ageing, migration, fertility, and mortality dynamics;
-- integration of demographic dynamics into future simulators.
+- explicit policy for any future demographic interpolation or projection
+  helpers;
+- optional solver/backend refinements for demographic-only simulations;
+- explicit residual application policies if residual forcing is ever added;
+- richer infection-demography policies beyond the first-pass SIR coupling.
 
 These are not part of the current deterministic SIR simulator.
 

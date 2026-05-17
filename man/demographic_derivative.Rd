@@ -4,7 +4,12 @@
 \alias{demographic_derivative}
 \title{Compute a demographic-only population derivative}
 \usage{
-demographic_derivative(state, time, process)
+demographic_derivative(
+  state,
+  time,
+  process,
+  time_policy = c("exact", "step")
+)
 }
 \arguments{
 \item{state}{Numeric vector of non-negative population counts ordered by the
@@ -14,6 +19,10 @@ age groups in \code{process}.}
 schedules.}
 
 \item{process}{Valid \code{agepi_demographic_process} object.}
+
+\item{time_policy}{Schedule lookup policy. \code{"exact"} requires \code{time} to be
+present in each supplied schedule. \code{"step"} uses the greatest schedule time
+less than or equal to \code{time}, with no interpolation or extrapolation.}
 }
 \value{
 A named numeric vector of derivatives ordered by the age groups in
@@ -27,10 +36,12 @@ does not simulate trajectories, interpolate schedules, couple to infection
 compartments, or implement any infection dynamics.
 }
 \details{
-Schedule values use exact-time lookup only. If a supplied schedule does not
-contain \code{time}, an error is raised; no interpolation is performed. Fertility
-currently uses the total state in each age group as the exposure population,
-as a first-pass convention, and births enter the youngest age group only.
+Schedule values use exact-time lookup by default. If \code{time_policy = "step"},
+schedule values use left-continuous interval-start lookup: for evaluation
+time \code{t}, the greatest schedule time less than or equal to \code{t} is used. No
+interpolation is performed. Fertility currently uses the total state in each
+age group as the exposure population, as a first-pass convention, and births
+enter the youngest age group only.
 }
 \examples{
 ages <- AgeStructure(
