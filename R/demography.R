@@ -142,6 +142,13 @@ Demography <- function(demography, age_structure) {
 #' package is not required for core agepi functionality when `data` is supplied
 #' directly.
 #'
+#' Inputs should be pre-filtered to one country, location, or other entity
+#' before calling this adapter, or a single `location` should be selected with
+#' `location_col`. When `location_col` is supplied and more than one location is
+#' present, the adapter requires an explicit `location` rather than silently
+#' mixing rows. Population values are interpreted as counts in the units
+#' supplied by the caller; no scaling is applied.
+#'
 #' This is only a data-shaping adapter. It does not implement projection
 #' dynamics, interpolation, ageing, births, deaths, migration, fertility,
 #' mortality, or any other modification of population trajectories.
@@ -278,12 +285,46 @@ demography_from_wpp <- function(data = NULL,
 
   demography <- data.frame(
     time = data[[time_col]],
-    age_group = data[[age_group_col]],
+    age_group = parse_wpp_age_labels(data[[age_group_col]], age_structure),
     population = data[[population_col]],
     stringsAsFactors = FALSE
   )
 
   Demography(demography, age_structure)
+}
+
+#' Construct population demography from WPP-style tabular data
+#'
+#' Alias for [demography_from_wpp()] using population-oriented terminology.
+#' Converts tidy long-format WPP-style population data into a validated
+#' [Demography()] object. Inputs should be pre-filtered to one country,
+#' location, or entity, or selected with `location` and `location_col`.
+#'
+#' This adapter only reshapes and validates population counts. It does not
+#' implement WPP projection dynamics, interpolation, or population scaling.
+#'
+#' @inheritParams demography_from_wpp
+#'
+#' @return An `agepi_demography` object.
+#' @export
+population_from_wpp <- function(data = NULL,
+                                dataset = NULL,
+                                age_structure,
+                                time_col,
+                                age_group_col,
+                                population_col,
+                                location = NULL,
+                                location_col = NULL) {
+  demography_from_wpp(
+    data = data,
+    dataset = dataset,
+    age_structure = age_structure,
+    time_col = time_col,
+    age_group_col = age_group_col,
+    population_col = population_col,
+    location = location,
+    location_col = location_col
+  )
 }
 
 #' Get demography time points

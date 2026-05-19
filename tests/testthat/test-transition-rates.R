@@ -15,6 +15,20 @@ test_state <- function(S = c(90, 180), I = c(10, 20), R = c(0, 0)) {
   )
 }
 
+test_seir_state <- function(
+  S = c(90, 180),
+  E = c(5, 15),
+  I = c(10, 20),
+  R = c(0, 0)
+) {
+  data.frame(
+    compartment = rep(c("S", "E", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 4),
+    value = c(S, E, I, R),
+    stringsAsFactors = FALSE
+  )
+}
+
 test_contacts <- function() {
   matrix(c(
     2, 1,
@@ -39,6 +53,53 @@ test_that("transition_rates computes a manually checkable SIR example", {
   )
 
   expect_equal(rates, expected)
+})
+
+test_that("transition_rates computes SEIR infection, progression, and recovery rates", {
+  rates <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  expected <- data.frame(
+    from = c("S", "E", "I", "S", "E", "I"),
+    to = c("E", "I", "R", "E", "I", "R"),
+    age_group = c("0-4", "0-4", "0-4", "5-9", "5-9", "5-9"),
+    rate = c(25.514950166113, 1.5, 2, 118.405315614618, 4.5, 4),
+    stringsAsFactors = FALSE
+  )
+
+  expect_equal(rates, expected)
+})
+
+test_that("SEIR force of infection depends on I rather than E", {
+  rates_without_exposed <- transition_rates(
+    state = test_seir_state(E = c(0, 0), I = c(10, 20), R = c(5, 15)),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+  rates_with_exposed <- transition_rates(
+    state = test_seir_state(E = c(5, 15), I = c(10, 20), R = c(0, 0)),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+  rates_without_infectious <- transition_rates(
+    state = test_seir_state(E = c(500, 1000), I = c(0, 0)),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  expect_true(all(rates_without_exposed$rate[rates_without_exposed$from == "S"] > 0))
+  expect_equal(
+    rates_with_exposed$rate[rates_with_exposed$from == "S"],
+    rates_without_exposed$rate[rates_without_exposed$from == "S"]
+  )
+  expect_equal(rates_without_infectious$rate[rates_without_infectious$from == "S"], c(0, 0))
 })
 
 test_that("transition_rates accepts compartment-major state vectors", {
@@ -277,7 +338,7 @@ test_that("transition_rates rejects zero total population by age group", {
 
 test_that("transition_rates rejects unsupported model types", {
   model <- SIRModel(0.2)
-  model$model_type <- "SEIR"
+  model$model_type <- "SIRS"
 
   expect_error(
     transition_rates(test_state(), model, test_ages(), test_contacts()),

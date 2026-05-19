@@ -217,11 +217,6 @@ test_that("simulate_demography validates process initial state times schedules a
     simulate_demography(process, c(100, 50, 25), c(0, 1), method = c("euler", "deSolve")),
     "method must be a non-missing character scalar"
   )
-  expect_error(
-    simulate_demography(process, c(100, 50, 25), c(0, 1), time_policy = "linear"),
-    "unsupported time_policy"
-  )
-
   ages <- simulate_demography_test_ages()
   mortality <- MortalitySchedule(
     data.frame(
@@ -267,6 +262,36 @@ test_that("simulate_demography step time_policy supports subannual Euler times w
 
   expect_equal(output$population[output$time == 0.5], c(95, 47.5, 23.75))
   expect_equal(output$population[output$time == 1], c(90.25, 45.125, 22.5625))
+})
+
+test_that("simulate_demography linear time_policy supports off-grid Euler left endpoints", {
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.1, ages$n_age_groups), rep(0.3, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    mortality_schedule = mortality
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(100, 50, 25),
+    times = c(0, 0.5, 1),
+    time_policy = "linear"
+  )
+
+  expect_equal(output$population[output$time == 0.5], c(95, 47.5, 23.75))
+  expect_equal(output$population[output$time == 1], c(85.5, 42.75, 21.375))
 })
 
 test_that("simulate_demography exact time_policy still requires exact Euler left endpoints", {
@@ -325,6 +350,29 @@ test_that("simulate_demography step coverage is validated before Euler stepping"
   )
 })
 
+test_that("simulate_demography linear coverage is validated before Euler stepping", {
+  ages <- simulate_demography_test_ages()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = rep(0.1, 2 * ages$n_age_groups),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- simulate_demography_process(ages = ages, mortality = mortality)
+
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(-0.5, 0), time_policy = "linear"),
+    "before the first available schedule time 0"
+  )
+  expect_error(
+    simulate_demography(process, c(100, 50, 25), c(0, 1, 1.5, 2), time_policy = "linear"),
+    "after the final available schedule time 1"
+  )
+})
+
 test_that("Euler steps that produce negative populations are rejected", {
   ages <- simulate_demography_test_ages()
   ageing <- AgeingOperator(ages)
@@ -356,10 +404,10 @@ test_that("method deSolve and ode error clearly for deferred exact-time support"
 
   expect_error(
     simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "deSolve", time_policy = "step"),
-    "not yet supported.*exact-time lookup.*no interpolation"
+    "not yet supported.*fixed Euler evaluation points"
   )
   expect_error(
     simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "ode", time_policy = "step"),
-    "not yet supported.*exact-time lookup.*no interpolation"
+    "not yet supported.*fixed Euler evaluation points"
   )
 })

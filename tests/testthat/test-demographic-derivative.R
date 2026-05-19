@@ -306,6 +306,172 @@ test_that("demographic_derivative step time_policy is consistent across schedule
   )
 })
 
+test_that("linear time_policy returns exact endpoint schedule values", {
+  ages <- test_derivative_age_structure()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = c(2020, 2025),
+      age_group = c("5-9", "5-9"),
+      fertility_rate = c(0.1, 0.2),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+
+  expect_equal(
+    fertility_rates_at(fertility, 2020, ages$age_groups, time_policy = "linear"),
+    c(0, 0.1, 0)
+  )
+  expect_equal(
+    fertility_rates_at(fertility, 2025, ages$age_groups, time_policy = "linear"),
+    c(0, 0.2, 0)
+  )
+})
+
+test_that("linear time_policy interpolates fertility mortality and migration by age", {
+  ages <- test_derivative_age_structure()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = c(2020, 2025, 2020, 2025),
+      age_group = c("5-9", "5-9", "10+", "10+"),
+      fertility_rate = c(0.1, 0.3, 0.2, 0.4),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(0.01, 0.02, 0.03, 0.03, 0.06, 0.09),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      migration_count = c(1, 2, 3, 5, 6, 7),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+
+  expect_equal(
+    fertility_rates_at(fertility, 2022.5, ages$age_groups, time_policy = "linear"),
+    c(0, 0.2, 0.3)
+  )
+  expect_equal(
+    mortality_rates_at(mortality, 2022.5, ages$age_groups, time_policy = "linear"),
+    c(0.02, 0.04, 0.06)
+  )
+  expect_equal(
+    migration_values_at(migration, 2022.5, c(100, 50, 25), ages$age_groups, time_policy = "linear"),
+    c(3, 4, 5)
+  )
+})
+
+test_that("linear time_policy rejects extrapolation and inconsistent interpolation inputs", {
+  ages <- test_derivative_age_structure()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = rep(0.01, 2 * ages$n_age_groups),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+
+  expect_error(
+    mortality_rates_at(mortality, 2019, ages$age_groups, time_policy = "linear"),
+    "before the first available schedule time 2020"
+  )
+  expect_error(
+    mortality_rates_at(mortality, 2026, ages$age_groups, time_policy = "linear"),
+    "after the final available schedule time 2025"
+  )
+
+  one_time <- MortalitySchedule(
+    data.frame(
+      time = 2020,
+      age_group = ages$age_groups,
+      mortality_rate = rep(0.01, ages$n_age_groups),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  expect_error(
+    mortality_rates_at(one_time, 2020.5, ages$age_groups, time_policy = "linear"),
+    "requires at least two schedule times"
+  )
+
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = c(2020, 2025),
+      age_group = c("5-9", "10+"),
+      fertility_rate = c(0.1, 0.2),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  expect_error(
+    fertility_rates_at(fertility, 2022.5, ages$age_groups, time_policy = "linear"),
+    "consistent age-group coverage"
+  )
+})
+
+test_that("demographic time_policy rejects unknown policies", {
+  expect_error(
+    validate_demographic_time_policy("nearest"),
+    "unsupported time_policy: nearest"
+  )
+})
+
+test_that("linear time_policy preserves age-group ordering", {
+  ages <- test_derivative_age_structure()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(rev(ages$age_groups), times = 2),
+      mortality_rate = c(0.03, 0.02, 0.01, 0.09, 0.06, 0.03),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+
+  expect_equal(
+    mortality_rates_at(mortality, 2022.5, ages$age_groups, time_policy = "linear"),
+    c(0.02, 0.04, 0.06)
+  )
+})
+
+test_that("demographic_derivative uses linear interpolated rates", {
+  ages <- test_derivative_age_structure()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(2020, 2025), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.03, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    mortality_schedule = mortality
+  )
+
+  expect_equal(
+    demographic_derivative(c(100, 50, 25), 2022.5, process, time_policy = "linear"),
+    c("0-4" = -2, "5-9" = -1, "10+" = -0.5)
+  )
+})
+
 test_that("demographic_derivative validates state time and process inputs", {
   ages <- test_derivative_age_structure()
   process <- test_derivative_process(ages)

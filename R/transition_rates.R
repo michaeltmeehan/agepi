@@ -1,8 +1,8 @@
 #' Compute disease transition rates
 #'
 #' Computes transition hazards/flows for a disease model at the supplied state.
-#' The returned rates are not updated compartment counts. Currently only SIR
-#' disease models are supported.
+#' The returned rates are not updated compartment counts. SIR and SEIR disease
+#' models are supported.
 #'
 #' `state` may be either a long-form data frame with columns `compartment`,
 #' `age_group`, and `value`, or a numeric vector using the existing
@@ -10,7 +10,8 @@
 #' are ignored.
 #'
 #' @param state Long-form state data frame or numeric state vector.
-#' @param model Disease model. Currently only `SIRModel()` output is supported.
+#' @param model Disease model. `SIRModel()` and `SEIRModel()` output are
+#'   supported.
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
@@ -35,17 +36,12 @@ transition_rates <- function(
   validate_disease_model(model)
   validate_age_structure(age_structure)
 
-  if (model$model_type != "SIR") {
-    stop("transition_rates() currently supports only SIR models.", call. = FALSE)
-  }
-
   state_long <- transition_state_to_long(state, age_structure, model$compartments)
   validate_non_negative_state_values(state_long)
 
   S <- transition_compartment_values(state_long, age_structure, "S")
   I <- transition_compartment_values(state_long, age_structure, "I")
-  R <- transition_compartment_values(state_long, age_structure, "R")
-  population <- S + I + R
+  population <- transition_population_by_age(state_long, age_structure, model$compartments)
   validate_positive_age_populations(population, age_structure)
 
   lambda <- force_of_infection(
@@ -59,6 +55,21 @@ transition_rates <- function(
   )
 
   infection_rates <- as.numeric(lambda) * S
+
+  if (model$model_type == "SEIR") {
+    E <- transition_compartment_values(state_long, age_structure, "E")
+    progression_rates <- model$sigma * E
+    recovery_rates <- model$gamma * I
+
+    return(data.frame(
+      from = rep(model$transitions$from, times = age_structure$n_age_groups),
+      to = rep(model$transitions$to, times = age_structure$n_age_groups),
+      age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
+      rate = as.numeric(rbind(infection_rates, progression_rates, recovery_rates)),
+      stringsAsFactors = FALSE
+    ))
+  }
+
   recovery_rates <- model$gamma * I
 
   data.frame(
@@ -68,6 +79,16 @@ transition_rates <- function(
     rate = as.numeric(rbind(infection_rates, recovery_rates)),
     stringsAsFactors = FALSE
   )
+}
+
+transition_population_by_age <- function(state_long, age_structure, compartments) {
+  population <- numeric(age_structure$n_age_groups)
+  for (compartment in compartments) {
+    population <- population +
+      transition_compartment_values(state_long, age_structure, compartment)
+  }
+
+  population
 }
 
 transition_state_to_long <- function(state, age_structure, compartments) {

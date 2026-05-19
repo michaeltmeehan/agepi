@@ -15,6 +15,20 @@ simulate_test_state <- function(S = c(90, 180), I = c(10, 20), R = c(0, 0)) {
   )
 }
 
+simulate_test_seir_state <- function(
+  S = c(90, 180),
+  E = c(5, 15),
+  I = c(10, 20),
+  R = c(0, 0)
+) {
+  data.frame(
+    compartment = rep(c("S", "E", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 4),
+    value = c(S, E, I, R),
+    stringsAsFactors = FALSE
+  )
+}
+
 simulate_test_contacts <- function() {
   matrix(c(
     2, 1,
@@ -63,6 +77,34 @@ test_that("one-step Euler update matches hand-calculated SIR example", {
 
   expect_equal(final_rows$value, c(87.3, 167.4, 12.5, 32.2, 0.2, 0.4))
 })
+
+test_that("simulate_deterministic works for SEIR with Euler", {
+  output <- simulate_deterministic(
+    initial_state = simulate_test_seir_state(),
+    times = c(0, 0.1),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
+  )
+
+  final_rows <- output[output$time == 0.1, ]
+  expect_identical(final_rows$compartment, c("S", "S", "E", "E", "I", "I", "R", "R"))
+  expect_equal(
+    final_rows$value,
+    c(
+      87.448504983389,
+      168.159468438538,
+      7.401495016611,
+      26.390531561462,
+      9.95,
+      20.05,
+      0.2,
+      0.4
+    )
+  )
+})
+
 
 test_that("method euler remains the default", {
   default_output <- simulate_test_run(times = c(0, 0.1, 0.2))
@@ -179,7 +221,7 @@ test_that("simulate_deterministic ignores state vector names with deSolve", {
   expect_equal(named_output, unnamed_output)
 })
 
-test_that("method deSolve works when deSolve is installed", {
+test_that("SIR infection-only method deSolve runs", {
   skip_if_not_installed("deSolve")
 
   output <- simulate_deterministic(
@@ -193,6 +235,24 @@ test_that("method deSolve works when deSolve is installed", {
 
   expect_identical(names(output), c("time", "compartment", "age_group", "value"))
   expect_equal(unique(output$time), c(0, 0.1, 0.2))
+  expect_true(all(is.finite(output$value)))
+})
+
+test_that("SEIR infection-only method deSolve runs", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_seir_state(),
+    times = c(0, 0.1, 0.2),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+
+  expect_identical(names(output), c("time", "compartment", "age_group", "value"))
+  expect_equal(unique(output$time), c(0, 0.1, 0.2))
+  expect_identical(unique(output$compartment), c("S", "E", "I", "R"))
   expect_true(all(is.finite(output$value)))
 })
 
@@ -251,7 +311,7 @@ test_that("method ode errors clearly when deSolve is unavailable", {
   )
 })
 
-test_that("deSolve output has the same columns and ordering as Euler output", {
+test_that("deSolve output has the same tidy structure as Euler output", {
   skip_if_not_installed("deSolve")
 
   times <- c(-1, 0.1, 0.25)
@@ -269,6 +329,73 @@ test_that("deSolve output has the same columns and ordering as Euler output", {
   expect_identical(desolve_output$time, euler_output$time)
   expect_identical(desolve_output$compartment, euler_output$compartment)
   expect_identical(desolve_output$age_group, euler_output$age_group)
+})
+
+test_that("deSolve preserves total population for infection-only SIR", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = seq(0, 1, by = 0.1),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "deSolve"
+  )
+
+  totals <- aggregate(value ~ time, output, sum)
+  expect_equal(totals$value, rep(300, length(unique(output$time))), tolerance = 1e-8)
+})
+
+test_that("deSolve preserves total population for infection-only SEIR", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_seir_state(),
+    times = seq(0, 1, by = 0.1),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "deSolve"
+  )
+
+  totals <- aggregate(value ~ time, output, sum)
+  expect_equal(totals$value, rep(320, length(unique(output$time))), tolerance = 1e-8)
+})
+
+test_that("deSolve preserves requested time vector ordering", {
+  skip_if_not_installed("deSolve")
+
+  times <- c(0, 0.05, 0.2, 0.35)
+  output <- simulate_deterministic(
+    initial_state = simulate_test_seir_state(),
+    times = times,
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve"
+  )
+
+  expect_identical(output$time, rep(times, each = 8))
+})
+
+test_that("deSolve state values are finite and non-negative for well-behaved examples", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_seir_state(),
+    times = seq(0, 0.5, by = 0.1),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.001,
+    method = "deSolve"
+  )
+
+  expect_true(all(is.finite(output$value)))
+  expect_true(all(output$value >= 0))
 })
 
 test_that("deSolve approximately agrees with Euler for small time steps", {

@@ -2,7 +2,7 @@
 % Please edit documentation in R/simulate_deterministic.R
 \name{simulate_deterministic}
 \alias{simulate_deterministic}
-\title{Simulate a deterministic SIR model}
+\title{Simulate a deterministic SIR or SEIR model}
 \usage{
 simulate_deterministic(
   initial_state,
@@ -15,7 +15,7 @@ simulate_deterministic(
   infectiousness = NULL,
   method = "euler",
   demographic_process = NULL,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 )
 }
 \arguments{
@@ -25,7 +25,8 @@ simulate_deterministic(
 \item{times}{Numeric vector of finite, non-missing, strictly increasing time
 points. Must have length at least two.}
 
-\item{model}{Disease model. Currently only \code{SIRModel()} output is supported.}
+\item{model}{Disease model. \code{SIRModel()} and \code{SEIRModel()} output are
+supported for infection-only deterministic simulation.}
 
 \item{age_structure}{Valid age structure.}
 
@@ -44,12 +45,14 @@ group.}
 \code{"ode"} request the optional \code{deSolve::ode()} backend.}
 
 \item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
-first-pass deterministic SIR-demography coupling. Defaults to \code{NULL},
+first-pass deterministic SIR/SEIR-demography coupling. Defaults to \code{NULL},
 which preserves infection-only simulation.}
 
 \item{time_policy}{Demographic schedule lookup policy used only when
 \code{demographic_process} is supplied. \code{"exact"} requires exact schedule times;
-\code{"step"} uses left-continuous interval-start lookup.}
+\code{"step"} uses left-continuous interval-start lookup; \code{"linear"}
+interpolates rate-like demographic schedules through the same demographic
+derivative path.}
 }
 \value{
 Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
@@ -68,20 +71,37 @@ numeric vector in the existing compartment-major, age-group-minor ordering.
 Names on numeric state vectors are ignored, matching the state-mapping
 helpers. The initial state is included in the returned output.
 
-The deSolve backend currently supports the same static deterministic SIR
-model as the Euler backend: static contact matrix, static \code{beta}, static
-susceptibility, and static infectiousness. It does not add time-varying
-demography, time-varying contacts, interpolation, or demographic dynamics.
+Supported combinations are:
+\itemize{
+\item SIR + Euler, infection-only;
+\item SEIR + Euler, infection-only;
+\item SIR + deSolve, infection-only;
+\item SEIR + deSolve, infection-only;
+\item SIR + demography + Euler;
+\item SEIR + demography + Euler;
+\item SIR + demography + deSolve;
+\item SEIR + demography + deSolve.
+}
 
-A first-pass SIR-demography coupling is available for Euler simulations via
+Both solver backends use the same transition-rate and derivative pathway:
+static contact matrix, static \code{beta}, static susceptibility, and static
+infectiousness. The deSolve backend also supports demographic coupling via
+the existing demographic derivative path.
+
+A first-pass SIR/SEIR-demography coupling is available via
 \code{demographic_process}. In this coupled mode, births enter the youngest
-susceptible age group, deaths apply proportionally to \code{S}, \code{I}, and \code{R},
-ageing moves each compartment independently using the process
-\code{\link[=AgeingOperator]{AgeingOperator()}} convention, and net migration is applied to susceptible
-compartments only. Fertility and migration-rate exposure use the current
-total infection-state population \code{S + I + R}. This is not WPP projection
-matching, and \code{method = "deSolve"}/\code{"ode"} is not supported when
-\code{demographic_process} is supplied.
+susceptible age group, background mortality applies independently to every
+disease compartment, ageing moves each compartment independently using the
+process \code{\link[=AgeingOperator]{AgeingOperator()}} convention, and net migration is applied to
+susceptible compartments only. Fertility and migration-rate exposure use the
+current total infection-state population by age group: \code{S + I + R} for SIR
+and \code{S + E + I + R} for SEIR. This is not WPP projection matching, and
+\code{S}-only migration is an allocation convention for age-total net migration
+inputs rather than a mechanistic movement model. For adaptive deSolve runs,
+\code{time_policy = "linear"} is generally recommended for demographic schedules;
+\code{time_policy = "step"} gives piecewise-constant rates, and
+\code{time_policy = "exact"} will usually fail unless every solver evaluation
+time is present in the schedules.
 
 Euler updates are intentionally not truncated: if a step would produce
 negative compartment values, simulation stops with an error.

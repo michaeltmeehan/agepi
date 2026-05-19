@@ -43,6 +43,13 @@ package is not required for core agepi functionality when \code{data} is supplie
 directly.
 }
 \details{
+Inputs should be pre-filtered to one country, location, or other entity
+before calling this adapter, or a single \code{location} should be selected with
+\code{location_col}. When \code{location_col} is supplied and more than one location is
+present, the adapter requires an explicit \code{location} rather than silently
+mixing rows. Population values are interpreted as counts in the units
+supplied by the caller; no scaling is applied.
+
 This is only a data-shaping adapter. It does not implement projection
 dynamics, interpolation, ageing, births, deaths, migration, fertility,
 mortality, or any other modification of population trajectories.

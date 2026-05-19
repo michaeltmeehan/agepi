@@ -1,4 +1,4 @@
-#' Simulate a deterministic SIR model
+#' Simulate a deterministic SIR or SEIR model
 #'
 #' Runs a simple deterministic prototype simulation. The default
 #' `method = "euler"` uses explicit Euler time steps. Optional
@@ -10,20 +10,36 @@
 #' Names on numeric state vectors are ignored, matching the state-mapping
 #' helpers. The initial state is included in the returned output.
 #'
-#' The deSolve backend currently supports the same static deterministic SIR
-#' model as the Euler backend: static contact matrix, static `beta`, static
-#' susceptibility, and static infectiousness. It does not add time-varying
-#' demography, time-varying contacts, interpolation, or demographic dynamics.
+#' Supported combinations are:
 #'
-#' A first-pass SIR-demography coupling is available for Euler simulations via
+#' - SIR + Euler, infection-only;
+#' - SEIR + Euler, infection-only;
+#' - SIR + deSolve, infection-only;
+#' - SEIR + deSolve, infection-only;
+#' - SIR + demography + Euler;
+#' - SEIR + demography + Euler;
+#' - SIR + demography + deSolve;
+#' - SEIR + demography + deSolve.
+#'
+#' Both solver backends use the same transition-rate and derivative pathway:
+#' static contact matrix, static `beta`, static susceptibility, and static
+#' infectiousness. The deSolve backend also supports demographic coupling via
+#' the existing demographic derivative path.
+#'
+#' A first-pass SIR/SEIR-demography coupling is available via
 #' `demographic_process`. In this coupled mode, births enter the youngest
-#' susceptible age group, deaths apply proportionally to `S`, `I`, and `R`,
-#' ageing moves each compartment independently using the process
-#' [AgeingOperator()] convention, and net migration is applied to susceptible
-#' compartments only. Fertility and migration-rate exposure use the current
-#' total infection-state population `S + I + R`. This is not WPP projection
-#' matching, and `method = "deSolve"`/`"ode"` is not supported when
-#' `demographic_process` is supplied.
+#' susceptible age group, background mortality applies independently to every
+#' disease compartment, ageing moves each compartment independently using the
+#' process [AgeingOperator()] convention, and net migration is applied to
+#' susceptible compartments only. Fertility and migration-rate exposure use the
+#' current total infection-state population by age group: `S + I + R` for SIR
+#' and `S + E + I + R` for SEIR. This is not WPP projection matching, and
+#' `S`-only migration is an allocation convention for age-total net migration
+#' inputs rather than a mechanistic movement model. For adaptive deSolve runs,
+#' `time_policy = "linear"` is generally recommended for demographic schedules;
+#' `time_policy = "step"` gives piecewise-constant rates, and
+#' `time_policy = "exact"` will usually fail unless every solver evaluation
+#' time is present in the schedules.
 #'
 #' Euler updates are intentionally not truncated: if a step would produce
 #' negative compartment values, simulation stops with an error.
@@ -32,7 +48,8 @@
 #'   `age_group`, and `value`, or numeric state vector.
 #' @param times Numeric vector of finite, non-missing, strictly increasing time
 #'   points. Must have length at least two.
-#' @param model Disease model. Currently only `SIRModel()` output is supported.
+#' @param model Disease model. `SIRModel()` and `SEIRModel()` output are
+#'   supported for infection-only deterministic simulation.
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
@@ -44,11 +61,13 @@
 #' @param method Simulation method. `"euler"` is the default. `"deSolve"` and
 #'   `"ode"` request the optional `deSolve::ode()` backend.
 #' @param demographic_process Optional [DemographicProcess()] object for
-#'   first-pass deterministic SIR-demography coupling. Defaults to `NULL`,
+#'   first-pass deterministic SIR/SEIR-demography coupling. Defaults to `NULL`,
 #'   which preserves infection-only simulation.
 #' @param time_policy Demographic schedule lookup policy used only when
 #'   `demographic_process` is supplied. `"exact"` requires exact schedule times;
-#'   `"step"` uses left-continuous interval-start lookup.
+#'   `"step"` uses left-continuous interval-start lookup; `"linear"`
+#'   interpolates rate-like demographic schedules through the same demographic
+#'   derivative path.
 #'
 #' @return Data frame with columns `time`, `compartment`, `age_group`, and
 #'   `value`, ordered by time outermost, compartment next, and age group
@@ -65,7 +84,7 @@ simulate_deterministic <- function(
   infectiousness = NULL,
   method = "euler",
   demographic_process = NULL,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 ) {
   method <- validate_simulation_method(method)
   validate_simulation_times(times)
@@ -110,7 +129,9 @@ simulate_deterministic <- function(
     contact_matrix = contact_matrix,
     beta = beta,
     susceptibility = susceptibility,
-    infectiousness = infectiousness
+    infectiousness = infectiousness,
+    demographic_process = demographic_process,
+    time_policy = time_policy
   )
 }
 
@@ -124,7 +145,7 @@ simulate_deterministic_euler <- function(
   susceptibility,
   infectiousness,
   demographic_process = NULL,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 ) {
   output <- vector("list", length(times))
   output[[1]] <- simulation_state_output(
@@ -177,7 +198,7 @@ deterministic_euler_derivative <- function(
   susceptibility,
   infectiousness,
   demographic_process = NULL,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 ) {
   rates <- transition_rates(
     state = state_vector,
@@ -199,7 +220,7 @@ deterministic_euler_derivative <- function(
     return(infection_derivative)
   }
 
-  infection_derivative + sir_demographic_derivative(
+  infection_derivative + compartment_demographic_derivative(
     state_vector = state_vector,
     time = time,
     model = model,
@@ -209,38 +230,43 @@ deterministic_euler_derivative <- function(
   )
 }
 
-sir_demographic_derivative <- function(
+compartment_demographic_derivative <- function(
   state_vector,
   time,
   model,
   age_structure,
   demographic_process,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 ) {
   time_policy <- validate_demographic_time_policy(time_policy)
   validate_disease_model(model)
   validate_age_structure(age_structure)
   validate_demographic_process(demographic_process)
 
-  if (model$model_type != "SIR") {
-    stop("demographic_process coupling currently supports only SIR models.", call. = FALSE)
+  if (!"S" %in% model$compartments) {
+    stop("demographic_process coupling requires an S compartment.", call. = FALSE)
   }
 
   state_long <- state_vector_to_long(state_vector, age_structure, model$compartments)
-  S <- transition_compartment_values(state_long, age_structure, "S")
-  I <- transition_compartment_values(state_long, age_structure, "I")
-  R <- transition_compartment_values(state_long, age_structure, "R")
-  population <- S + I + R
   age_groups <- age_structure$age_groups
   n_age_groups <- age_structure$n_age_groups
 
+  compartment_indices <- lapply(seq_along(model$compartments), function(compartment_position) {
+    ((compartment_position - 1) * n_age_groups) + seq_len(n_age_groups)
+  })
+  names(compartment_indices) <- model$compartments
+
+  population <- numeric(n_age_groups)
+  for (compartment in model$compartments) {
+    population <- population +
+      transition_compartment_values(state_long, age_structure, compartment)
+  }
+
   derivative <- numeric(length(state_vector))
-  S_index <- seq_len(n_age_groups)
-  I_index <- S_index + n_age_groups
-  R_index <- I_index + n_age_groups
+  S_index <- compartment_indices[["S"]]
 
   ageing <- demographic_process$ageing_operator
-  for (index in list(S_index, I_index, R_index)) {
+  for (index in compartment_indices) {
     compartment_state <- as.numeric(state_vector[index])
     ageing_out <- ageing$departure_rate * compartment_state
     derivative[index] <- derivative[index] - ageing_out
@@ -265,9 +291,9 @@ sir_demographic_derivative <- function(
     age_groups,
     time_policy
   )
-  derivative[S_index] <- derivative[S_index] - mortality_rates * S
-  derivative[I_index] <- derivative[I_index] - mortality_rates * I
-  derivative[R_index] <- derivative[R_index] - mortality_rates * R
+  for (index in compartment_indices) {
+    derivative[index] <- derivative[index] - mortality_rates * as.numeric(state_vector[index])
+  }
 
   migration <- migration_values_at(
     demographic_process$migration_schedule,
@@ -279,7 +305,7 @@ sir_demographic_derivative <- function(
   derivative[S_index] <- derivative[S_index] + migration
 
   if (any(!is.finite(derivative))) {
-    stop("sir_demographic_derivative result must contain only finite values.", call. = FALSE)
+    stop("compartment_demographic_derivative result must contain only finite values.", call. = FALSE)
   }
 
   derivative
@@ -293,7 +319,9 @@ simulate_deterministic_desolve <- function(
   contact_matrix,
   beta,
   susceptibility,
-  infectiousness
+  infectiousness,
+  demographic_process = NULL,
+  time_policy = c("exact", "step", "linear")
 ) {
   if (!desolve_is_available()) {
     stop(
@@ -313,7 +341,9 @@ simulate_deterministic_desolve <- function(
       contact_matrix = contact_matrix,
       beta = beta,
       susceptibility = susceptibility,
-      infectiousness = infectiousness
+      infectiousness = infectiousness,
+      demographic_process = demographic_process,
+      time_policy = time_policy
     )
   )
 
@@ -353,7 +383,20 @@ deterministic_derivative_vector <- function(time, state, parms) {
     age_structure = parms$age_structure
   )
 
-  list(as.numeric(derivative$derivative))
+  infection_derivative <- as.numeric(derivative$derivative)
+
+  if (is.null(parms$demographic_process)) {
+    return(list(infection_derivative))
+  }
+
+  list(infection_derivative + compartment_demographic_derivative(
+    state_vector = as.numeric(state),
+    time = time,
+    model = parms$model,
+    age_structure = parms$age_structure,
+    demographic_process = parms$demographic_process,
+    time_policy = parms$time_policy
+  ))
 }
 
 validate_simulation_method <- function(method) {
@@ -387,16 +430,8 @@ validate_simulation_demography_inputs <- function(
   time_policy <- validate_demographic_time_policy(time_policy)
   validate_demographic_process(demographic_process)
 
-  if (method != "euler") {
-    stop(
-      "method = \"deSolve\" or \"ode\" is not supported when demographic_process is supplied. ",
-      "Use method = \"euler\" for first-pass SIR-demography coupling.",
-      call. = FALSE
-    )
-  }
-
-  if (model$model_type != "SIR") {
-    stop("demographic_process coupling currently supports only SIR models.", call. = FALSE)
+  if (!model$model_type %in% c("SIR", "SEIR")) {
+    stop("demographic_process coupling currently supports only SIR and SEIR models.", call. = FALSE)
   }
 
   validate_same_age_structure(

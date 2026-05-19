@@ -10,9 +10,11 @@
 #' derivative evaluation times must exactly match required schedule times. With
 #' `time_policy = "step"`, schedules use left-continuous interval-start lookup:
 #' a row at schedule time `t_i` applies over `[t_i, t_{i + 1})`, and Euler
-#' intervals are evaluated at their left endpoints, `times[i]`. No interpolation
-#' is performed. The optional `method = "deSolve"` and its alias `method =
-#' "ode"` are reserved for future support and currently error clearly.
+#' intervals are evaluated at their left endpoints, `times[i]`. With
+#' `time_policy = "linear"`, fertility, mortality, and migration schedules are
+#' linearly interpolated at Euler left endpoints without extrapolation. The
+#' optional `method = "deSolve"` and its alias `method = "ode"` are reserved for
+#' future support and currently error clearly.
 #'
 #' Euler updates are not truncated: if an update would produce a negative
 #' population value, simulation stops with an error.
@@ -28,6 +30,7 @@
 #'   demographic wrapper.
 #' @param time_policy Schedule lookup policy. `"exact"` requires exact schedule
 #'   times and remains the default. `"step"` uses interval-start stepwise lookup.
+#'   `"linear"` interpolates rate-like demographic schedules only.
 #' @param ... Reserved for future method-specific arguments. Currently unused.
 #'
 #' @return Data frame with columns `time`, `age_group`, and `population`,
@@ -50,7 +53,7 @@ simulate_demography <- function(
   initial_state,
   times,
   method = c("euler", "deSolve", "ode"),
-  time_policy = c("exact", "step"),
+  time_policy = c("exact", "step", "linear"),
   ...
 ) {
   if (missing(method)) {
@@ -68,7 +71,7 @@ simulate_demography <- function(
   if (method == "deSolve") {
     stop(
       "method = \"deSolve\" is not yet supported by simulate_demography(). ",
-      "Demographic schedules use exact-time lookup only and no interpolation is performed, ",
+      "Demographic schedules use fixed Euler evaluation points only in this wrapper, ",
       "so adaptive deSolve solver time points cannot be evaluated safely. Use method = \"euler\".",
       call. = FALSE
     )
@@ -82,7 +85,7 @@ simulate_demography <- function(
   )
 }
 
-simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step")) {
+simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step", "linear")) {
   time_policy <- validate_demographic_time_policy(time_policy)
   validate_demography_schedule_coverage(process, times, time_policy)
 
@@ -110,7 +113,7 @@ simulate_demography_euler <- function(process, initial_state, times, time_policy
   result
 }
 
-validate_demography_schedule_coverage <- function(process, times, time_policy = c("exact", "step")) {
+validate_demography_schedule_coverage <- function(process, times, time_policy = c("exact", "step", "linear")) {
   time_policy <- validate_demographic_time_policy(time_policy)
   left_endpoints <- times[-length(times)]
 
@@ -121,7 +124,7 @@ validate_demography_schedule_coverage <- function(process, times, time_policy = 
   invisible(NULL)
 }
 
-validate_one_demography_schedule_coverage <- function(schedule, times, time_policy = c("exact", "step")) {
+validate_one_demography_schedule_coverage <- function(schedule, times, time_policy = c("exact", "step", "linear")) {
   time_policy <- validate_demographic_time_policy(time_policy)
 
   if (is.null(schedule)) {

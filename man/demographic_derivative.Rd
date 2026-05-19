@@ -8,7 +8,7 @@ demographic_derivative(
   state,
   time,
   process,
-  time_policy = c("exact", "step")
+  time_policy = c("exact", "step", "linear")
 )
 }
 \arguments{
@@ -22,7 +22,9 @@ schedules.}
 
 \item{time_policy}{Schedule lookup policy. \code{"exact"} requires \code{time} to be
 present in each supplied schedule. \code{"step"} uses the greatest schedule time
-less than or equal to \code{time}, with no interpolation or extrapolation.}
+less than or equal to \code{time}. \code{"linear"} interpolates rate-like schedules
+between bracketing schedule times. Neither \code{"step"} nor \code{"linear"}
+extrapolates outside the schedule range.}
 }
 \value{
 A named numeric vector of derivatives ordered by the age groups in
@@ -32,16 +34,17 @@ A named numeric vector of derivatives ordered by the age groups in
 Computes \code{dN/dt} for a one-compartment age-structured population using
 ageing, optional fertility, optional mortality, and optional migration from
 an \code{\link[=DemographicProcess]{DemographicProcess()}} object. This is a demographic-only derivative: it
-does not simulate trajectories, interpolate schedules, couple to infection
-compartments, or implement any infection dynamics.
+does not simulate trajectories, couple to infection compartments, or
+implement any infection dynamics.
 }
 \details{
 Schedule values use exact-time lookup by default. If \code{time_policy = "step"},
 schedule values use left-continuous interval-start lookup: for evaluation
-time \code{t}, the greatest schedule time less than or equal to \code{t} is used. No
-interpolation is performed. Fertility currently uses the total state in each
-age group as the exposure population, as a first-pass convention, and births
-enter the youngest age group only.
+time \code{t}, the greatest schedule time less than or equal to \code{t} is used. With
+\code{time_policy = "linear"}, rate-like schedules are linearly interpolated
+between bracketing schedule times without extrapolation. Fertility currently
+uses the total state in each age group as the exposure population, as a
+first-pass convention, and births enter the youngest age group only.
 }
 \examples{
 ages <- AgeStructure(

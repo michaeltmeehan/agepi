@@ -17,3 +17,7 @@ Creates a simple, inspectable disease-model object with compartments
 \code{S}, \code{I}, and \code{R}; transitions \code{S -> I} and \code{I -> R}; and recovery
 rate \code{gamma}.
 }
+\examples{
+model <- SIRModel(gamma = 0.25)
+model$compartments
+}

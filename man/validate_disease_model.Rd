@@ -14,5 +14,5 @@ The input invisibly if validation succeeds.
 }
 \description{
 Checks the minimal disease-model fields currently required by \code{agepi}.
-At present, only SIR models are supported.
+At present, SIR and SEIR models are supported.
 }

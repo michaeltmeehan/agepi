@@ -36,6 +36,9 @@ demography, or guarantee reproduction of WPP projections. The optional
 The mortality input is interpreted as an annual hazard, compatible with the
 \code{\link[=MortalitySchedule]{MortalitySchedule()}} convention. WPP central death rates (\code{mx}) may be used
 as a first-pass annual hazard approximation.
+Inputs should be pre-filtered to one country, location, or entity before
+calling this adapter. Multi-location-shaped inputs are not selected or
+grouped here; duplicate time-age rows are rejected by \code{\link[=MortalitySchedule]{MortalitySchedule()}}.
 }
 \examples{
 ages <- wpp_age_structure_5year(max_age = 10)

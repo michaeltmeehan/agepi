@@ -2,13 +2,14 @@
 
 ## 1. Project aim
 
-Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation is a deterministic age-structured SIR model using mock inputs only, with small utility layers for simulation summaries, age-vector transformation, demography-table storage/access, and contact-matrix validation/coercion/aggregation.
+Build a small but extensible R prototype for age-structured infectious disease transmission models. The current package implementation supports deterministic age-structured SIR and SEIR simulation, including first-pass demographic coupling, with small utility layers for simulation summaries, age-vector transformation, demography-table access, demographic schedules, WPP-style adapters, and contact-matrix validation/coercion/aggregation.
 
-Checkpoint note: this design document preserves the initial prototype scope.
-Demographic-only ODE components, WPP-like demographic input standardisers, and
-residual diagnostics have since been added outside the infection simulator; see
-`README.md`, `docs/demographic_residuals.md`, and
-`examples/mock_demographic_workflow.R` for the current demographic backbone.
+Checkpoint note: this design document preserves much of the initial prototype
+scope. Demographic-only ODE components, WPP-style demographic adapters, residual
+diagnostics, SEIR infection-only simulation, linear schedule interpolation, and
+optional deSolve backends have since been added; see `README.md`,
+`docs/external_data_adapters.md`, `docs/demographic_residuals.md`, and
+`examples/mock_demographic_workflow.R` for the current public surface.
 
 The first implementation should be deliberately simple: a deterministic age-structured SIR model with one static contact matrix. However, the code should be designed so that later extensions can support:
 
@@ -31,8 +32,8 @@ The prototype should prioritise clean abstractions and testable model components
 | Component | Current implementation |
 |---|---|
 | Language | R |
-| Disease model | Age-structured SIR only |
-| Simulation | Deterministic explicit Euler only |
+| Disease model | Age-structured SIR and SEIR |
+| Simulation | Deterministic explicit Euler; optional deSolve for infection-only SIR/SEIR and SIR/SEIR-demography |
 | Age bins | User-defined model age bins |
 | Mixing | Static age-specific contact matrix |
 | Susceptibility | Age-specific vector |
@@ -42,11 +43,11 @@ The prototype should prioritise clean abstractions and testable model components
 
 | Component | Reason deferred |
 |---|---|
-| Infection-demography coupling, WPP projection matching, interpolation, and automatic residual forcing | Demographic-only ODE components now exist, but they remain separate from the infection simulator |
+| WPP projection matching, population interpolation, and automatic residual forcing | Schedule-level step and linear rate lookup exist, but population interpolation and projection matching remain out of scope |
 | `socialmixr` or `conmat` package dependencies | Current contact support is dependency-free coercion and exact aggregation |
 | Contact-matrix splitting or general rebinning | Current `transform_contact_matrix()` supports exact aggregation only |
-| SEIR and other compartment structures | Current disease model support is SIR only |
-| Adaptive or external ODE solver backends | Current simulator uses explicit Euler only |
+| Other compartment structures | Current SIR and SEIR support use fixed compartment definitions |
+| Additional adaptive or external ODE solver features | Optional deSolve support exists for the documented narrow combinations |
 | Stochastic simulation | Design for it, but do not implement yet |
 | Vaccination | Requires additional compartment conventions |
 | Waning immunity | Can be added once transition framework is stable |
@@ -75,7 +76,7 @@ transition rates
       ↓
 deterministic derivatives
       ↓
-Euler simulation
+Euler or deSolve simulation
 ```
 
 Later:
@@ -459,7 +460,9 @@ Expected behaviour:
 
 - Validate inputs.
 - Convert initial state to solver vector if needed.
-- Use explicit Euler time steps. Currently only `method = "euler"` is supported.
+- Use explicit Euler time steps by default. Optional `method = "deSolve"` is
+  supported for the documented deterministic SIR/SEIR combinations when the
+  suggested `deSolve` package is installed.
 - Return output in long format, with columns:
 
 ```text
@@ -508,6 +511,7 @@ age-transmission-prototype/
 
   examples/
     mock_sir_deterministic.R
+    mock_seir_demography.R
 
   tests/
     testthat/
@@ -516,8 +520,9 @@ age-transmission-prototype/
     age_structured_transmission_design.md
 ```
 
-The current example uses mock data only. WPP-derived demographic inputs and
-demographic projection dynamics remain future work.
+The current examples use invented mock data only. WPP-style adapters can prepare
+population, fertility, mortality, and migration inputs, but WPP projection
+matching remains future work.
 
 ---
 
@@ -579,7 +584,8 @@ Run a small deterministic simulation and check that:
 - outputs contain expected columns;
 - all state values are non-negative;
 - output includes all requested times;
-- unsupported methods are rejected.
+- unsupported methods are rejected, and optional `deSolve` combinations run when
+  the suggested package is available.
 
 ---
 
@@ -651,10 +657,35 @@ Acceptance criteria:
 
 Still future work:
 
-- interpolation or nearest-year lookup;
+- population interpolation or nearest-year population lookup;
 - WPP projection matching;
 - automatic residual forcing;
-- infection-demography coupling.
+- richer infection-demography policies beyond the current first-pass SIR/SEIR
+  coupling.
+
+### SEIR-demography policy checkpoint
+
+Current SIR-demography coupling uses one explicit allocation policy: fertility
+exposure is the total age-specific infection-state population `S + I + R`;
+births enter the youngest `S` compartment only; background mortality removes
+from `S`, `I`, and `R` independently; ageing moves `S`, `I`, and `R`
+independently; and net migration is allocated entirely to `S`. Infection
+transitions are added separately through the disease transition-rate pathway.
+
+The first SEIR-demography extension preserves that policy shape. Fertility
+exposure uses `S + E + I + R`; births enter the youngest `S` only; background
+mortality and ageing apply independently to `S`, `E`, `I`, and `R`; and net
+migration is allocated entirely to `S`.
+Disease progression `E -> I` and recovery `I -> R` remain disease-model
+transitions, and force of infection continues to depend on `I`, not `E`.
+
+The `S`-only migration rule is an allocation convention for age-total net
+migration inputs and residual-derived migration schedules. It is not a
+mechanistic model of movement by infection status. Proportional migration across
+`S`/`E`/`I`/`R` may be added later, but only behind an explicit option. This
+policy checkpoint does not add WPP projection matching, disease-induced
+mortality, vaccination, waning immunity, or compartment-specific demographic
+rates.
 
 ---
 

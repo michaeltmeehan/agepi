@@ -90,6 +90,33 @@ test_that("rates_to_derivative conserves mass within each age group for closed S
   expect_identical(names(age_sums), c("0-4", "5-9"))
 })
 
+test_that("rates_to_derivative conserves total population for infection-only SEIR rates", {
+  ages <- derivative_test_ages()
+  state <- data.frame(
+    compartment = rep(c("S", "E", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 4),
+    value = c(90, 180, 5, 15, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+  contact_matrix <- matrix(c(
+    2, 1,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+
+  rates <- transition_rates(
+    state = state,
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = contact_matrix
+  )
+  derivative <- rates_to_derivative(rates, c("S", "E", "I", "R"), ages)
+
+  age_sums <- tapply(derivative$derivative, derivative$age_group, sum)
+  expect_equal(as.numeric(age_sums), c(0, 0))
+  expect_equal(sum(derivative$derivative), 0)
+})
+
+
 test_that("rates_to_derivative handles zero rates", {
   rates <- data.frame(
     from = c("S", "I"),

@@ -141,6 +141,23 @@ test_that("demography_from_wpp population ordering matches age_structure", {
   expect_identical(population_table$population, c(115, 90, 85))
 })
 
+test_that("demography population accessors require exact times", {
+  demography <- Demography(test_demography_table(), test_age_structure())
+
+  expect_identical(
+    demography_population_at(demography, time = 1),
+    c("0-4" = 100, "5-9" = 90, "10+" = 80)
+  )
+  expect_error(
+    demography_population_at(demography, time = 0.5),
+    "time is not available in demography"
+  )
+  expect_error(
+    demography_population_table(demography, time = 0.5),
+    "time is not available in demography"
+  )
+})
+
 test_that("demography_from_wpp requires location when selector is ambiguous", {
   wpp <- rbind(
     test_wpp_table(),
