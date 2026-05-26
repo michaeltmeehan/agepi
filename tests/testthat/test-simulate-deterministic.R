@@ -42,7 +42,8 @@ simulate_test_run <- function(initial_state = simulate_test_state(), times = c(0
     times = times,
     model = SIRModel(gamma = 0.2),
     age_structure = simulate_test_ages(),
-    contact_matrix = simulate_test_contacts()
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
   )
 }
 
@@ -106,15 +107,21 @@ test_that("simulate_deterministic works for SEIR with Euler", {
 })
 
 
-test_that("method euler remains the default", {
-  default_output <- simulate_test_run(times = c(0, 0.1, 0.2))
+test_that("method defaults to deSolve when available and Euler otherwise", {
+  default_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts()
+  )
   explicit_output <- simulate_deterministic(
     initial_state = simulate_test_state(),
     times = c(0, 0.1, 0.2),
     model = SIRModel(gamma = 0.2),
     age_structure = simulate_test_ages(),
     contact_matrix = simulate_test_contacts(),
-    method = "euler"
+    method = if (desolve_is_available()) "deSolve" else "euler"
   )
 
   expect_equal(default_output, explicit_output)
@@ -134,7 +141,8 @@ test_that("non-uniform time steps are handled correctly", {
     times = c(0, 0.1, 0.3),
     model = SIRModel(gamma = 0.2),
     age_structure = simulate_test_ages(),
-    contact_matrix = simulate_test_contacts()
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
   )
 
   step_two <- output[output$time == 0.3, ]
@@ -167,7 +175,8 @@ test_that("vector and long-form initial states produce equivalent output", {
     times = c(0, 0.1, 0.2),
     model = SIRModel(gamma = 0.2),
     age_structure = ages,
-    contact_matrix = simulate_test_contacts()
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
   )
 
   expect_equal(vector_output, long_output)
@@ -185,7 +194,8 @@ test_that("simulate_deterministic ignores state vector names intentionally", {
     times = c(0, 0.1),
     model = SIRModel(gamma = 0.2),
     age_structure = simulate_test_ages(),
-    contact_matrix = simulate_test_contacts()
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
   )
 
   expect_equal(output$value[output$time == 0.1], c(87.3, 167.4, 12.5, 32.2, 0.2, 0.4))

@@ -13,8 +13,9 @@ workflows:
 - compute SIR infection/recovery and SEIR infection/progression/recovery
   transition rates;
 - convert transition rates to deterministic derivatives;
-- run deterministic SIR or SEIR simulations with explicit Euler time steps, or
-  with optional `deSolve::ode()` integration when `deSolve` is installed;
+- run deterministic SIR or SEIR simulations through a shared solver path that
+  uses `deSolve::ode()` for infection-only runs when `deSolve` is installed,
+  while preserving explicit Euler as an option;
 - optionally couple SIR or SEIR simulation to a first-pass demographic process with
   Euler or `deSolve`;
 - summarise deterministic simulation output with `compartment_totals()`, `age_group_totals()`, and `total_population()`.
@@ -29,12 +30,13 @@ mode.
 ## Current limitations
 
 The infection simulator currently supports deterministic SIR and SEIR.
-`simulate_deterministic()` defaults to `method = "euler"` and can optionally
-use `method = "deSolve"` for infection-only deterministic SIR and SEIR models,
-and for SIR or SEIR with demographic coupling, when the suggested `deSolve`
-package is installed.
-SIR and SEIR support use the same static transition-rate pathway; the focused
-package tests cover the Euler and deSolve backends.
+`simulate_deterministic()` defaults to `deSolve` for infection-only deterministic
+SIR and SEIR models when the suggested `deSolve` package is installed, and
+falls back to Euler otherwise. SIR or SEIR with demographic coupling keeps the
+existing Euler default because exact schedule lookup remains the default
+demographic policy; pass `method = "deSolve"` explicitly for supported coupled
+runs. SIR and SEIR support use the same static transition-rate pathway; the
+focused package tests cover the Euler and deSolve backends.
 
 The current scope is deliberately small:
 
@@ -57,7 +59,7 @@ The current scope is deliberately small:
 | Area | Current support | Not in current scope |
 |---|---|---|
 | Disease models | Deterministic SIR and SEIR | Stochastic simulation, vaccination, waning immunity, disease-induced mortality |
-| Solvers | Euler; optional `deSolve` for documented SIR/SEIR combinations | Event handling or additional solver backends |
+| Solvers | Shared Euler/deSolve path for documented SIR/SEIR combinations | Event handling or additional solver backends |
 | Demography coupling | Births to `S`; net migration defaults to `S` or can be proportional/error; mortality and ageing by compartment | Compartment-specific demographic rates |
 | Time-varying inputs | Demographic schedules with exact, step, or linear rate lookup | Time-varying contact matrices |
 | WPP-style data | Dependency-free population, fertility, mortality, and migration adapters | qx/survival conversion, residual migration fitting, projection matching |
@@ -174,9 +176,9 @@ population tables may represent initial conditions, observed trajectories, or
 projection targets, and those meanings need different interpolation policies.
 
 Demographic-only helpers now cover age grids, ageing operators, fertility,
-mortality, migration, demographic process assembly, Euler simulation,
+mortality, migration, demographic process assembly, simulation,
 comparison, and residual diagnostics. `simulate_demography()` uses exact-time
-schedule lookup by default and offers opt-in interval-start stepwise lookup via
+schedule lookup with Euler by default and offers opt-in interval-start stepwise lookup via
 `time_policy = "step"` or bounded linear rate interpolation via
 `time_policy = "linear"`. Stepwise schedules are left-continuous: a schedule row
 at `t_i` applies from `t_i` up to the next schedule time. Linear interpolation

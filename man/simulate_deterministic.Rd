@@ -41,7 +41,9 @@ group.}
 \item{infectiousness}{Optional non-negative numeric vector by source age
 group.}
 
-\item{method}{Simulation method. \code{"euler"} is the default. \code{"deSolve"} and
+\item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for
+infection-only runs when available and \code{"euler"} otherwise; coupled
+demographic runs preserve the existing Euler default. \code{"deSolve"} and
 \code{"ode"} request the optional \code{deSolve::ode()} backend.}
 
 \item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
@@ -60,10 +62,11 @@ Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
 innermost.
 }
 \description{
-Runs a simple deterministic prototype simulation. The default
-\code{method = "euler"} uses explicit Euler time steps. Optional
-\code{method = "deSolve"} uses \code{deSolve::ode()} when the suggested \code{deSolve}
-package is installed.
+Runs a simple deterministic prototype simulation. For infection-only runs,
+deSolve is used by default when the suggested \code{deSolve} package is
+installed; otherwise the simulation falls back to explicit Euler time steps.
+Coupled demographic runs keep the existing Euler default because exact schedule
+lookup is the default demographic policy.
 }
 \details{
 The initial state may be supplied either as long-form state data or as a

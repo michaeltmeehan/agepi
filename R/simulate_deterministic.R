@@ -1,9 +1,11 @@
 #' Simulate a deterministic SIR or SEIR model
 #'
-#' Runs a simple deterministic prototype simulation. The default
-#' `method = "euler"` uses explicit Euler time steps. Optional
-#' `method = "deSolve"` uses `deSolve::ode()` when the suggested `deSolve`
-#' package is installed.
+#' Runs a simple deterministic prototype simulation. For infection-only runs,
+#' deSolve is used by default when the suggested `deSolve` package is
+#' installed; otherwise the simulation falls back to explicit Euler time steps.
+#' Coupled demographic runs keep the existing Euler default because exact
+#' schedule lookup is the default demographic policy. Set `method = "deSolve"`
+#' or `method = "euler"` explicitly to choose a backend.
 #'
 #' The initial state may be supplied either as long-form state data or as a
 #' numeric vector in the existing compartment-major, age-group-minor ordering.
@@ -58,8 +60,11 @@
 #'   group.
 #' @param infectiousness Optional non-negative numeric vector by source age
 #'   group.
-#' @param method Simulation method. `"euler"` is the default. `"deSolve"` and
-#'   `"ode"` request the optional `deSolve::ode()` backend.
+#' @param method Simulation method. `NULL` selects `"deSolve"` for
+#'   infection-only runs when available and `"euler"` otherwise; coupled
+#'   demographic runs preserve the existing Euler default. `"deSolve"` and
+#'   `"ode"` request the optional `deSolve::ode()` backend. `"euler"` requests
+#'   explicit Euler time steps.
 #' @param demographic_process Optional [DemographicProcess()] object for
 #'   first-pass deterministic SIR/SEIR-demography coupling. Defaults to `NULL`,
 #'   which preserves infection-only simulation.
@@ -88,11 +93,12 @@ simulate_deterministic <- function(
   beta = 1,
   susceptibility = NULL,
   infectiousness = NULL,
-  method = "euler",
+  method = NULL,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
 ) {
+  method_was_null <- is.null(method)
   method <- validate_simulation_method(method)
   migration_policy <- validate_migration_policy(migration_policy)
   validate_simulation_times(times)
@@ -106,6 +112,9 @@ simulate_deterministic <- function(
     age_structure = age_structure,
     times = times
   )
+  if (method_was_null && !is.null(demographic_process)) {
+    method <- "euler"
+  }
 
   state_vector <- simulation_state_to_vector(
     initial_state,
@@ -114,25 +123,10 @@ simulate_deterministic <- function(
   )
   validate_non_negative_simulation_state(state_vector, "initial_state")
 
-  if (method == "euler") {
-    return(simulate_deterministic_euler(
-      state_vector = state_vector,
-      times = times,
-      model = model,
-      age_structure = age_structure,
-      contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
-      demographic_process = demographic_process,
-      time_policy = time_policy,
-      migration_policy = migration_policy
-    ))
-  }
-
-  simulate_deterministic_desolve(
+  simulate_deterministic_integrated(
     state_vector = state_vector,
     times = times,
+    method = method,
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
@@ -145,9 +139,10 @@ simulate_deterministic <- function(
   )
 }
 
-simulate_deterministic_euler <- function(
+simulate_deterministic_integrated <- function(
   state_vector,
   times,
+  method,
   model,
   age_structure,
   contact_matrix,
@@ -158,49 +153,43 @@ simulate_deterministic_euler <- function(
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
 ) {
-  output <- vector("list", length(times))
-  output[[1]] <- simulation_state_output(
-    state_vector,
-    time = times[1],
-    age_structure = age_structure,
-    compartments = model$compartments
+  integrate_state_trajectory(
+    initial_state = state_vector,
+    times = times,
+    method = method,
+    derivative = function(time, state) {
+      deterministic_derivative(
+        state_vector = state,
+        time = time,
+        model = model,
+        age_structure = age_structure,
+        contact_matrix = contact_matrix,
+        beta = beta,
+        susceptibility = susceptibility,
+        infectiousness = infectiousness,
+        demographic_process = demographic_process,
+        time_policy = time_policy,
+        migration_policy = migration_policy
+      )
+    },
+    output = function(state, time) {
+      simulation_state_output(
+        state,
+        time = time,
+        age_structure = age_structure,
+        compartments = model$compartments
+      )
+    },
+    non_negative = validate_non_negative_euler_state,
+    tcrit = if (is.null(demographic_process)) NULL else desolve_schedule_tcrit(demographic_process, times),
+    desolve_error = paste(
+      "method = \"deSolve\" requires the optional deSolve package.",
+      "Install deSolve or use method = \"euler\"."
+    )
   )
-
-  current_state <- state_vector
-  for (i in seq_len(length(times) - 1)) {
-    dt <- times[i + 1] - times[i]
-    derivative <- deterministic_euler_derivative(
-      state_vector = current_state,
-      time = times[i],
-      model = model,
-      age_structure = age_structure,
-      contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
-      demographic_process = demographic_process,
-      time_policy = time_policy,
-      migration_policy = migration_policy
-    )
-
-    next_state <- as.numeric(current_state) + dt * derivative
-    validate_non_negative_euler_state(next_state, time = times[i + 1])
-
-    current_state <- next_state
-    output[[i + 1]] <- simulation_state_output(
-      current_state,
-      time = times[i + 1],
-      age_structure = age_structure,
-      compartments = model$compartments
-    )
-  }
-
-  result <- do.call(rbind, output)
-  row.names(result) <- NULL
-  result
 }
 
-deterministic_euler_derivative <- function(
+deterministic_derivative <- function(
   state_vector,
   time,
   model,
@@ -214,7 +203,7 @@ deterministic_euler_derivative <- function(
   migration_policy = c("susceptible", "proportional", "error")
 ) {
   rates <- transition_rates(
-    state = state_vector,
+    state = as.numeric(state_vector),
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
@@ -234,10 +223,67 @@ deterministic_euler_derivative <- function(
   }
 
   infection_derivative + compartment_demographic_derivative(
+    state_vector = as.numeric(state_vector),
+    time = time,
+    model = model,
+    age_structure = age_structure,
+    demographic_process = demographic_process,
+    time_policy = time_policy,
+    migration_policy = migration_policy
+  )
+}
+
+simulate_deterministic_euler <- function(
+  state_vector,
+  times,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness,
+  demographic_process = NULL,
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
+) {
+  simulate_deterministic_integrated(
+    state_vector = state_vector,
+    times = times,
+    method = "euler",
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness,
+    demographic_process = demographic_process,
+    time_policy = time_policy,
+    migration_policy = migration_policy
+  )
+}
+
+deterministic_euler_derivative <- function(
+  state_vector,
+  time,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness,
+  demographic_process = NULL,
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
+) {
+  deterministic_derivative(
     state_vector = state_vector,
     time = time,
     model = model,
     age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness,
     demographic_process = demographic_process,
     time_policy = time_policy,
     migration_policy = migration_policy
@@ -393,86 +439,30 @@ simulate_deterministic_desolve <- function(
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
 ) {
-  if (!desolve_is_available()) {
-    stop(
-      "method = \"deSolve\" requires the optional deSolve package. ",
-      "Install deSolve or use method = \"euler\".",
-      call. = FALSE
-    )
-  }
-
-  solved <- deSolve::ode(
-    y = as.numeric(state_vector),
+  simulate_deterministic_integrated(
+    state_vector = state_vector,
     times = times,
-    func = deterministic_derivative_vector,
-    parms = list(
-      model = model,
-      age_structure = age_structure,
-      contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
-      demographic_process = demographic_process,
-      time_policy = time_policy,
-      migration_policy = migration_policy
-    ),
-    tcrit = max(times)
+    method = "deSolve",
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness,
+    demographic_process = demographic_process,
+    time_policy = time_policy,
+    migration_policy = migration_policy
   )
-
-  output <- vector("list", length(times))
-  state_columns <- seq_len(length(state_vector)) + 1
-  for (i in seq_along(times)) {
-    output[[i]] <- simulation_state_output(
-      as.numeric(solved[i, state_columns]),
-      time = solved[i, "time"],
-      age_structure = age_structure,
-      compartments = model$compartments
-    )
-  }
-
-  result <- do.call(rbind, output)
-  row.names(result) <- NULL
-  result
-}
-
-desolve_is_available <- function() {
-  requireNamespace("deSolve", quietly = TRUE)
-}
-
-deterministic_derivative_vector <- function(time, state, parms) {
-  rates <- transition_rates(
-    state = as.numeric(state),
-    model = parms$model,
-    age_structure = parms$age_structure,
-    contact_matrix = parms$contact_matrix,
-    beta = parms$beta,
-    susceptibility = parms$susceptibility,
-    infectiousness = parms$infectiousness
-  )
-  derivative <- rates_to_derivative(
-    transition_rate_table = rates,
-    compartments = parms$model$compartments,
-    age_structure = parms$age_structure
-  )
-
-  infection_derivative <- as.numeric(derivative$derivative)
-
-  if (is.null(parms$demographic_process)) {
-    return(list(infection_derivative))
-  }
-
-  list(infection_derivative + compartment_demographic_derivative(
-    state_vector = as.numeric(state),
-    time = time,
-    model = parms$model,
-    age_structure = parms$age_structure,
-      demographic_process = parms$demographic_process,
-      time_policy = parms$time_policy,
-      migration_policy = parms$migration_policy
-  ))
 }
 
 validate_simulation_method <- function(method) {
+  if (is.null(method)) {
+    if (desolve_is_available()) {
+      return("deSolve")
+    }
+    return("euler")
+  }
+
   if (!is.character(method) || length(method) != 1 || anyNA(method) || method == "") {
     stop("method must be a non-missing character scalar.", call. = FALSE)
   }

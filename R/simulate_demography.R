@@ -9,12 +9,12 @@
 #' Schedule lookup is exact-time only by default. With `time_policy = "exact"`,
 #' derivative evaluation times must exactly match required schedule times. With
 #' `time_policy = "step"`, schedules use left-continuous interval-start lookup:
-#' a row at schedule time `t_i` applies over `[t_i, t_{i + 1})`, and Euler
+#' a row at schedule time `t_i` applies over `[t_i, t_{i + 1})`. Euler
 #' intervals are evaluated at their left endpoints, `times[i]`. With
 #' `time_policy = "linear"`, fertility, mortality, and migration schedules are
-#' linearly interpolated at Euler left endpoints without extrapolation. The
-#' optional `method = "deSolve"` and its alias `method = "ode"` are reserved for
-#' future support and currently error clearly.
+#' linearly interpolated without extrapolation. The optional `method =
+#' "deSolve"` and its alias `method = "ode"` use `deSolve::ode()` when the
+#' suggested `deSolve` package is installed.
 #'
 #' Euler updates are not truncated: if an update would produce a negative
 #' population value, simulation stops with an error.
@@ -25,9 +25,9 @@
 #'   restored to the process age groups internally.
 #' @param times Numeric vector of finite, non-missing, strictly increasing time
 #'   points. Must have length at least two.
-#' @param method Simulation method. `"euler"` is the default. `"deSolve"` and
-#'   `"ode"` are accepted for future compatibility but currently error for this
-#'   demographic wrapper.
+#' @param method Simulation method. `NULL` preserves the demographic wrapper's
+#'   explicit Euler default. `"deSolve"` and `"ode"` request the optional
+#'   `deSolve::ode()` backend. `"euler"` requests explicit Euler time steps.
 #' @param time_policy Schedule lookup policy. `"exact"` requires exact schedule
 #'   times and remains the default. `"step"` uses interval-start stepwise lookup.
 #'   `"linear"` interpolates rate-like demographic schedules only.
@@ -52,15 +52,11 @@ simulate_demography <- function(
   process,
   initial_state,
   times,
-  method = c("euler", "deSolve", "ode"),
+  method = NULL,
   time_policy = c("exact", "step", "linear"),
   ...
 ) {
-  if (missing(method)) {
-    method <- "euler"
-  } else {
-    method <- validate_demography_simulation_method(method)
-  }
+  method <- if (is.null(method)) "euler" else validate_simulation_method(method)
   validate_demographic_process(process)
   validate_simulation_times(times)
   time_policy <- validate_demographic_time_policy(time_policy)
@@ -68,24 +64,30 @@ simulate_demography <- function(
 
   state <- validate_demography_initial_state(initial_state, process)
 
-  if (method == "deSolve") {
-    stop(
-      "method = \"deSolve\" is not yet supported by simulate_demography(). ",
-      "Demographic schedules use fixed Euler evaluation points only in this wrapper, ",
-      "so adaptive deSolve solver time points cannot be evaluated safely. Use method = \"euler\".",
-      call. = FALSE
-    )
-  }
-
-  simulate_demography_euler(
+  simulate_demography_integrated(
     process = process,
     initial_state = state,
     times = times,
+    method = method,
     time_policy = time_policy
   )
 }
 
 simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step", "linear")) {
+  simulate_demography_integrated(
+    process = process,
+    initial_state = initial_state,
+    times = times,
+    method = "euler",
+    time_policy = time_policy
+  )
+}
+
+simulate_demography_integrated <- function(process,
+                                           initial_state,
+                                           times,
+                                           method,
+                                           time_policy = c("exact", "step", "linear")) {
   time_policy <- validate_demographic_time_policy(time_policy)
   validate_demography_schedule_coverage(
     process,
@@ -94,28 +96,32 @@ simulate_demography_euler <- function(process, initial_state, times, time_policy
     include_output_times = TRUE
   )
 
-  output <- vector("list", length(times))
-  output[[1]] <- demographic_state_output(initial_state, time = times[1], process = process)
-
-  current_state <- initial_state
-  for (i in seq_len(length(times) - 1)) {
-    dt <- times[i + 1] - times[i]
-    derivative <- demographic_derivative(
-      current_state,
-      time = times[i],
-      process = process,
-      time_policy = time_policy
+  integrate_state_trajectory(
+    initial_state = initial_state,
+    times = times,
+    method = method,
+    derivative = function(time, state) {
+      demographic_derivative(
+        state,
+        time = time,
+        process = process,
+        time_policy = time_policy
+      )
+    },
+    output = function(state, time) {
+      demographic_state_output(
+        stats::setNames(as.numeric(state), process$age_structure$age_groups),
+        time = time,
+        process = process
+      )
+    },
+    non_negative = validate_non_negative_demography_euler_state,
+    tcrit = desolve_schedule_tcrit(process, times),
+    desolve_error = paste(
+      "method = \"deSolve\" requires the optional deSolve package.",
+      "Install deSolve or use method = \"euler\"."
     )
-    next_state <- as.numeric(current_state) + dt * as.numeric(derivative)
-    validate_non_negative_demography_euler_state(next_state, time = times[i + 1])
-
-    current_state <- stats::setNames(next_state, process$age_structure$age_groups)
-    output[[i + 1]] <- demographic_state_output(current_state, time = times[i + 1], process = process)
-  }
-
-  result <- do.call(rbind, output)
-  row.names(result) <- NULL
-  result
+  )
 }
 
 validate_demography_schedule_coverage <- function(process,
@@ -182,19 +188,7 @@ validate_demography_initial_state <- function(initial_state, process) {
 }
 
 validate_demography_simulation_method <- function(method) {
-  if (!is.character(method) || length(method) != 1 || anyNA(method) || method == "") {
-    stop("method must be a non-missing character scalar.", call. = FALSE)
-  }
-
-  if (!method %in% c("euler", "deSolve", "ode")) {
-    stop("unsupported simulation method: ", method, call. = FALSE)
-  }
-
-  if (method == "ode") {
-    return("deSolve")
-  }
-
-  method
+  validate_simulation_method(method)
 }
 
 validate_non_negative_demography_euler_state <- function(state, time) {

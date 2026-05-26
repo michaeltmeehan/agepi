@@ -399,15 +399,47 @@ test_that("Euler steps that produce negative populations are rejected", {
   )
 })
 
-test_that("method deSolve and ode error clearly for deferred exact-time support", {
+test_that("method deSolve and ode run for demographic-only simulation", {
+  skip_if_not_installed("deSolve")
+  process <- simulate_demography_process()
+
+  desolve_output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "deSolve")
+  ode_output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "ode")
+
+  expect_identical(names(desolve_output), c("time", "age_group", "population"))
+  expect_equal(ode_output, desolve_output)
+  expect_true(all(is.finite(desolve_output$population)))
+})
+
+test_that("Euler and deSolve agree for zero demographic derivative", {
+  skip_if_not_installed("deSolve")
+  ages <- simulate_demography_test_ages()
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  process <- DemographicProcess(age_structure = ages, ageing_operator = ageing)
+
+  euler_output <- simulate_demography(
+    process,
+    initial_state = c(100, 50, 25),
+    times = c(0, 1),
+    method = "euler"
+  )
+  desolve_output <- simulate_demography(
+    process,
+    initial_state = c(100, 50, 25),
+    times = c(0, 1),
+    method = "deSolve"
+  )
+
+  expect_equal(desolve_output, euler_output)
+})
+
+test_that("method deSolve errors clearly when deSolve is unavailable", {
+  local_mocked_bindings(desolve_is_available = function() FALSE)
   process <- simulate_demography_process()
 
   expect_error(
     simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "deSolve", time_policy = "step"),
-    "not yet supported.*fixed Euler evaluation points"
-  )
-  expect_error(
-    simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "ode", time_policy = "step"),
-    "not yet supported.*fixed Euler evaluation points"
+    "requires the optional deSolve package"
   )
 })
