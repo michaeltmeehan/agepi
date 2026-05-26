@@ -66,8 +66,8 @@
 #'   `"ode"` request the optional `deSolve::ode()` backend. `"euler"` requests
 #'   explicit Euler time steps.
 #' @param demographic_process Optional [DemographicProcess()] object for
-#'   first-pass deterministic SIR/SEIR-demography coupling. Defaults to `NULL`,
-#'   which preserves infection-only simulation.
+#'   first-pass deterministic SIR/SEIR/generic-demography coupling. Defaults to
+#'   `NULL`, which preserves infection-only simulation.
 #' @param time_policy Demographic schedule lookup policy used only when
 #'   `demographic_process` is supplied. `"exact"` requires exact schedule times;
 #'   `"step"` uses left-continuous interval-start lookup; `"linear"`
@@ -305,8 +305,14 @@ compartment_demographic_derivative <- function(
   validate_age_structure(age_structure)
   validate_demographic_process(demographic_process)
 
-  if (!"S" %in% model$compartments) {
-    stop("demographic_process coupling requires an S compartment.", call. = FALSE)
+  birth_compartment <- demographic_birth_compartment(model)
+  migration_compartment <- demographic_migration_compartment(model)
+
+  if (is.null(birth_compartment)) {
+    stop("demographic_process coupling requires a birth_compartment or an S compartment.", call. = FALSE)
+  }
+  if (migration_policy == "susceptible" && is.null(migration_compartment)) {
+    stop("migration_policy = \"susceptible\" requires a migration_compartment or an S compartment.", call. = FALSE)
   }
 
   state_long <- state_vector_to_long(state_vector, age_structure, model$compartments)
@@ -325,7 +331,7 @@ compartment_demographic_derivative <- function(
   }
 
   derivative <- numeric(length(state_vector))
-  S_index <- compartment_indices[["S"]]
+  birth_index <- compartment_indices[[birth_compartment]]
 
   ageing <- demographic_process$ageing_operator
   for (index in compartment_indices) {
@@ -345,7 +351,7 @@ compartment_demographic_derivative <- function(
     age_groups,
     time_policy
   )
-  derivative[S_index[1]] <- derivative[S_index[1]] + sum(fertility_rates * population)
+  derivative[birth_index[1]] <- derivative[birth_index[1]] + sum(fertility_rates * population)
 
   mortality_rates <- mortality_rates_at(
     demographic_process$mortality_schedule,
@@ -369,6 +375,7 @@ compartment_demographic_derivative <- function(
     state_vector = state_vector,
     population = population,
     compartment_indices = compartment_indices,
+    migration_compartment = migration_compartment,
     migration_policy = migration_policy
   )
 
@@ -384,13 +391,14 @@ compartment_migration_derivative <- function(
   state_vector,
   population,
   compartment_indices,
+  migration_compartment,
   migration_policy = c("susceptible", "proportional", "error")
 ) {
   migration_policy <- validate_migration_policy(migration_policy)
   migration_derivative <- numeric(length(state_vector))
 
   if (migration_policy == "susceptible") {
-    migration_derivative[compartment_indices[["S"]]] <- migration
+    migration_derivative[compartment_indices[[migration_compartment]]] <- migration
     return(migration_derivative)
   }
 
@@ -506,10 +514,6 @@ validate_simulation_demography_inputs <- function(
   time_policy <- validate_demographic_time_policy(time_policy)
   validate_demographic_process(demographic_process)
 
-  if (!model$model_type %in% c("SIR", "SEIR")) {
-    stop("demographic_process coupling currently supports only SIR and SEIR models.", call. = FALSE)
-  }
-
   validate_same_age_structure(
     age_structure,
     demographic_process$age_structure,
@@ -523,6 +527,30 @@ validate_simulation_demography_inputs <- function(
   )
 
   time_policy
+}
+
+demographic_birth_compartment <- function(model) {
+  if (model$model_type == "CompartmentModel") {
+    return(model$birth_compartment)
+  }
+
+  if ("S" %in% model$compartments) {
+    return("S")
+  }
+
+  NULL
+}
+
+demographic_migration_compartment <- function(model) {
+  if (model$model_type == "CompartmentModel") {
+    return(model$migration_compartment)
+  }
+
+  if ("S" %in% model$compartments) {
+    return("S")
+  }
+
+  NULL
 }
 
 validate_simulation_times <- function(times) {

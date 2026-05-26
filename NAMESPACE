@@ -3,6 +3,7 @@
 export(AgeStructure)
 export(AgeingOperator)
 export(ContactSchedule)
+export(CompartmentModel)
 export(DemographicProcess)
 export(Demography)
 export(FertilitySchedule)

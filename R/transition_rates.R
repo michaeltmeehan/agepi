@@ -2,7 +2,7 @@
 #'
 #' Computes transition hazards/flows for a disease model at the supplied state.
 #' The returned rates are not updated compartment counts. SIR and SEIR disease
-#' models are supported.
+#' models and generic `CompartmentModel()` models are supported.
 #'
 #' `state` may be either a long-form data frame with columns `compartment`,
 #' `age_group`, and `value`, or a numeric vector using the existing
@@ -10,8 +10,8 @@
 #' are ignored.
 #'
 #' @param state Long-form state data frame or numeric state vector.
-#' @param model Disease model. `SIRModel()` and `SEIRModel()` output are
-#'   supported.
+#' @param model Disease model. `SIRModel()`, `SEIRModel()`, and
+#'   `CompartmentModel()` output are supported.
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
@@ -38,6 +38,18 @@ transition_rates <- function(
 
   state_long <- transition_state_to_long(state, age_structure, model$compartments)
   validate_non_negative_state_values(state_long)
+
+  if (model$model_type == "CompartmentModel") {
+    return(generic_transition_rates(
+      state_long = state_long,
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness
+    ))
+  }
 
   S <- transition_compartment_values(state_long, age_structure, "S")
   I <- transition_compartment_values(state_long, age_structure, "I")
@@ -79,6 +91,165 @@ transition_rates <- function(
     rate = as.numeric(rbind(infection_rates, recovery_rates)),
     stringsAsFactors = FALSE
   )
+}
+
+generic_transition_rates <- function(
+  state_long,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness
+) {
+  population <- transition_population_by_age(state_long, age_structure, model$compartments)
+  validate_positive_age_populations(population, age_structure)
+
+  infection_rates <- generic_infection_rates(
+    state_long = state_long,
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness,
+    population = population
+  )
+  per_capita_rates <- generic_per_capita_transition_rates(
+    state_long = state_long,
+    model = model,
+    age_structure = age_structure
+  )
+
+  rates <- rbind(infection_rates, per_capita_rates)
+  rates$.transition_order <- seq_len(nrow(rates))
+  rates <- rates[order(rates$age_index, rates$.transition_order), ]
+  row.names(rates) <- NULL
+
+  rates[, c("from", "to", "age_group", "rate")]
+}
+
+generic_infection_rates <- function(
+  state_long,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness,
+  population
+) {
+  if (nrow(model$infection_transitions) == 0) {
+    return(generic_empty_rate_table())
+  }
+
+  infectious <- numeric(age_structure$n_age_groups)
+  for (i in seq_along(model$infectious_compartments)) {
+    infectious <- infectious +
+      model$infectiousness_weights[i] *
+      transition_compartment_values(
+        state_long,
+        age_structure,
+        model$infectious_compartments[i]
+      )
+  }
+
+  lambda <- force_of_infection(
+    infectious = infectious,
+    population = population,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness,
+    age_structure = age_structure
+  )
+
+  rows <- vector("list", nrow(model$infection_transitions))
+  for (i in seq_len(nrow(model$infection_transitions))) {
+    from_values <- transition_compartment_values(
+      state_long,
+      age_structure,
+      model$infection_transitions$from[i]
+    )
+    rows[[i]] <- data.frame(
+      from = model$infection_transitions$from[i],
+      to = model$infection_transitions$to[i],
+      age_group = age_structure$age_groups,
+      rate = as.numeric(lambda) * from_values,
+      age_index = seq_len(age_structure$n_age_groups),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  do.call(rbind, rows)
+}
+
+generic_per_capita_transition_rates <- function(state_long, model, age_structure) {
+  if (nrow(model$transitions) == 0) {
+    return(generic_empty_rate_table())
+  }
+
+  rows <- vector("list", nrow(model$transitions))
+  for (i in seq_len(nrow(model$transitions))) {
+    from_values <- transition_compartment_values(
+      state_long,
+      age_structure,
+      model$transitions$from[i]
+    )
+    per_capita_rate <- validate_transition_rate_for_age(
+      model$transitions$rate[[i]],
+      age_structure,
+      paste0("transition rate for ", model$transitions$from[i], "->", model$transitions$to[i])
+    )
+    rows[[i]] <- data.frame(
+      from = model$transitions$from[i],
+      to = model$transitions$to[i],
+      age_group = age_structure$age_groups,
+      rate = per_capita_rate * from_values,
+      age_index = seq_len(age_structure$n_age_groups),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  do.call(rbind, rows)
+}
+
+generic_empty_rate_table <- function() {
+  data.frame(
+    from = character(),
+    to = character(),
+    age_group = character(),
+    rate = numeric(),
+    age_index = integer(),
+    stringsAsFactors = FALSE
+  )
+}
+
+validate_transition_rate_for_age <- function(rate, age_structure, name) {
+  if (!is.numeric(rate) || is.matrix(rate) || is.data.frame(rate) ||
+      length(rate) == 0 || anyNA(rate) || any(!is.finite(rate))) {
+    stop(name, " must contain finite non-missing numeric value(s).", call. = FALSE)
+  }
+
+  if (!length(rate) %in% c(1, age_structure$n_age_groups)) {
+    stop(
+      name,
+      " length must be 1 or match the number of age groups: ",
+      age_structure$n_age_groups,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  if (any(rate < 0)) {
+    stop(name, " cannot contain negative values.", call. = FALSE)
+  }
+
+  if (length(rate) == 1) {
+    return(rep(as.numeric(rate), age_structure$n_age_groups))
+  }
+
+  as.numeric(rate)
 }
 
 transition_population_by_age <- function(state_long, age_structure, compartments) {

@@ -1,0 +1,294 @@
+generic_test_ages <- function() {
+  AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+}
+
+generic_test_contacts <- function() {
+  matrix(c(
+    2, 1,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+}
+
+generic_sir_state <- function(S = c(90, 180), I = c(10, 20), R = c(0, 0)) {
+  data.frame(
+    compartment = rep(c("S", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 3),
+    value = c(S, I, R),
+    stringsAsFactors = FALSE
+  )
+}
+
+generic_seir_state <- function(
+  S = c(90, 180),
+  E = c(5, 15),
+  I = c(10, 20),
+  R = c(0, 0)
+) {
+  data.frame(
+    compartment = rep(c("S", "E", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 4),
+    value = c(S, E, I, R),
+    stringsAsFactors = FALSE
+  )
+}
+
+generic_sir_model <- function(gamma = 0.2) {
+  CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = gamma, stringsAsFactors = FALSE),
+    infectious_compartments = "I"
+  )
+}
+
+generic_seir_model <- function(sigma = 0.3, gamma = 0.2) {
+  CompartmentModel(
+    compartments = c("S", "E", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("E", "I"),
+      to = c("I", "R"),
+      rate = c(sigma, gamma),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+}
+
+test_that("CompartmentModel constructs a valid generic disease model", {
+  model <- generic_seir_model()
+
+  expect_s3_class(model, "DiseaseModel")
+  expect_identical(model$model_type, "CompartmentModel")
+  expect_identical(model$compartments, c("S", "E", "I", "R"))
+  expect_identical(model$birth_compartment, "S")
+  expect_identical(model$migration_compartment, "S")
+  expect_silent(validate_disease_model(model))
+})
+
+test_that("CompartmentModel validates compartment names and transition definitions", {
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I", "I"),
+      infection_transitions = data.frame(from = "S", to = "I")
+    ),
+    "compartments must be unique"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I"),
+      infection_transitions = data.frame(from = "S", stringsAsFactors = FALSE)
+    ),
+    "infection_transitions is missing required column"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I"),
+      transitions = data.frame(from = "I", to = "R", rate = 0.2)
+    ),
+    "unknown destination compartment"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I"),
+      transitions = data.frame(from = "I", to = "S", rate = -0.2)
+    ),
+    "cannot contain negative"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I"),
+      infection_transitions = data.frame(from = "S", to = "I"),
+      infectious_compartments = "E"
+    ),
+    "infectious_compartments contains unknown compartment"
+  )
+})
+
+test_that("generic SIR transition rates match SIRModel transition rates", {
+  ages <- generic_test_ages()
+  expected <- transition_rates(
+    state = generic_sir_state(),
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+  observed <- transition_rates(
+    state = generic_sir_state(),
+    model = generic_sir_model(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(observed, expected)
+})
+
+test_that("generic SEIR transition rates and derivatives match SEIRModel", {
+  ages <- generic_test_ages()
+  expected_rates <- transition_rates(
+    state = generic_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+  observed_rates <- transition_rates(
+    state = generic_seir_state(),
+    model = generic_seir_model(sigma = 0.3, gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(observed_rates, expected_rates)
+  expect_equal(
+    rates_to_derivative(observed_rates, c("S", "E", "I", "R"), ages),
+    rates_to_derivative(expected_rates, c("S", "E", "I", "R"), ages)
+  )
+})
+
+test_that("generic SIR trajectory matches existing one-age-group SIR", {
+  ages <- AgeStructure("all", 0, Inf)
+  contacts <- matrix(2, nrow = 1, ncol = 1)
+  initial_state <- data.frame(
+    compartment = c("S", "I", "R"),
+    age_group = "all",
+    value = c(99, 1, 0),
+    stringsAsFactors = FALSE
+  )
+
+  expected <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.25, 0.5),
+    model = SIRModel(gamma = 0.1),
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.2,
+    method = "euler"
+  )
+  observed <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.25, 0.5),
+    model = generic_sir_model(gamma = 0.1),
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.2,
+    method = "euler"
+  )
+
+  expect_equal(observed, expected)
+})
+
+test_that("generic model supports age-specific per-capita rates", {
+  ages <- generic_test_ages()
+  transitions <- data.frame(from = "I", to = "R", stringsAsFactors = FALSE)
+  transitions$rate <- I(list(c(0.1, 0.3)))
+  model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    transitions = transitions
+  )
+
+  rates <- transition_rates(
+    state = generic_sir_state(),
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(rates$rate, c(1, 6))
+})
+
+test_that("generic model can use arbitrary infectious compartments", {
+  ages <- generic_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "A", "R"),
+    infection_transitions = data.frame(from = "S", to = "A", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "A", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "A"
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "A", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 3),
+    value = c(90, 180, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(rates$rate, c(27, 0, 126, 0))
+})
+
+test_that("generic contact orientation remains recipient-row source-column", {
+  ages <- generic_test_ages()
+  state <- generic_sir_state(S = c(100, 100), I = c(0, 10), R = c(0, 0))
+  contacts <- matrix(c(
+    0, 5,
+    0, 0
+  ), nrow = 2, byrow = TRUE)
+
+  rates <- transition_rates(
+    state = state,
+    model = generic_sir_model(gamma = 0),
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+
+  expect_equal(rates$rate, c(500 / 11, 0, 0, 0))
+})
+
+test_that("generic demographic coupling births and migration enter configured compartments", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5+"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, Inf)
+  )
+  ageing <- AgeingOperator(ages)
+  ageing$departure_rate[] <- 0
+  fertility <- FertilitySchedule(
+    data.frame(time = 0, age_group = "5+", fertility_rate = 0.1),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(time = 0, age_group = ages$age_groups, migration_count = c(2, 3)),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = ageing,
+    fertility_schedule = fertility,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+  model <- CompartmentModel(
+    compartments = c("U", "I"),
+    transitions = data.frame(from = "I", to = "U", rate = 0),
+    birth_compartment = "U",
+    migration_compartment = "U"
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("U", "I"), each = 2),
+    age_group = rep(ages$age_groups, times = 2),
+    value = c(10, 20, 1, 2),
+    stringsAsFactors = FALSE
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    demographic_process = process,
+    time_policy = "exact",
+    method = "euler"
+  )
+
+  expect_equal(output$value[output$time == 1], c(14.2, 23, 1, 2))
+})
