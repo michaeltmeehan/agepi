@@ -30,15 +30,15 @@
 #' `demographic_process`. In this coupled mode, births enter the youngest
 #' susceptible age group, background mortality applies independently to every
 #' disease compartment, ageing moves each compartment independently using the
-#' process [AgeingOperator()] convention, and net migration is applied to
-#' susceptible compartments only. Fertility and migration-rate exposure use the
-#' current total infection-state population by age group: `S + I + R` for SIR
-#' and `S + E + I + R` for SEIR. This is not WPP projection matching, and
-#' `S`-only migration is an allocation convention for age-total net migration
-#' inputs rather than a mechanistic movement model. For adaptive deSolve runs,
-#' `time_policy = "linear"` is generally recommended for demographic schedules;
-#' `time_policy = "step"` gives piecewise-constant rates, and
-#' `time_policy = "exact"` will usually fail unless every solver evaluation
+#' process [AgeingOperator()] convention, and net migration is allocated using
+#' `migration_policy`. Fertility and migration-rate exposure use the current
+#' total infection-state population by age group: `S + I + R` for SIR and
+#' `S + E + I + R` for SEIR. This is not WPP projection matching, and the
+#' default `S`-only migration rule is an allocation convention for age-total
+#' net migration inputs rather than a mechanistic movement model. For adaptive
+#' deSolve runs, `time_policy = "linear"` is generally recommended for
+#' demographic schedules; `time_policy = "step"` gives piecewise-constant rates,
+#' and `time_policy = "exact"` will usually fail unless every solver evaluation
 #' time is present in the schedules.
 #'
 #' Euler updates are intentionally not truncated: if a step would produce
@@ -68,6 +68,12 @@
 #'   `"step"` uses left-continuous interval-start lookup; `"linear"`
 #'   interpolates rate-like demographic schedules through the same demographic
 #'   derivative path.
+#' @param migration_policy Net migration allocation policy used only when
+#'   `demographic_process` is supplied. `"susceptible"` preserves the default
+#'   behaviour by applying all net migration to `S`; `"proportional"` allocates
+#'   net migration across compartments by current age-specific compartment
+#'   shares; `"error"` allows zero migration but errors if any net migration is
+#'   non-zero because age-total migration allocation is ambiguous.
 #'
 #' @return Data frame with columns `time`, `compartment`, `age_group`, and
 #'   `value`, ordered by time outermost, compartment next, and age group
@@ -84,9 +90,11 @@ simulate_deterministic <- function(
   infectiousness = NULL,
   method = "euler",
   demographic_process = NULL,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
 ) {
   method <- validate_simulation_method(method)
+  migration_policy <- validate_migration_policy(migration_policy)
   validate_simulation_times(times)
   validate_disease_model(model)
   validate_age_structure(age_structure)
@@ -117,7 +125,8 @@ simulate_deterministic <- function(
       susceptibility = susceptibility,
       infectiousness = infectiousness,
       demographic_process = demographic_process,
-      time_policy = time_policy
+      time_policy = time_policy,
+      migration_policy = migration_policy
     ))
   }
 
@@ -131,7 +140,8 @@ simulate_deterministic <- function(
     susceptibility = susceptibility,
     infectiousness = infectiousness,
     demographic_process = demographic_process,
-    time_policy = time_policy
+    time_policy = time_policy,
+    migration_policy = migration_policy
   )
 }
 
@@ -145,7 +155,8 @@ simulate_deterministic_euler <- function(
   susceptibility,
   infectiousness,
   demographic_process = NULL,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
 ) {
   output <- vector("list", length(times))
   output[[1]] <- simulation_state_output(
@@ -168,7 +179,8 @@ simulate_deterministic_euler <- function(
       susceptibility = susceptibility,
       infectiousness = infectiousness,
       demographic_process = demographic_process,
-      time_policy = time_policy
+      time_policy = time_policy,
+      migration_policy = migration_policy
     )
 
     next_state <- as.numeric(current_state) + dt * derivative
@@ -198,7 +210,8 @@ deterministic_euler_derivative <- function(
   susceptibility,
   infectiousness,
   demographic_process = NULL,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
 ) {
   rates <- transition_rates(
     state = state_vector,
@@ -226,7 +239,8 @@ deterministic_euler_derivative <- function(
     model = model,
     age_structure = age_structure,
     demographic_process = demographic_process,
-    time_policy = time_policy
+    time_policy = time_policy,
+    migration_policy = migration_policy
   )
 }
 
@@ -236,9 +250,11 @@ compartment_demographic_derivative <- function(
   model,
   age_structure,
   demographic_process,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
 ) {
   time_policy <- validate_demographic_time_policy(time_policy)
+  migration_policy <- validate_migration_policy(migration_policy)
   validate_disease_model(model)
   validate_age_structure(age_structure)
   validate_demographic_process(demographic_process)
@@ -302,13 +318,66 @@ compartment_demographic_derivative <- function(
     age_groups,
     time_policy
   )
-  derivative[S_index] <- derivative[S_index] + migration
+  derivative <- derivative + compartment_migration_derivative(
+    migration = migration,
+    state_vector = state_vector,
+    population = population,
+    compartment_indices = compartment_indices,
+    migration_policy = migration_policy
+  )
 
   if (any(!is.finite(derivative))) {
     stop("compartment_demographic_derivative result must contain only finite values.", call. = FALSE)
   }
 
   derivative
+}
+
+compartment_migration_derivative <- function(
+  migration,
+  state_vector,
+  population,
+  compartment_indices,
+  migration_policy = c("susceptible", "proportional", "error")
+) {
+  migration_policy <- validate_migration_policy(migration_policy)
+  migration_derivative <- numeric(length(state_vector))
+
+  if (migration_policy == "susceptible") {
+    migration_derivative[compartment_indices[["S"]]] <- migration
+    return(migration_derivative)
+  }
+
+  non_zero_migration <- migration != 0
+  if (migration_policy == "error") {
+    if (any(non_zero_migration)) {
+      stop(
+        "migration_policy = \"error\" does not allow non-zero net migration; ",
+        "age-total migration allocation across disease compartments is ambiguous.",
+        call. = FALSE
+      )
+    }
+    return(migration_derivative)
+  }
+
+  zero_population_non_zero_migration <- population == 0 & non_zero_migration
+  if (any(zero_population_non_zero_migration)) {
+    stop(
+      "migration_policy = \"proportional\" cannot allocate non-zero net migration ",
+      "when an age-specific total population is zero.",
+      call. = FALSE
+    )
+  }
+
+  positive_population <- population > 0
+  for (index in compartment_indices) {
+    shares <- numeric(length(population))
+    shares[positive_population] <- as.numeric(state_vector[index][positive_population]) /
+      population[positive_population]
+    migration_derivative[index] <- migration * shares
+  }
+
+  migration_derivative
 }
 
 simulate_deterministic_desolve <- function(
@@ -321,7 +390,8 @@ simulate_deterministic_desolve <- function(
   susceptibility,
   infectiousness,
   demographic_process = NULL,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error")
 ) {
   if (!desolve_is_available()) {
     stop(
@@ -343,8 +413,10 @@ simulate_deterministic_desolve <- function(
       susceptibility = susceptibility,
       infectiousness = infectiousness,
       demographic_process = demographic_process,
-      time_policy = time_policy
-    )
+      time_policy = time_policy,
+      migration_policy = migration_policy
+    ),
+    tcrit = max(times)
   )
 
   output <- vector("list", length(times))
@@ -394,8 +466,9 @@ deterministic_derivative_vector <- function(time, state, parms) {
     time = time,
     model = parms$model,
     age_structure = parms$age_structure,
-    demographic_process = parms$demographic_process,
-    time_policy = parms$time_policy
+      demographic_process = parms$demographic_process,
+      time_policy = parms$time_policy,
+      migration_policy = parms$migration_policy
   ))
 }
 
@@ -413,6 +486,19 @@ validate_simulation_method <- function(method) {
   }
 
   method
+}
+
+validate_migration_policy <- function(migration_policy) {
+  if (!is.character(migration_policy) || anyNA(migration_policy) || any(migration_policy == "")) {
+    stop("migration_policy must be non-missing character value(s).", call. = FALSE)
+  }
+
+  tryCatch(
+    match.arg(migration_policy, c("susceptible", "proportional", "error")),
+    error = function(e) {
+      stop("unsupported migration_policy: ", paste(migration_policy, collapse = ", "), call. = FALSE)
+    }
+  )
 }
 
 validate_simulation_demography_inputs <- function(
@@ -439,7 +525,12 @@ validate_simulation_demography_inputs <- function(
     demographic_process$age_structure,
     "demographic_process"
   )
-  validate_demography_schedule_coverage(demographic_process, times, time_policy)
+  validate_demography_schedule_coverage(
+    demographic_process,
+    times,
+    time_policy,
+    include_output_times = TRUE
+  )
 
   time_policy
 }

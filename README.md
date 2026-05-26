@@ -45,8 +45,8 @@ The current scope is deliberately small:
 - optional `deSolve` backend for infection-only SIR/SEIR and SIR/SEIR-demography
   coupling only;
 - first-pass SIR/SEIR-demography coupling: births enter `S`, deaths and ageing
-  apply independently to all disease compartments, and migration applies to `S`
-  only;
+  apply independently to all disease compartments, and migration defaults to
+  `S` with optional explicit proportional or error-on-migration policies;
 - no demographic residual forcing or WPP projection matching;
 - optional external-data adapters only; no required WPP, `socialmixr`, or `conmat` dependency;
 - no reciprocity correction or population balancing for contact matrices;
@@ -58,7 +58,7 @@ The current scope is deliberately small:
 |---|---|---|
 | Disease models | Deterministic SIR and SEIR | Stochastic simulation, vaccination, waning immunity, disease-induced mortality |
 | Solvers | Euler; optional `deSolve` for documented SIR/SEIR combinations | Event handling or additional solver backends |
-| Demography coupling | Births/net migration to `S`; mortality and ageing by compartment | Proportional migration, compartment-specific demographic rates |
+| Demography coupling | Births to `S`; net migration defaults to `S` or can be proportional/error; mortality and ageing by compartment | Compartment-specific demographic rates |
 | Time-varying inputs | Demographic schedules with exact, step, or linear rate lookup | Time-varying contact matrices |
 | WPP-style data | Dependency-free population, fertility, mortality, and migration adapters | qx/survival conversion, residual migration fitting, projection matching |
 
@@ -197,19 +197,22 @@ the current total age-specific infection-state population `S + I + R` as its
 exposure, births enter only the youngest susceptible compartment, mortality
 applies independently to `S`, `I`, and `R`, and ageing moves `S`, `I`, and `R`
 independently through the ageing operator. Net migration, including
-residual-derived migration schedules, is allocated entirely to `S`. This `S`-only
-migration rule is an allocation convention for age-total net migration inputs,
-not a mechanistic model of who moves while infected or recovered.
+residual-derived migration schedules, defaults to allocation entirely to `S`.
+This `S`-only migration rule is an allocation convention for age-total net
+migration inputs, not a mechanistic model of who moves while infected or
+recovered. `simulate_deterministic(migration_policy = "proportional")` instead
+allocates age-total net migration across compartments by current age-specific
+compartment shares; `migration_policy = "error"` allows zero migration but
+errors when non-zero migration would require an allocation choice.
 
 The initial SEIR-demography policy follows the same convention: fertility
 exposure uses `S + E + I + R`; births enter only the youngest `S`; mortality and
 ageing apply independently to `S`, `E`, `I`, and `R`; migration is allocated
-entirely to `S`; and `E -> I` progression plus `I -> R` recovery remain
-disease-model transitions. The force of infection will continue to depend on
-`I`, not `E`. This policy does not add disease-induced mortality,
-vaccination, waning immunity, compartment-specific demographic rates, WPP
-projection matching, or proportional migration. Proportional migration across
-`S`/`E`/`I`/`R` may be added later only behind an explicit option.
+by the same `migration_policy`; and `E -> I` progression plus `I -> R` recovery
+remain disease-model transitions. The force of infection will continue to
+depend on `I`, not `E`. This policy does not add disease-induced mortality,
+vaccination, waning immunity, compartment-specific demographic rates, or WPP
+projection matching.
 
 See `examples/mock_demographic_workflow.R` for a small dependency-free
 demographic-only workflow using invented WPP-like fertility, mortality, and

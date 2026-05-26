@@ -104,6 +104,15 @@ test_that("coupled ageing-only simulation moves S I and R independently", {
   )
 })
 
+test_that("coupled ageing remains compartment-wise under proportional migration", {
+  output <- coupled_run(migration_policy = "proportional")
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(80, 60, 35, 8, 6, 3, 16, 12, 6)
+  )
+})
+
 test_that("SEIR coupled ageing-only simulation moves S E I and R independently", {
   output <- coupled_run(
     initial_state = coupled_seir_state(),
@@ -134,6 +143,31 @@ test_that("coupled fertility births enter only the youngest susceptible group", 
   )
 
   output <- coupled_run(process = process)
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(106.5, 50, 25, 10, 5, 2, 20, 10, 4)
+  )
+})
+
+test_that("coupled fertility births remain S-only under proportional migration", {
+  ages <- coupled_test_ages()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "5-9",
+      fertility_rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    fertility_schedule = fertility
+  )
+
+  output <- coupled_run(process = process, migration_policy = "proportional")
 
   expect_equal(
     output$value[output$time == 1],
@@ -233,6 +267,31 @@ test_that("coupled mortality removes proportionally from S I and R", {
   )
 })
 
+test_that("coupled mortality remains compartment-wise under proportional migration", {
+  ages <- coupled_test_ages()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      mortality_rate = c(0.1, 0.2, 0.3),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    mortality_schedule = mortality
+  )
+
+  output <- coupled_run(process = process, migration_policy = "proportional")
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(90, 40, 17.5, 9, 4, 1.4, 18, 8, 2.8)
+  )
+})
+
 test_that("SEIR coupled mortality removes proportionally from S E I and R", {
   ages <- coupled_test_ages()
   mortality <- MortalitySchedule(
@@ -285,6 +344,226 @@ test_that("coupled migration counts enter susceptible compartments only", {
   expect_equal(
     output$value[output$time == 1],
     c(105, 48, 26, 10, 5, 2, 20, 10, 4)
+  )
+})
+
+test_that("omitted migration_policy matches susceptible migration_policy", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(5, -2, 1),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  default_output <- coupled_run(process = process)
+  susceptible_output <- coupled_run(process = process, migration_policy = "susceptible")
+
+  expect_equal(default_output, susceptible_output)
+})
+
+test_that("proportional migration distributes positive counts across SIR compartment shares", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(13, 13, 31),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  output <- coupled_run(process = process, migration_policy = "proportional")
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(110, 60, 50, 11, 6, 4, 22, 12, 8)
+  )
+})
+
+test_that("proportional migration distributes positive counts across SEIR compartment shares", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(13.3, 13.4, 32),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  output <- coupled_run(
+    initial_state = coupled_seir_state(),
+    process = process,
+    model = SEIRModel(sigma = 0, gamma = 0),
+    migration_policy = "proportional"
+  )
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(110, 60, 50, 3.3, 2.4, 2, 11, 6, 4, 22, 12, 8)
+  )
+})
+
+test_that("proportional migration distributes negative counts across compartment shares", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(-13, -13, -31),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  output <- coupled_run(process = process, migration_policy = "proportional")
+
+  expect_equal(
+    output$value[output$time == 1],
+    c(90, 40, 0, 9, 4, 0, 18, 8, 0)
+  )
+})
+
+test_that("proportional migration allows zero population ages with zero migration", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(0, 13, 31),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  derivative <- compartment_demographic_derivative(
+    state_vector = state_long_to_vector(
+      coupled_state(S = c(0, 50, 25), I = c(0, 5, 2), R = c(0, 10, 4)),
+      ages,
+      c("S", "I", "R")
+    ),
+    time = 0,
+    model = SIRModel(gamma = 0),
+    age_structure = ages,
+    demographic_process = process,
+    migration_policy = "proportional"
+  )
+
+  expect_equal(
+    derivative,
+    c(0, 10, 25, 0, 1, 2, 0, 2, 4)
+  )
+})
+
+test_that("proportional migration errors for zero population ages with non-zero migration", {
+  ages <- coupled_test_ages()
+  migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(1, 0, 0),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+
+  expect_error(
+    compartment_demographic_derivative(
+      state_vector = state_long_to_vector(
+        coupled_state(S = c(0, 50, 25), I = c(0, 5, 2), R = c(0, 10, 4)),
+        ages,
+        c("S", "I", "R")
+      ),
+      time = 0,
+      model = SIRModel(gamma = 0),
+      age_structure = ages,
+      demographic_process = process,
+      migration_policy = "proportional"
+    ),
+    "cannot allocate non-zero net migration.*total population is zero"
+  )
+})
+
+test_that("migration_policy error rejects non-zero migration and allows zero migration", {
+  ages <- coupled_test_ages()
+  zero_migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(0, 0, 0),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  non_zero_migration <- MigrationSchedule(
+    data.frame(
+      time = 0,
+      age_group = ages$age_groups,
+      migration_count = c(0, 1, 0),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+
+  zero_process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = zero_migration,
+    mode = "migration"
+  )
+  non_zero_process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = non_zero_migration,
+    mode = "migration"
+  )
+
+  expect_silent(coupled_run(process = zero_process, migration_policy = "error"))
+  expect_error(
+    coupled_run(process = non_zero_process, migration_policy = "error"),
+    "does not allow non-zero net migration.*ambiguous"
   )
 })
 
@@ -644,6 +923,85 @@ test_that("SIR demography with deSolve and linear time_policy runs", {
   expect_true(all(desolve_output$value >= 0))
 })
 
+test_that("Euler and deSolve both honour proportional migration_policy", {
+  skip_if_not_installed("deSolve")
+
+  ages <- AgeStructure("0+", 0, Inf)
+  migration <- MigrationSchedule(
+    data.frame(time = c(0, 1), age_group = "0+", migration_count = 100),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    migration_schedule = migration,
+    mode = "migration"
+  )
+  state <- data.frame(
+    compartment = c("S", "I", "R"),
+    age_group = "0+",
+    value = c(90, 10, 0)
+  )
+  run <- function(method) {
+    simulate_deterministic(
+      initial_state = state,
+      times = c(0, 1),
+      model = SIRModel(gamma = 0),
+      age_structure = ages,
+      contact_matrix = matrix(0, nrow = 1, ncol = 1),
+      demographic_process = process,
+      method = method,
+      time_policy = "step",
+      migration_policy = "proportional"
+    )
+  }
+
+  euler_output <- run("euler")
+  desolve_output <- run("deSolve")
+
+  expect_equal(euler_output$value[euler_output$time == 1], c(180, 20, 0))
+  expect_equal(desolve_output$value[desolve_output$time == 1], c(180, 20, 0), tolerance = 1e-6)
+})
+
+test_that("invalid migration_policy errors clearly", {
+  expect_error(
+    coupled_run(migration_policy = "banana"),
+    "unsupported migration_policy: banana"
+  )
+})
+
+test_that("SIR demography with deSolve linear policy respects final schedule boundary", {
+  skip_if_not_installed("deSolve")
+
+  ages <- coupled_test_ages()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.02, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    mortality_schedule = mortality
+  )
+  times <- c(0, 0.25, 0.5, 1)
+
+  output <- coupled_run(
+    process = process,
+    times = times,
+    method = "deSolve",
+    time_policy = "linear"
+  )
+
+  expect_identical(output$time, rep(times, each = 9))
+  expect_true(all(is.finite(output$value)))
+  expect_true(all(output$value >= 0))
+})
+
 test_that("SIR demography with deSolve preserves off-grid requested output times under linear policy", {
   skip_if_not_installed("deSolve")
 
@@ -778,6 +1136,100 @@ test_that("SEIR demography with deSolve runs through the coupled derivative path
   expect_identical(output$compartment, rep(c("S", "S", "S", "E", "E", "E", "I", "I", "I", "R", "R", "R"), times = length(times)))
   expect_true(all(is.finite(output$value)))
   expect_true(all(output$value >= 0))
+})
+
+test_that("SEIR demography with deSolve linear policy respects final schedule boundary", {
+  skip_if_not_installed("deSolve")
+
+  ages <- coupled_test_ages()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = c(0, 1),
+      age_group = c("10+", "10+"),
+      fertility_rate = c(0.025, 0.024),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(0.004, 0.002, 0.015, 0.004, 0.002, 0.016),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      migration_count = c(2, -1, 1, 2, -1, 1),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    fertility_schedule = fertility,
+    mortality_schedule = mortality,
+    migration_schedule = migration,
+    mode = "migration"
+  )
+  times <- c(0, 0.25, 0.5, 1)
+
+  output <- coupled_run(
+    initial_state = coupled_seir_state(
+      S = c(495, 597, 898),
+      E = c(3, 2, 1),
+      I = c(2, 1, 1),
+      R = c(0, 0, 0)
+    ),
+    process = process,
+    times = times,
+    model = SEIRModel(sigma = 0.4, gamma = 0.25),
+    contact_matrix = matrix(
+      c(4, 2, 1, 2, 5, 2, 1, 2, 4),
+      nrow = ages$n_age_groups,
+      byrow = TRUE
+    ),
+    beta = 0.08,
+    method = "deSolve",
+    time_policy = "linear"
+  )
+
+  expect_identical(output$time, rep(times, each = 12))
+  expect_true(all(is.finite(output$value)))
+  expect_true(all(output$value >= 0))
+})
+
+test_that("coupled linear policy still errors when requested outputs exceed schedule support", {
+  ages <- coupled_test_ages()
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = rep(c(0, 1), each = ages$n_age_groups),
+      age_group = rep(ages$age_groups, times = 2),
+      mortality_rate = c(rep(0.01, ages$n_age_groups), rep(0.02, ages$n_age_groups)),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- DemographicProcess(
+    age_structure = ages,
+    ageing_operator = coupled_zero_ageing(ages),
+    mortality_schedule = mortality
+  )
+
+  expect_error(
+    coupled_run(process = process, times = c(0, 1, 1.25), time_policy = "linear"),
+    "after the final available schedule time 1"
+  )
+  skip_if_not_installed("deSolve")
+  expect_error(
+    coupled_run(process = process, times = c(0, 1, 1.25), method = "deSolve", time_policy = "linear"),
+    "after the final available schedule time 1"
+  )
 })
 
 test_that("coupled simulation rejects demographic process age-structure mismatch", {

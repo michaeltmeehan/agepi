@@ -87,7 +87,12 @@ simulate_demography <- function(
 
 simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step", "linear")) {
   time_policy <- validate_demographic_time_policy(time_policy)
-  validate_demography_schedule_coverage(process, times, time_policy)
+  validate_demography_schedule_coverage(
+    process,
+    times,
+    time_policy,
+    include_output_times = TRUE
+  )
 
   output <- vector("list", length(times))
   output[[1]] <- demographic_state_output(initial_state, time = times[1], process = process)
@@ -113,13 +118,20 @@ simulate_demography_euler <- function(process, initial_state, times, time_policy
   result
 }
 
-validate_demography_schedule_coverage <- function(process, times, time_policy = c("exact", "step", "linear")) {
+validate_demography_schedule_coverage <- function(process,
+                                                  times,
+                                                  time_policy = c("exact", "step", "linear"),
+                                                  include_output_times = FALSE) {
   time_policy <- validate_demographic_time_policy(time_policy)
-  left_endpoints <- times[-length(times)]
+  lookup_times <- times[-length(times)]
 
-  validate_one_demography_schedule_coverage(process$fertility_schedule, left_endpoints, time_policy)
-  validate_one_demography_schedule_coverage(process$mortality_schedule, left_endpoints, time_policy)
-  validate_one_demography_schedule_coverage(process$migration_schedule, left_endpoints, time_policy)
+  if (include_output_times && time_policy == "linear") {
+    lookup_times <- times
+  }
+
+  validate_one_demography_schedule_coverage(process$fertility_schedule, lookup_times, time_policy)
+  validate_one_demography_schedule_coverage(process$mortality_schedule, lookup_times, time_policy)
+  validate_one_demography_schedule_coverage(process$migration_schedule, lookup_times, time_policy)
 
   invisible(NULL)
 }

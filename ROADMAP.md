@@ -140,7 +140,8 @@ Implemented:
 - SIR births entering the youngest susceptible age group;
 - SIR mortality applied proportionally to `S`, `I`, and `R`;
 - SIR ageing applied independently to `S`, `I`, and `R`;
-- net migration applied to susceptible compartments only;
+- net migration allocation controlled by `migration_policy`, defaulting to
+  susceptible-only allocation for backwards compatibility;
 - force of infection continuing to use current `S + I + R` by age group for
   SIR, or `S + E + I + R` for SEIR.
 
@@ -148,11 +149,12 @@ This is not WPP projection matching. Coupled demography does not support
 population interpolation, time-varying contact matrices, or stochastic
 simulation.
 
-The current `S`-only migration rule is an allocation convention for age-total
+The default `S`-only migration rule is an allocation convention for age-total
 net migration and residual-derived migration schedules. It should not be read as
 a mechanistic movement model for susceptible, infectious, or recovered people.
-Any future proportional allocation across infection compartments should be added
-behind an explicit option and must preserve the existing SIR default.
+The explicit proportional policy allocates positive or negative net migration by
+current age-specific compartment shares; the explicit error policy rejects
+non-zero migration when allocation would be ambiguous.
 
 ### Milestone 4F: SEIR deterministic infection-only support
 
@@ -171,13 +173,12 @@ Implemented SEIR-demography policy:
 - births enter the youngest susceptible compartment only;
 - background mortality applies independently to `S`, `E`, `I`, and `R`;
 - ageing applies independently to `S`, `E`, `I`, and `R`;
-- net migration is allocated entirely to `S`, matching the current SIR
-  convention for age-total net migration schedules;
+- net migration uses the same `migration_policy` choices as SIR, defaulting to
+  the existing `S` convention for age-total net migration schedules;
 - `E -> I` progression and `I -> R` recovery remain disease-model transitions;
 - force of infection depends on `I`, not `E`;
 - no disease-induced mortality, vaccination, waning immunity,
-  compartment-specific demographic rates, WPP projection matching, or
-  proportional migration.
+  compartment-specific demographic rates, or WPP projection matching.
 
 ## Future Work
 
