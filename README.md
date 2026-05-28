@@ -1,124 +1,76 @@
 # agepi
 
-`agepi` is an early-stage R package for age-structured epidemic model prototypes.
+`agepi` provides tools for deterministic age-structured epidemic and
+demographic modelling in R.
 
-The current implementation supports deterministic age-structured SIR and SEIR
-workflows:
+The package is under active development. Its current focus is on clear,
+inspectable workflows for age-structured SIR, SEIR, custom compartment models,
+contact matrices, and demographic schedules.
 
-- define and validate age groups with `AgeStructure()` and `validate_age_structure()`;
-- convert between long-form state data and numeric solver vectors;
-- compute a reusable age-structured force of infection;
-- validate and coerce contact matrices;
-- construct minimal SIR and SEIR models with `SIRModel()` and `SEIRModel()`;
-- compute SIR infection/recovery and SEIR infection/progression/recovery
-  transition rates;
-- convert transition rates to deterministic derivatives;
-- run deterministic SIR or SEIR simulations through a shared solver path that
-  uses `deSolve::ode()` for infection-only runs when `deSolve` is installed,
-  while preserving explicit Euler as an option;
-- optionally couple SIR or SEIR simulation to a first-pass demographic process with
-  Euler or `deSolve`;
-- summarise deterministic simulation output with `compartment_totals()`, `age_group_totals()`, and `total_population()`.
+## Overview
 
-It also includes utility layers for age-bin transformations, demographic-only
-ODE components, demography tables, residual diagnostics, and contact-matrix
-handling. These utilities are deliberately separate from the current infection
-simulator: they help prepare or inspect inputs, can run demographic-only
-workflows, and can now be coupled to deterministic SIR and SEIR in a narrow
-mode.
+`agepi` helps you build models where people are grouped by age and where
+transmission depends on contacts between age groups. It currently supports:
 
-## Current limitations
+- defining age groups with `AgeStructure()`;
+- running deterministic SIR and SEIR simulations with `simulate_deterministic()`;
+- using age-specific contact matrices, susceptibility, and infectiousness;
+- building custom deterministic compartment models with `CompartmentModel()`;
+- simulating demographic-only processes with ageing, fertility, mortality, and
+  migration;
+- using dependency-free adapters for WPP-style demographic tables and
+  socialmixr/conmat-style contact matrix outputs;
+- summarising simulation output with `compartment_totals()`,
+  `age_group_totals()`, and `total_population()`.
 
-The infection simulator currently supports deterministic SIR and SEIR.
-`simulate_deterministic()` defaults to `deSolve` for infection-only deterministic
-SIR and SEIR models when the suggested `deSolve` package is installed, and
-falls back to Euler otherwise. SIR or SEIR with demographic coupling keeps the
-existing Euler default because exact schedule lookup remains the default
-demographic policy; pass `method = "deSolve"` explicitly for supported coupled
-runs. SIR and SEIR support use the same static transition-rate pathway; the
-focused package tests cover the Euler and deSolve backends.
+The package is intended for researchers, analysts, students, and modellers who
+want a small R toolkit for prototyping age-structured epidemic and demographic
+models before moving to a larger modelling framework.
 
-The current scope is deliberately small:
+## Installation
 
-- static contact matrix;
-- static `beta`, susceptibility, and infectiousness inputs;
-- mock examples only;
-- no stochastic simulation;
-- optional `deSolve` backend for infection-only SIR/SEIR and SIR/SEIR-demography
-  coupling only;
-- first-pass SIR/SEIR-demography coupling: births enter `S`, deaths and ageing
-  apply independently to all disease compartments, and migration defaults to
-  `S` with optional explicit proportional or error-on-migration policies;
-- no demographic residual forcing or WPP projection matching;
-- optional external-data adapters only; no required WPP, `socialmixr`, or `conmat` dependency;
-- no reciprocity correction or population balancing for contact matrices;
-- no plotting or fitting.
+Install the development version from a local checkout:
 
-## Capability summary
-
-| Area | Current support | Not in current scope |
-|---|---|---|
-| Disease models | Deterministic SIR and SEIR | Stochastic simulation, vaccination, waning immunity, disease-induced mortality |
-| Solvers | Shared Euler/deSolve path for documented SIR/SEIR combinations | Event handling or additional solver backends |
-| Demography coupling | Births to `S`; net migration defaults to `S` or can be proportional/error; mortality and ageing by compartment | Compartment-specific demographic rates |
-| Time-varying inputs | Demographic schedules with exact, step, or linear rate lookup | Time-varying contact matrices |
-| WPP-style data | Dependency-free population, fertility, mortality, and migration adapters | qx/survival conversion, residual migration fitting, projection matching |
-
-## State-vector convention
-
-Numeric state vectors use compartment-major, age-group-minor ordering. For compartments `c("S", "I", "R")` and age groups `c("0-4", "5-9")`, the vector order is:
-
-```text
-S_0-4, S_5-9, I_0-4, I_5-9, R_0-4, R_5-9
+```r
+install.packages("devtools")
+devtools::install(".")
 ```
 
-`state_vector_to_long()` and `simulate_deterministic()` interpret numeric vectors by position only. Names on numeric state vectors are ignored when converting back to long form or simulating.
+Or, if this repository is available on GitHub:
 
-## Force-of-infection convention
-
-The force of infection is:
-
-```text
-lambda = beta * susceptibility *
-  contact_matrix %*% (infectiousness * infectious / population)
+```r
+remotes::install_github("michaeltmeehan/agepi")
 ```
 
-Equivalently:
+`deSolve` is suggested, not required. When it is installed, infection-only SIR
+and SEIR simulations can use `deSolve::ode()`; otherwise explicit Euler
+stepping is available.
 
-```text
-lambda_a(t) =
-  beta(t) * s_a(t) *
-  sum_b C_ab(t) * iota_b(t) * I_b(t) / N_b(t)
-```
-
-Rows of `contact_matrix` are recipient age groups `a`; columns are source age groups `b`.
-That is, `contact_matrix[a, b]` gives contacts made by recipient group `a` with source group `b`.
-
-## Minimal deterministic SIR example
+## Quick Start
 
 ```r
 library(agepi)
 
-age_structure <- AgeStructure(
+ages <- AgeStructure(
   age_groups = c("0-4", "5-9"),
   lower_bounds = c(0, 5),
   upper_bounds = c(4, 9)
 )
 
 population <- c(1000, 1200)
-initial_infections <- c(5, 3)
+infected <- c(5, 3)
 
 initial_state <- data.frame(
-  compartment = rep(c("S", "I", "R"), each = age_structure$n_age_groups),
-  age_group = rep(age_structure$age_groups, times = 3),
-  value = c(population - initial_infections, initial_infections, 0, 0),
+  compartment = rep(c("S", "I", "R"), each = ages$n_age_groups),
+  age_group = rep(ages$age_groups, times = 3),
+  value = c(population - infected, infected, rep(0, ages$n_age_groups)),
   stringsAsFactors = FALSE
 )
 
 contact_matrix <- matrix(
   c(4, 2,
     2, 5),
-  nrow = age_structure$n_age_groups,
+  nrow = ages$n_age_groups,
   byrow = TRUE
 )
 
@@ -128,219 +80,210 @@ simulation <- simulate_deterministic(
   initial_state = initial_state,
   times = seq(0, 1, by = 0.1),
   model = model,
-  age_structure = age_structure,
+  age_structure = ages,
   contact_matrix = contact_matrix,
   beta = 0.08,
   method = "euler"
 )
 
 head(simulation)
+compartment_totals(simulation)
 ```
 
-See `examples/mock_sir_deterministic.R` for a slightly larger mock-only example.
-See `examples/mock_seir_demography.R` for a small dependency-free SEIR example
-with first-pass demographic coupling.
+## Age-Structured Transmission
 
-## Small utilities
+Age-structured transmission combines:
 
-### Simulation summaries
+- an `AgeStructure()` describing the age groups;
+- a contact matrix whose rows are recipient age groups and columns are
+  infectious/source age groups;
+- the number infectious in each source age group;
+- optional age-specific susceptibility and infectiousness vectors;
+- a transmission scaling parameter, `beta`.
 
-`compartment_totals()`, `age_group_totals()`, and `total_population()` summarise
-long-format simulation output returned by `simulate_deterministic()`.
-
-### Age-vector transformations
-
-`aggregate_age_vector()` aggregates a numeric vector from one age structure to a
-coarser age structure when each target age bin is an exact union of complete
-source age bins.
-
-`segregate_age_vector()` splits a coarse age vector into a finer age structure
-when each target age bin is nested inside one source age bin. Splits use explicit
-target weights within each source age bin.
-
-`transform_age_vector()` is a convenience wrapper for exact age transformations,
-including identity, aggregation, segregation, and mixed exact transformations
-when the source and target bins align to a common set of boundaries. Its
-`split_method` controls how source bins split across multiple target bins.
-
-### Demography helpers
-
-`validate_demography_table()` checks a tidy table with `time`, `age_group`, and
-`population` columns against an age structure.
-
-`Demography()` stores a validated demography table sorted by time and age-group
-order. `demography_times()`, `demography_population_at()`/
-`demography_population_vector()`, and `demography_population_table()` provide
-exact-time accessors. Population interpolation is deliberately not implemented:
-population tables may represent initial conditions, observed trajectories, or
-projection targets, and those meanings need different interpolation policies.
-
-Demographic-only helpers now cover age grids, ageing operators, fertility,
-mortality, migration, demographic process assembly, simulation,
-comparison, and residual diagnostics. `simulate_demography()` uses exact-time
-schedule lookup with Euler by default and offers opt-in interval-start stepwise lookup via
-`time_policy = "step"` or bounded linear rate interpolation via
-`time_policy = "linear"`. Stepwise schedules are left-continuous: a schedule row
-at `t_i` applies from `t_i` up to the next schedule time. Linear interpolation
-applies only to rate-like fertility, mortality, and migration schedules between
-available schedule times; it does not extrapolate and does not interpolate
-`Demography()` population access. `migration_count` remains a per-time additive
-flow rather than an interval total. `simulate_deterministic()` can optionally use a
-`DemographicProcess()` for first-pass SIR/SEIR-demography coupling with Euler or
-`deSolve`. For adaptive `deSolve` runs with demographic schedules,
-`time_policy = "linear"` is generally recommended; `time_policy = "step"` gives
-piecewise-constant demographic rates, while `time_policy = "exact"` is
-generally unsuitable unless all solver evaluation times are schedule times.
-This coupling is not WPP projection matching and does not support time-varying
-contact matrices or additional disease structures.
-
-Current SIR-demography allocation rules are deliberately narrow. Fertility uses
-the current total age-specific infection-state population `S + I + R` as its
-exposure, births enter only the youngest susceptible compartment, mortality
-applies independently to `S`, `I`, and `R`, and ageing moves `S`, `I`, and `R`
-independently through the ageing operator. Net migration, including
-residual-derived migration schedules, defaults to allocation entirely to `S`.
-This `S`-only migration rule is an allocation convention for age-total net
-migration inputs, not a mechanistic model of who moves while infected or
-recovered. `simulate_deterministic(migration_policy = "proportional")` instead
-allocates age-total net migration across compartments by current age-specific
-compartment shares; `migration_policy = "error"` allows zero migration but
-errors when non-zero migration would require an allocation choice.
-
-The initial SEIR-demography policy follows the same convention: fertility
-exposure uses `S + E + I + R`; births enter only the youngest `S`; mortality and
-ageing apply independently to `S`, `E`, `I`, and `R`; migration is allocated
-by the same `migration_policy`; and `E -> I` progression plus `I -> R` recovery
-remain disease-model transitions. The force of infection will continue to
-depend on `I`, not `E`. This policy does not add disease-induced mortality,
-vaccination, waning immunity, compartment-specific demographic rates, or WPP
-projection matching.
-
-See `examples/mock_demographic_workflow.R` for a small dependency-free
-demographic-only workflow using invented WPP-like fertility, mortality, and
-migration tables. The example demonstrates standardisation, process assembly,
-simulation, and diagnostic comparison; it is not a WPP projection reproduction.
-See `docs/demographic_residuals.md` for the residual diagnostic and
-residual-derived migration schedule conventions.
-
-### Contact matrices
-
-`validate_contact_matrix()` checks that a contact matrix is numeric, finite,
-non-missing, non-negative, square, and optionally has dimensions matching an age
-structure.
-
-`as_agepi_contact_matrix()` coerces supported inputs to agepi's recipient-source
-matrix convention. Current supported inputs are numeric matrices, numeric data
-frames, socialmixr-like lists with a numeric `matrix` element, and conmat-style
-long data frames with `age_group_from`, `age_group_to`, and `contacts` columns.
-This is dependency-free coercion; agepi does not depend on `socialmixr` or
-`conmat`.
-
-`transform_contact_matrix()` aggregates contact matrices from a finer source age
-structure to a coarser target age structure when every target age bin is an exact
-union of source age bins. It currently supports exact aggregation only and
-rejects transformations that would require source-bin splitting or general
-rebinning.
-
-`ContactSchedule()` stores externally supplied contact matrices by time, and
-`contact_matrix_at()` retrieves a matrix at an exact available time point. This
-prepares agepi for later time-varying simulation work without adding
-interpolation, reciprocity correction, population balancing, or simulator
-integration.
-
-### External data adapters
-
-`population_from_wpp()`/`demography_from_wpp()` convert WPP-style tidy
-population tables into a `Demography()` object. Population values are interpreted
-as caller-supplied counts with no scaling. `standardise_wpp_fertility()` accepts
-already-computed age-specific fertility rates, while
-`fertility_from_wpp_percent_asfr()` converts WPP 2024 `percentASFR1dt`-style
-fertility weights to agepi fertility rates using
-`fertility_rate = TFR * fraction / age_bin_width`. Percent weights are divided
-by 100 first, and TFR is interpreted as births per woman over the reproductive
-lifetime. The result is a `FertilitySchedule()` whose values are annual births
-per female person-year. `mortality_from_wpp_mx()` converts WPP-style central
-death rates (`mx`) into a `MortalitySchedule()` using agepi's `annual_hazard`
-convention. Death probabilities (`qx`) and survival probabilities are not
-converted because their period and interval conventions require extra metadata.
-These are adapter-layer helpers, not a complete WPP projection system. Inputs
-should be pre-filtered to one country or location, and maternal age groups must
-have finite age-bin widths, so open-ended maternal bins are rejected.
+A slightly richer SIR example with three age groups and age-specific
+susceptibility/infectiousness is:
 
 ```r
-ages <- wpp_age_structure_5year()
-percent_asfr <- data.frame(
-  year = rep(2020, 7),
-  age = c("15-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49"),
-  percent_asfr = c(5, 20, 30, 25, 15, 4, 1)
-)
-tfr <- data.frame(year = 2020, tfr = 2.1)
+library(agepi)
 
-fertility <- fertility_from_wpp_percent_asfr(
-  percent_asfr,
+ages <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
+)
+
+contact_matrix <- matrix(c(
+  4, 2, 1,
+  2, 5, 2,
+  1, 2, 4
+), nrow = ages$n_age_groups, byrow = TRUE)
+
+population <- c(1000, 1200, 900)
+infected <- c(5, 3, 2)
+
+initial_state <- data.frame(
+  compartment = rep(c("S", "I", "R"), each = ages$n_age_groups),
+  age_group = rep(ages$age_groups, times = 3),
+  value = c(population - infected, infected, rep(0, ages$n_age_groups)),
+  stringsAsFactors = FALSE
+)
+
+sir <- SIRModel(gamma = 0.25)
+
+simulation <- simulate_deterministic(
+  initial_state = initial_state,
+  times = seq(0, 2, by = 0.1),
+  model = sir,
   age_structure = ages,
-  time_col = "year",
-  age_col = "age",
-  weight_col = "percent_asfr",
-  tfr_data = tfr,
-  tfr_time_col = "year",
-  tfr_col = "tfr"
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  susceptibility = c(0.8, 1.0, 1.2),
+  infectiousness = c(1.1, 1.0, 0.9),
+  method = "euler"
+)
+
+tail(compartment_totals(simulation))
+```
+
+See [examples/mock_sir_deterministic.R](examples/mock_sir_deterministic.R) for
+a compact script version.
+
+## Custom Compartment Models
+
+Use `CompartmentModel()` when you want a deterministic age-structured model
+that is not one of the built-in `SIRModel()` or `SEIRModel()` constructors.
+For example, this defines an MSIR-style model where maternal immunity wanes
+from `M` to `S`, susceptible people are infected, and infectious people recover:
+
+```r
+msir <- CompartmentModel(
+  compartments = c("M", "S", "I", "R"),
+  infection_transitions = data.frame(from = "S", to = "I"),
+  transitions = data.frame(
+    from = c("M", "I"),
+    to = c("S", "R"),
+    rate = c(0.15, 0.25)
+  ),
+  infectious_compartments = "I",
+  birth_compartment = "M",
+  migration_compartment = "S"
 )
 ```
 
-The resulting WPP-style schedule objects can be assembled with the existing
-demographic process helper:
+See [docs/generic_compartment_models.md](docs/generic_compartment_models.md),
+[examples/generic_sir.R](examples/generic_sir.R),
+[examples/generic_seir.R](examples/generic_seir.R), and
+[examples/generic_msir.R](examples/generic_msir.R).
+
+## Demography
+
+`agepi` includes demographic-only workflows for age-specific population
+dynamics. You can define fertility, mortality, migration, and ageing processes,
+then simulate them with `simulate_demography()`.
 
 ```r
-population <- population_from_wpp(
-  population_table,
-  age_structure = ages,
-  time_col = "year",
-  age_group_col = "age",
-  population_col = "population"
+library(agepi)
+
+ages <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
 )
 
-mortality <- mortality_from_wpp_mx(
-  mortality_table,
-  age_structure = ages,
-  time_col = "year",
-  age_col = "age",
-  mx_col = "mx"
+mortality <- MortalitySchedule(
+  data.frame(
+    time = 0,
+    age_group = ages$age_groups,
+    mortality_rate = c(0.006, 0.004, 0.020)
+  ),
+  ages
 )
 
 process <- build_demographic_process(
   age_structure = ages,
-  fertility_schedule = fertility,
   mortality_schedule = mortality
 )
 
-initial_state <- demography_population_at(population, time = 2020)
 simulate_demography(
   process = process,
-  initial_state = initial_state,
-  times = c(2020, 2021),
+  initial_state = c(500, 450, 800),
+  times = c(0, 1),
   time_policy = "step"
 )
 ```
 
-This composition uses existing demographic semantics: exact-time schedule lookup
-by default, optional left-continuous step lookup with `time_policy = "step"`,
-or bounded linear interpolation of rate-like fertility, mortality, and migration
-schedules with `time_policy = "linear"`. WPP-derived annual or five-year rate
-schedules can therefore be evaluated stepwise or linearly inside their schedule
-range, but this is still not WPP projection matching. Population
-`Demography()` accessors remain exact-time only.
+See [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R)
+and [docs/demographic_residuals.md](docs/demographic_residuals.md) for a fuller
+demographic workflow and diagnostics.
 
-`contact_matrix_from_socialmixr()` and
-`contact_matrix_from_conmat()` convert socialmixr-like and conmat-style contact
-outputs into agepi contact matrices. These adapters are optional: `wpp2024`,
-`socialmixr`, and `conmat` are not required for core agepi functionality.
+## Contact Matrices And External Data
 
-The adapters only reshape and validate supplied data. They do not implement
-projection dynamics, interpolation, reciprocity correction, or population
-balancing. Contact matrix rows are recipient age groups and columns are source
-age groups.
+Contact matrices can be supplied directly as numeric matrices. The current
+convention is:
 
-## Design notes
+```text
+contact_matrix[recipient_age_group, source_age_group]
+```
 
-See `docs/age_structured_transmission_design.md`.
+The package also includes dependency-free adapters for common external shapes:
+
+- `contact_matrix_from_socialmixr()` for socialmixr-like objects with a numeric
+  `matrix` element;
+- `contact_matrix_from_conmat()` for conmat-style long data frames;
+- `population_from_wpp()` and `demography_from_wpp()` for WPP-style population
+  tables;
+- WPP-style fertility, mortality, and migration standardisers.
+
+These adapters reshape and validate supplied data; they do not attempt to
+reproduce full external projection systems. See
+[docs/external_data_adapters.md](docs/external_data_adapters.md) and
+[docs/contact_matrix_integration_design.md](docs/contact_matrix_integration_design.md).
+
+## Examples
+
+- [examples/mock_sir_deterministic.R](examples/mock_sir_deterministic.R):
+  deterministic age-structured SIR.
+- [examples/generic_sir.R](examples/generic_sir.R): SIR through
+  `CompartmentModel()`.
+- [examples/generic_seir.R](examples/generic_seir.R): SEIR through
+  `CompartmentModel()`.
+- [examples/generic_msir.R](examples/generic_msir.R): custom MSIR model.
+- [examples/mock_seir_demography.R](examples/mock_seir_demography.R): SEIR with
+  demographic turnover.
+- [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
+  demographic-only workflow with diagnostics.
+
+## Documentation
+
+- [docs/model_conventions.md](docs/model_conventions.md): state-vector,
+  force-of-infection, contact-matrix, and demographic schedule conventions.
+- [docs/development_status.md](docs/development_status.md): current scope,
+  limitations, solver notes, adapter boundaries, and roadmap notes.
+- [docs/generic_compartment_models.md](docs/generic_compartment_models.md):
+  custom compartment models.
+- [docs/age_structured_transmission_design.md](docs/age_structured_transmission_design.md):
+  age-structured transmission design notes.
+- [docs/external_data_adapters.md](docs/external_data_adapters.md): WPP-style
+  demographic and contact-matrix adapter notes.
+- [docs/demographic_residuals.md](docs/demographic_residuals.md): demographic
+  residual diagnostics.
+
+## Development Status
+
+`agepi` is an early-stage package. The current release is best suited for
+deterministic prototype models, teaching examples, and development of modelling
+workflows. SIR, SEIR, generic deterministic compartment models, demographic
+processes, and adapter utilities are implemented, but stochastic simulation,
+fitting/calibration, plotting helpers, time-varying contact matrices, and full
+WPP projection matching are not yet in scope.
+
+For detailed technical limitations and implementation conventions, see
+[docs/development_status.md](docs/development_status.md) and
+[docs/model_conventions.md](docs/model_conventions.md).
+
+## Contributing And Reporting Issues
+
+Bug reports, example requests, and documentation improvements are welcome. When
+reporting an issue, please include a small reproducible example, the package
+version, and whether `deSolve` is installed.
