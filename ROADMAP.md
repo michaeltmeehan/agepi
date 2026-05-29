@@ -247,9 +247,36 @@ Planned:
 
 ### Milestone 10: Stochastic simulation infrastructure
 
-Planned:
+Implemented:
 
-- stochastic event-intensity interface based on transition rates;
-- stochastic simulator design and tests.
+- `simulate_stochastic()`;
+- fixed-population stochastic SIR and SEIR support;
+- Gillespie/direct-method dynamics only;
+- observation-time-aligned trajectory output;
+- optional event log output;
+- reproducible trajectories when `seed` is supplied;
+- focused stochastic simulator tests;
+- examples for stochastic SIR and SEIR.
 
-No stochastic simulation is currently implemented.
+Current stochastic support is deliberately narrow:
+
+- fixed population only;
+- no demography;
+- no ageing;
+- no mortality;
+- no fertility;
+- no migration;
+- no tau-leaping;
+- SIR event semantics: `S -> I` infection and `I -> R` recovery;
+- SEIR event semantics: `S -> E` infection, `E -> I` progression, and
+  `I -> R` recovery;
+- force of infection uses current stochastic infectious counts and the existing
+  recipient-row, source-column contact-matrix convention.
+
+Future stochastic work may include:
+
+- broader stochastic simulator design beyond fixed-population SIR/SEIR;
+- additional stochastic methods beyond Gillespie/direct-method dynamics;
+- ageing remains deterministic;
+- stochastic mortality, fertility, and migration may be later optional
+  extensions with explicit policy, especially for gross versus net migration.

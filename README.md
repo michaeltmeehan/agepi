@@ -273,10 +273,11 @@ reproduce full external projection systems. See
 
 `agepi` is an early-stage package. The current release is best suited for
 deterministic prototype models, teaching examples, and development of modelling
-workflows. SIR, SEIR, generic deterministic compartment models, demographic
-processes, and adapter utilities are implemented, but stochastic simulation,
-fitting/calibration, plotting helpers, time-varying contact matrices, and full
-WPP projection matching are not yet in scope.
+workflows. SIR, SEIR, generic deterministic compartment models, fixed-population
+stochastic SIR/SEIR simulation, demographic processes, and adapter utilities are
+implemented, but broader stochastic methods, fitting/calibration, plotting
+helpers, time-varying contact matrices, and full WPP projection matching are not
+yet in scope.
 
 For detailed technical limitations and implementation conventions, see
 [docs/development_status.md](docs/development_status.md) and

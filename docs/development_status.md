@@ -49,7 +49,7 @@ The current package scope is deliberately small:
 
 - static contact matrix;
 - static `beta`, susceptibility, and infectiousness inputs;
-- deterministic simulation only;
+- deterministic simulation plus fixed-population stochastic SIR/SEIR;
 - optional `deSolve` backend for documented deterministic combinations;
 - first-pass epidemic-demography coupling;
 - dependency-free external-data adapters;
@@ -59,7 +59,8 @@ The current package scope is deliberately small:
 
 Important limitations to keep in mind:
 
-- no stochastic simulation;
+- no stochastic demography, tau-leaping, or stochastic models beyond
+  fixed-population SIR/SEIR;
 - no time-varying contact matrices in epidemic simulation;
 - no demographic residual forcing or WPP projection matching;
 - no reciprocity correction or population balancing for contact matrices;
@@ -106,8 +107,8 @@ See [external_data_adapters.md](external_data_adapters.md) and
 ## Roadmap Notes
 
 Likely future directions include broader compartment structures, time-varying
-inputs, richer demographic coupling, stochastic simulation, calibration and
-inference workflows, plotting helpers, multi-country batching, and possible
+inputs, richer demographic coupling, broader stochastic simulation, calibration
+and inference workflows, plotting helpers, multi-country batching, and possible
 porting of the simulation core to Julia. These are design goals rather than
 implemented features.
 
