@@ -344,6 +344,54 @@ test_that("generic stochastic trajectories stay nonnegative and fixed population
   expect_equal(totals$value[totals$age_group == "5-9"], rep(200, 5))
 })
 
+test_that("generic stochastic simulation inherits age-specific downstream transitions", {
+  ages <- stochastic_test_ages()
+  transitions <- data.frame(
+    from = c("E", "E", "IP", "IC", "IS"),
+    to = c("IP", "IS", "IC", "R", "R")
+  )
+  transitions$rate <- I(list(
+    c("0-4" = 2, "5-9" = 3),
+    c("0-4" = 4, "5-9" = 1),
+    c("5-9" = 2, "0-4" = 1),
+    1,
+    c("0-4" = 2, "5-9" = 2)
+  ))
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E"),
+    transitions = transitions,
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 6),
+    value = c(90, 180, 4, 4, 1, 1, 0, 0, 1, 1, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  result <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(0, 10),
+    model = model,
+    age_structure = ages,
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0,
+    seed = 45,
+    return_events = TRUE
+  )
+
+  expect_true(nrow(result$events) > 0)
+  expect_false(any(result$events$event == "infection"))
+  expect_true(all(result$events$from %in% c("E", "IP", "IC", "IS")))
+  expect_true(all(result$trajectory$value >= 0))
+
+  final_rows <- result$trajectory[result$trajectory$time == 10, ]
+  totals <- aggregate(value ~ age_group, final_rows, sum)
+  expect_equal(totals$value, c(96, 186))
+})
+
 test_that("generic event log keeps the stochastic event structure", {
   result <- simulate_stochastic(
     initial_state = stochastic_test_state(S = c(1, 1), I = c(4, 4), R = c(0, 0)),

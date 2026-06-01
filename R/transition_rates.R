@@ -249,7 +249,42 @@ validate_transition_rate_for_age <- function(rate, age_structure, name) {
     return(rep(as.numeric(rate), age_structure$n_age_groups))
   }
 
-  as.numeric(rate)
+  rate_names <- names(rate)
+  if (is.null(rate_names) || anyNA(rate_names) || any(rate_names == "")) {
+    stop(name, " age-specific vector must be named by age group.", call. = FALSE)
+  }
+
+  duplicated_names <- unique(rate_names[duplicated(rate_names)])
+  if (length(duplicated_names) > 0) {
+    stop(
+      name,
+      " age-specific vector names must be unique; duplicate age group(s): ",
+      paste(duplicated_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  unknown_names <- setdiff(rate_names, age_structure$age_groups)
+  if (length(unknown_names) > 0) {
+    stop(
+      name,
+      " age-specific vector contains unknown age_group value(s): ",
+      paste(unknown_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  missing_names <- setdiff(age_structure$age_groups, rate_names)
+  if (length(missing_names) > 0) {
+    stop(
+      name,
+      " age-specific vector is missing age_group value(s): ",
+      paste(missing_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  as.numeric(rate[age_structure$age_groups])
 }
 
 transition_population_by_age <- function(state_long, age_structure, compartments) {

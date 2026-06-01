@@ -106,6 +106,52 @@ test_that("simulate_deterministic works for SEIR with Euler", {
   )
 })
 
+test_that("simulate_deterministic supports generic age-specific downstream transitions", {
+  ages <- simulate_test_ages()
+  transitions <- data.frame(
+    from = c("E", "E", "IP", "IC", "IS"),
+    to = c("IP", "IS", "IC", "R", "R"),
+    stringsAsFactors = FALSE
+  )
+  transitions$rate <- I(list(
+    c("0-4" = 0.2, "5-9" = 0.35),
+    c("0-4" = 0.3, "5-9" = 0.15),
+    c("0-4" = 0.25, "5-9" = 0.2),
+    0.1,
+    c("5-9" = 0.4, "0-4" = 0.3)
+  ))
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = transitions,
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 6),
+    value = c(90, 180, 10, 20, 5, 10, 2, 4, 3, 6, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0,
+    method = "euler"
+  )
+
+  final_rows <- output[output$time == 0.1, ]
+  expect_equal(
+    final_rows$value,
+    c(90, 180, 9.5, 19, 5.075, 10.5, 2.105, 4.16, 3.21, 6.06, 0.11, 0.28)
+  )
+  expect_equal(aggregate(value ~ age_group, final_rows, sum)$value, c(110, 220))
+})
+
 
 test_that("method defaults to deSolve when available and Euler otherwise", {
   default_output <- simulate_deterministic(

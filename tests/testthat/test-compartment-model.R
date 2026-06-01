@@ -59,6 +59,30 @@ generic_seir_model <- function(sigma = 0.3, gamma = 0.2) {
   )
 }
 
+generic_clinical_subclinical_model <- function(ages = generic_test_ages()) {
+  sigma <- 0.5
+  y_age <- c("0-4" = 0.4, "5-9" = 0.7)
+  sigma_ip <- sigma * y_age
+  sigma_is <- sigma * (1 - y_age)
+  gamma_p <- c("5-9" = 0.25, "0-4" = 0.2)
+  gamma_c <- 0.1
+  gamma_s <- c("0-4" = 0.3, "5-9" = 0.4)
+  transitions <- data.frame(
+    from = c("E", "E", "IP", "IC", "IS"),
+    to = c("IP", "IS", "IC", "R", "R"),
+    stringsAsFactors = FALSE
+  )
+  transitions$rate <- I(list(sigma_ip, sigma_is, gamma_p, gamma_c, gamma_s))
+
+  CompartmentModel(
+    compartments = c("S", "E", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = transitions,
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+}
+
 test_that("CompartmentModel constructs a valid generic disease model", {
   model <- generic_seir_model()
 
@@ -184,7 +208,7 @@ test_that("generic SIR trajectory matches existing one-age-group SIR", {
 test_that("generic model supports age-specific per-capita rates", {
   ages <- generic_test_ages()
   transitions <- data.frame(from = "I", to = "R", stringsAsFactors = FALSE)
-  transitions$rate <- I(list(c(0.1, 0.3)))
+  transitions$rate <- I(list(c("5-9" = 0.3, "0-4" = 0.1)))
   model <- CompartmentModel(
     compartments = c("S", "I", "R"),
     transitions = transitions
@@ -198,6 +222,111 @@ test_that("generic model supports age-specific per-capita rates", {
   )
 
   expect_equal(rates$rate, c(1, 6))
+})
+
+test_that("generic model represents competing age-specific transitions from one source", {
+  ages <- generic_test_ages()
+  transitions <- data.frame(
+    from = c("E", "E"),
+    to = c("IP", "IS"),
+    stringsAsFactors = FALSE
+  )
+  transitions$rate <- I(list(
+    c("0-4" = 0.2, "5-9" = 0.4),
+    c("5-9" = 0.1, "0-4" = 0.3)
+  ))
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IS", "R"),
+    transitions = transitions,
+    infectious_compartments = character()
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 5),
+    value = c(90, 180, 5, 15, 0, 0, 0, 0, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(rates$from, c("E", "E", "E", "E"))
+  expect_equal(rates$to, c("IP", "IS", "IP", "IS"))
+  expect_equal(rates$age_group, c("0-4", "0-4", "5-9", "5-9"))
+  expect_equal(rates$rate, c(1, 1.5, 6, 1.5))
+
+  derivative <- rates_to_derivative(rates, model$compartments, ages)
+  expect_equal(
+    derivative$derivative,
+    c(0, 0, -2.5, -7.5, 1, 6, 1.5, 1.5, 0, 0)
+  )
+})
+
+test_that("generic clinical/subclinical fixture is expressible with age-specific rates", {
+  ages <- generic_test_ages()
+  model <- generic_clinical_subclinical_model(ages)
+  state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 6),
+    value = c(90, 180, 10, 20, 5, 10, 2, 4, 3, 6, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts(),
+    beta = 0
+  )
+
+  expect_equal(model$infectiousness_weights, c(IP = 1, IC = 1, IS = 0.5))
+  e_rates <- rates[rates$from == "E", c("to", "age_group", "rate")]
+  row.names(e_rates) <- NULL
+  expect_equal(
+    e_rates,
+    data.frame(
+      to = c("IP", "IS", "IP", "IS"),
+      age_group = c("0-4", "0-4", "5-9", "5-9"),
+      rate = c(2, 3, 7, 3),
+      stringsAsFactors = FALSE
+    )
+  )
+})
+
+test_that("generic age-specific transition-rate vectors are validated at expansion time", {
+  ages <- generic_test_ages()
+  make_model <- function(rate) {
+    transitions <- data.frame(from = "I", to = "R", stringsAsFactors = FALSE)
+    transitions$rate <- I(list(rate))
+    CompartmentModel(
+      compartments = c("S", "I", "R"),
+      transitions = transitions,
+      infectious_compartments = character()
+    )
+  }
+  expect_bad_rate <- function(rate, pattern) {
+    expect_error(
+      transition_rates(
+        state = generic_sir_state(),
+        model = make_model(rate),
+        age_structure = ages,
+        contact_matrix = generic_test_contacts()
+      ),
+      pattern
+    )
+  }
+
+  expect_bad_rate(c(0.1, 0.3), "must be named by age group")
+  expect_bad_rate(c("0-4" = 0.1, older = 0.3), "unknown age_group")
+  expect_bad_rate(c("0-4" = 0.1, "10-14" = 0.3), "unknown age_group")
+  expect_bad_rate(c("0-4" = 0.1, "5-9" = -0.3), "cannot contain negative")
+  expect_bad_rate(c("0-4" = 0.1, "5-9" = Inf), "finite non-missing")
+  expect_bad_rate(c("0-4" = 0.1, "5-9" = 0.2, "10-14" = 0.3), "length must be 1 or match")
 })
 
 test_that("generic model can use arbitrary infectious compartments", {

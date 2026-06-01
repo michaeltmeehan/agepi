@@ -176,24 +176,38 @@ msir <- CompartmentModel(
 )
 ```
 
-Generic models can also declare more than one infectious source compartment.
-Use named `infectiousness_weights` for relative infectiousness by compartment;
-the force of infection still uses source-age totals across all compartments in
-the denominator and recipient-row/source-column contact matrices.
+Generic models can also declare scalar or named age-specific per-capita
+transition rates, competing outgoing transitions from the same source
+compartment, and more than one infectious source compartment. Use named
+`infectiousness_weights` for relative infectiousness by compartment; the force
+of infection still uses source-age totals across all compartments in the
+denominator and recipient-row/source-column contact matrices.
 
 ```r
+transitions <- data.frame(
+  from = c("E", "E", "IP", "IC", "IS"),
+  to = c("IP", "IS", "IC", "R", "R")
+)
+transitions$rate <- I(list(
+  c("0-4" = 0.20, "5-9" = 0.35),
+  c("0-4" = 0.30, "5-9" = 0.15),
+  0.25,
+  0.10,
+  c("0-4" = 0.30, "5-9" = 0.40)
+))
+
 covid_like <- CompartmentModel(
-  compartments = c("S", "IP", "IC", "IS", "R"),
-  infection_transitions = data.frame(from = "S", to = "IP"),
-  transitions = data.frame(
-    from = c("IP", "IC", "IS"),
-    to = c("IC", "R", "R"),
-    rate = c(0.2, 0.1, 0.1)
-  ),
+  compartments = c("S", "E", "IP", "IC", "IS", "R"),
+  infection_transitions = data.frame(from = "S", to = "E"),
+  transitions = transitions,
   infectious_compartments = c("IP", "IC", "IS"),
   infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
 )
 ```
+
+This is only a small expressiveness fixture; it is not a full Davies-style
+COVID model and does not add branching-probability, R0, or setting-specific
+contact tools.
 
 See [docs/generic_compartment_models.md](docs/generic_compartment_models.md),
 [examples/generic_sir.R](examples/generic_sir.R),

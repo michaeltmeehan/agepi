@@ -50,7 +50,10 @@ SIRModel <- function(gamma) {
 #' @param infection_transitions Data frame with columns `from` and `to`.
 #'   Infection flow is `lambda * state[from]` within each recipient age group.
 #' @param transitions Optional data frame with columns `from`, `to`, and
-#'   `rate`, where `rate` is a non-negative per-capita transition rate.
+#'   `rate`, where `rate` is a non-negative per-capita transition rate. Each
+#'   rate may be a scalar or a named age-specific numeric vector in a list
+#'   column. Age-specific names are validated and reordered when transition
+#'   rates are evaluated against an `AgeStructure()`.
 #' @param infectious_compartments Character vector naming compartment(s) that
 #'   contribute to infectious pressure. Defaults to `"I"` when present.
 #' @param infectiousness_weights Optional named non-negative numeric weights for

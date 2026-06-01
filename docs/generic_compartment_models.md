@@ -57,9 +57,35 @@ transitions = data.frame(
 ```
 
 Rates are non-negative per-capita rates. A rate may be a scalar or, when
-transition rates are evaluated, an age-specific numeric vector with one value
-per age group. For example, `M -> S` can represent fixed loss of maternal
-immunity and `I -> R` can represent recovery.
+transition rates are evaluated, a named age-specific numeric vector with one
+value per age group. Age-specific vectors are supplied through a list column
+and are reordered to match `age_structure$age_groups`:
+
+```r
+transitions <- data.frame(
+  from = c("E", "E", "IP", "IC", "IS"),
+  to = c("IP", "IS", "IC", "R", "R")
+)
+transitions$rate <- I(list(
+  c("0-4" = 0.20, "5-9" = 0.35),
+  c("0-4" = 0.30, "5-9" = 0.15),
+  0.25,
+  0.10,
+  c("5-9" = 0.40, "0-4" = 0.30)
+))
+```
+
+Names must match the age groups used for simulation; missing, unknown,
+unnamed, negative, or non-finite age-specific rates are rejected when
+`transition_rates()` expands the model. This deferred validation is necessary
+because `CompartmentModel()` does not itself take an `AgeStructure()`.
+
+Multiple outgoing transitions from the same source compartment are supported
+when they have different destinations. For example, `E -> IP` and `E -> IS`
+can represent competing per-capita routes using age-specific rates. This is a
+rate-based representation, not an explicit branching-probability interface.
+For example, `M -> S` can represent fixed loss of maternal immunity and
+`I -> R` can represent recovery.
 
 Vaccination schedules and time-varying interventions are not yet implemented.
 Static transitions such as `S -> V` or `M -> S` can be represented if supplied

@@ -7,7 +7,9 @@ Build a small but extensible R prototype for age-structured infectious disease t
 Checkpoint note: this design document preserves much of the initial prototype
 scope. Demographic-only ODE components, WPP-style demographic adapters, residual
 diagnostics, SEIR infection-only simulation, linear schedule interpolation, and
-optional deSolve backends have since been added; see `README.md`,
+optional deSolve backends have since been added. Generic `CompartmentModel()`
+non-infection transitions can also use scalar or named age-specific
+per-capita rates when expanded through `transition_rates()`. See `README.md`,
 `docs/external_data_adapters.md`, `docs/demographic_residuals.md`, and
 `examples/mock_demographic_workflow.R` for the current public surface.
 
