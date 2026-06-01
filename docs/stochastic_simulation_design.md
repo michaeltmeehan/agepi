@@ -9,14 +9,15 @@ and source-column contact matrices, `force_of_infection()` semantics, and tidy
 long-format simulation output.
 
 This document records the current stochastic design. `simulate_stochastic()` is
-implemented for fixed-population SIR and SEIR disease events only. It should not
-be read as committing to a fully stochastic demographic simulator.
+implemented for fixed-population disease events using the existing
+transition-rate interface where the model supplies enough transition metadata.
+It should not be read as committing to a fully stochastic demographic simulator.
 
-## Current implementation: fixed-population SIR and SEIR
+## Current implementation: fixed-population supported compartment models
 
 The implemented stochastic surface is deliberately narrow:
 
-- SIR and SEIR only;
+- SIR, SEIR, and supported generic `CompartmentModel()` transition structures;
 - fixed population;
 - no demography;
 - no ageing;
@@ -27,6 +28,13 @@ The implemented stochastic surface is deliberately narrow:
 - output aligned to requested observation times;
 - reproducible trajectories when a random seed is supplied;
 - optional event log output.
+
+Each Gillespie propensity is built from `transition_rates()`. A transition-rate
+row with `from`, `to`, `age_group`, and `rate` becomes one possible
+individual-level event in that age group. When the event fires, one individual
+is removed from `from` and added to `to`. This keeps event semantics aligned
+with deterministic derivatives from `rates_to_derivative()` while preserving
+integer counts.
 
 The SIR event semantics are:
 
@@ -76,6 +84,14 @@ propensities are:
 sigma * E_a(t)
 gamma * I_a(t)
 ```
+
+For generic `CompartmentModel()` objects, infection transitions declared in
+`infection_transitions` use the same force-of-infection path as deterministic
+simulation. Other declared `transitions` are interpreted as per-capita
+within-age transitions with scalar or age-specific rates. Generic stochastic
+support is therefore limited to fixed-population transitions that can be
+represented as one source compartment and one destination compartment in the
+same age group.
 
 ## Demography policy
 
@@ -180,7 +196,7 @@ cases and deterministic expectations. Targets include:
 
 - a fixed seed gives reproducible trajectories;
 - all states remain non-negative;
-- fixed-population SIR and SEIR conserve total population exactly;
+- fixed-population supported models conserve total population exactly;
 - zero initial infections produce no epidemic events;
 - averages over many stochastic simulations approximately track the
   deterministic trajectory;

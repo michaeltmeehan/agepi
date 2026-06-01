@@ -60,6 +60,28 @@ stochastic_test_run <- function(
   )
 }
 
+stochastic_test_generic_sir_model <- function(gamma = 0.2) {
+  CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I"),
+    transitions = data.frame(from = "I", to = "R", rate = gamma),
+    infectious_compartments = "I"
+  )
+}
+
+stochastic_test_generic_seir_model <- function(sigma = 0.4, gamma = 0.2) {
+  CompartmentModel(
+    compartments = c("S", "E", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "E"),
+    transitions = data.frame(
+      from = c("E", "I"),
+      to = c("I", "R"),
+      rate = c(sigma, gamma)
+    ),
+    infectious_compartments = "I"
+  )
+}
+
 stochastic_test_seir_run <- function(
   initial_state = stochastic_test_seir_state(),
   times = seq(0, 1, by = 0.25),
@@ -272,12 +294,82 @@ test_that("SEIR event log uses stable column order and event labels", {
   expect_true(all(result$events$event %in% c("infection", "progression", "recovery")))
 })
 
-test_that("simulate_stochastic rejects unsupported model and method", {
-  unsupported_model <- CompartmentModel(
-    compartments = c("S", "I", "R"),
-    infection_transitions = data.frame(from = "S", to = "I"),
-    transitions = data.frame(from = "I", to = "R", rate = 0.2)
+test_that("generic CompartmentModel SIR path matches specialised SIR when seeded", {
+  specialised <- stochastic_test_run(seed = 41, return_events = TRUE)
+  generic <- simulate_stochastic(
+    initial_state = stochastic_test_state(),
+    times = seq(0, 1, by = 0.25),
+    model = stochastic_test_generic_sir_model(gamma = 0.2),
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0.03,
+    seed = 41,
+    return_events = TRUE
   )
+
+  expect_equal(generic, specialised)
+})
+
+test_that("generic CompartmentModel SEIR path matches specialised SEIR when seeded", {
+  specialised <- stochastic_test_seir_run(seed = 42, return_events = TRUE)
+  generic <- simulate_stochastic(
+    initial_state = stochastic_test_seir_state(),
+    times = seq(0, 1, by = 0.25),
+    model = stochastic_test_generic_seir_model(sigma = 0.4, gamma = 0.2),
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0.03,
+    seed = 42,
+    return_events = TRUE
+  )
+
+  expect_equal(generic, specialised)
+})
+
+test_that("generic stochastic trajectories stay nonnegative and fixed population", {
+  result <- simulate_stochastic(
+    initial_state = stochastic_test_seir_state(),
+    times = seq(0, 2, by = 0.5),
+    model = stochastic_test_generic_seir_model(sigma = 0.4, gamma = 0.2),
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0.03,
+    seed = 43
+  )
+
+  expect_true(all(result$value >= 0))
+
+  totals <- aggregate(value ~ time + age_group, result, sum)
+  expect_equal(totals$value[totals$age_group == "0-4"], rep(100, 5))
+  expect_equal(totals$value[totals$age_group == "5-9"], rep(200, 5))
+})
+
+test_that("generic event log keeps the stochastic event structure", {
+  result <- simulate_stochastic(
+    initial_state = stochastic_test_state(S = c(1, 1), I = c(4, 4), R = c(0, 0)),
+    times = c(0, 20),
+    model = stochastic_test_generic_sir_model(gamma = 1),
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 1,
+    seed = 44,
+    return_events = TRUE
+  )
+
+  expect_identical(names(result$events), c("time", "event", "age_group", "from", "to", "rate"))
+  expect_true(nrow(result$events) > 0)
+  expect_true(all(result$events$from %in% c("S", "I")))
+  expect_true(all(result$events$to %in% c("I", "R")))
+  expect_true(all(diff(result$events$time) >= 0))
+})
+
+test_that("simulate_stochastic rejects unsupported model structures and method", {
+  unsupported_model <- list(
+    model_type = "Unsupported",
+    compartments = c("S", "I", "R"),
+    transitions = data.frame(from = "S", to = "I")
+  )
+  class(unsupported_model) <- "DiseaseModel"
 
   expect_error(
     simulate_stochastic(
@@ -287,7 +379,24 @@ test_that("simulate_stochastic rejects unsupported model and method", {
       age_structure = stochastic_test_ages(),
       contact_matrix = stochastic_test_contacts()
     ),
-    "currently supports only SIRModel\\(\\) and SEIRModel\\(\\)"
+    "unsupported disease model type"
+  )
+
+  bad_rate_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    transitions = data.frame(from = "I", to = "R", rate = I(list(c(0.1, 0.2, 0.3)))),
+    infectious_compartments = character()
+  )
+
+  expect_error(
+    simulate_stochastic(
+      initial_state = stochastic_test_state(),
+      times = c(0, 1),
+      model = bad_rate_model,
+      age_structure = stochastic_test_ages(),
+      contact_matrix = stochastic_test_contacts()
+    ),
+    "transition rate for I->R length must be 1 or match the number of age groups"
   )
 
   expect_error(

@@ -2,7 +2,7 @@
 % Please edit documentation in R/simulate_stochastic.R
 \name{simulate_stochastic}
 \alias{simulate_stochastic}
-\title{Simulate a stochastic SIR or SEIR model with Gillespie's direct method}
+\title{Simulate a stochastic compartment model with Gillespie's direct method}
 \usage{
 simulate_stochastic(
   initial_state,
@@ -27,8 +27,8 @@ simulate_stochastic(
 \item{times}{Numeric vector of finite, non-missing, strictly increasing time
 points. Must have length at least two.}
 
-\item{model}{Disease model. \code{SIRModel()} and \code{SEIRModel()} outputs are
-currently supported.}
+\item{model}{Disease model. \code{SIRModel()}, \code{SEIRModel()}, and supported
+\code{CompartmentModel()} outputs are currently supported.}
 
 \item{age_structure}{Valid age structure.}
 
@@ -65,19 +65,17 @@ list with \code{trajectory} and an event log containing \code{time}, \code{event
 \code{age_group}, \code{from}, \code{to}, and \code{rate}.
 }
 \description{
-Runs a narrow stochastic simulation for age-structured SIR and SEIR models:
-fixed population, no demography, no ageing, no fertility, no mortality, no
-migration, and no tau-leaping.
+Runs a narrow stochastic simulation for supported age-structured
+compartmental models: fixed population, no demography, no ageing, no
+fertility, no mortality, no migration, and no tau-leaping.
 }
 \details{
 The simulator uses Gillespie's continuous-time direct method. Infection
-propensities reuse the package force-of-infection convention:
-rows of \code{contact_matrix} are recipient age groups and columns are infectious
-source age groups. SIR infection events move \code{S -> I} with propensity
-\code{lambda * S}, and recovery events move \code{I -> R} with propensity \code{gamma * I}.
-SEIR infection events move \code{S -> E} with propensity \code{lambda * S},
-progression events move \code{E -> I} with propensity \code{sigma * E}, and recovery
-events move \code{I -> R} with propensity \code{gamma * I}.
+propensities reuse the package transition-rate interface. Each transition
+rate row becomes one individual event type within an age group. Infection
+propensities therefore use the existing force-of-infection convention: rows
+of \code{contact_matrix} are recipient age groups and columns are infectious
+source age groups.
 
 The initial state may be supplied either as long-form state data or as a
 numeric vector in the existing compartment-major, age-group-minor ordering.

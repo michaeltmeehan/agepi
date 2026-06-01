@@ -1,17 +1,15 @@
-#' Simulate a stochastic SIR or SEIR model with Gillespie's direct method
+#' Simulate a stochastic compartment model with Gillespie's direct method
 #'
-#' Runs a narrow stochastic simulation for age-structured SIR and SEIR models:
-#' fixed population, no demography, no ageing, no fertility, no mortality, no
-#' migration, and no tau-leaping.
+#' Runs a narrow stochastic simulation for supported age-structured
+#' compartmental models: fixed population, no demography, no ageing, no
+#' fertility, no mortality, no migration, and no tau-leaping.
 #'
 #' The simulator uses Gillespie's continuous-time direct method. Infection
-#' propensities reuse the package force-of-infection convention:
-#' rows of `contact_matrix` are recipient age groups and columns are infectious
-#' source age groups. SIR infection events move `S -> I` with propensity
-#' `lambda * S`, and recovery events move `I -> R` with propensity `gamma * I`.
-#' SEIR infection events move `S -> E` with propensity `lambda * S`,
-#' progression events move `E -> I` with propensity `sigma * E`, and recovery
-#' events move `I -> R` with propensity `gamma * I`.
+#' propensities reuse the package transition-rate interface. Each transition
+#' rate row becomes one individual event type within an age group. Infection
+#' propensities therefore use the existing force-of-infection convention: rows
+#' of `contact_matrix` are recipient age groups and columns are infectious
+#' source age groups.
 #'
 #' The initial state may be supplied either as long-form state data or as a
 #' numeric vector in the existing compartment-major, age-group-minor ordering.
@@ -27,8 +25,8 @@
 #'   `age_group`, and `value`, or numeric state vector.
 #' @param times Numeric vector of finite, non-missing, strictly increasing time
 #'   points. Must have length at least two.
-#' @param model Disease model. `SIRModel()` and `SEIRModel()` outputs are
-#'   currently supported.
+#' @param model Disease model. `SIRModel()`, `SEIRModel()`, and supported
+#'   `CompartmentModel()` outputs are currently supported.
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
@@ -242,20 +240,7 @@ stochastic_propensities <- function(
   infectiousness,
   population
 ) {
-  if (identical(model$model_type, "SEIR")) {
-    return(stochastic_seir_propensities(
-      state_vector = state_vector,
-      model = model,
-      age_structure = age_structure,
-      contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
-      population = population
-    ))
-  }
-
-  stochastic_sir_propensities(
+  stochastic_event_table(
     state_vector = state_vector,
     model = model,
     age_structure = age_structure,
@@ -267,7 +252,7 @@ stochastic_propensities <- function(
   )
 }
 
-stochastic_sir_propensities <- function(
+stochastic_event_table <- function(
   state_vector,
   model,
   age_structure,
@@ -277,72 +262,90 @@ stochastic_sir_propensities <- function(
   infectiousness,
   population
 ) {
-  n_age_groups <- age_structure$n_age_groups
-  S <- state_vector[seq_len(n_age_groups)]
-  I <- state_vector[n_age_groups + seq_len(n_age_groups)]
-
-  lambda <- force_of_infection(
-    infectious = I,
-    population = population,
+  rates <- transition_rates(
+    state = as.numeric(state_vector),
+    model = model,
+    age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
     susceptibility = susceptibility,
-    infectiousness = infectiousness,
-    age_structure = age_structure
+    infectiousness = infectiousness
   )
+  validate_stochastic_transition_rates(rates, model, age_structure)
 
-  infection_rates <- as.numeric(lambda) * S
-  recovery_rates <- model$gamma * I
-
-  data.frame(
-    event = rep(c("infection", "recovery"), each = n_age_groups),
-    age_group = rep(age_structure$age_groups, times = 2),
-    age_index = rep(seq_len(n_age_groups), times = 2),
-    from = rep(c("S", "I"), each = n_age_groups),
-    to = rep(c("I", "R"), each = n_age_groups),
-    rate = c(infection_rates, recovery_rates),
-    stringsAsFactors = FALSE
+  transition_order <- stochastic_transition_order(model)
+  rates$.transition_index <- match(
+    paste(rates$from, rates$to, sep = "->"),
+    paste(transition_order$from, transition_order$to, sep = "->")
   )
+  rates$age_index <- match(rates$age_group, age_structure$age_groups)
+  rates$event <- stochastic_event_labels(rates, model)
+  rates <- rates[order(rates$.transition_index, rates$age_index), ]
+  row.names(rates) <- NULL
+
+  rates[, c("event", "age_group", "age_index", "from", "to", "rate")]
 }
 
-stochastic_seir_propensities <- function(
-  state_vector,
-  model,
-  age_structure,
-  contact_matrix,
-  beta,
-  susceptibility,
-  infectiousness,
-  population
-) {
-  n_age_groups <- age_structure$n_age_groups
-  S <- state_vector[seq_len(n_age_groups)]
-  E <- state_vector[n_age_groups + seq_len(n_age_groups)]
-  I <- state_vector[(2L * n_age_groups) + seq_len(n_age_groups)]
+stochastic_transition_order <- function(model) {
+  if (identical(model$model_type, "CompartmentModel")) {
+    transitions <- rbind(
+      model$infection_transitions[, c("from", "to"), drop = FALSE],
+      model$transitions[, c("from", "to"), drop = FALSE]
+    )
+    row.names(transitions) <- NULL
+    return(transitions)
+  }
 
-  lambda <- force_of_infection(
-    infectious = I,
-    population = population,
-    contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
+  model$transitions[, c("from", "to"), drop = FALSE]
+}
+
+stochastic_event_labels <- function(rates, model) {
+  labels <- paste(rates$from, rates$to, sep = "->")
+
+  if (identical(model$model_type, "SIR")) {
+    labels[labels == "S->I"] <- "infection"
+    labels[labels == "I->R"] <- "recovery"
+    return(labels)
+  }
+
+  if (identical(model$model_type, "SEIR")) {
+    labels[labels == "S->E"] <- "infection"
+    labels[labels == "E->I"] <- "progression"
+    labels[labels == "I->R"] <- "recovery"
+    return(labels)
+  }
+
+  infection_keys <- paste(
+    model$infection_transitions$from,
+    model$infection_transitions$to,
+    sep = "->"
+  )
+  labels[labels %in% infection_keys] <- "infection"
+  labels[labels == "E->I"] <- "progression"
+  labels[labels == "I->R"] <- "recovery"
+  labels
+}
+
+validate_stochastic_transition_rates <- function(rates, model, age_structure) {
+  validate_transition_rate_table(
+    transition_rate_table = rates,
+    compartments = model$compartments,
     age_structure = age_structure
   )
 
-  infection_rates <- as.numeric(lambda) * S
-  progression_rates <- model$sigma * E
-  recovery_rates <- model$gamma * I
+  transition_order <- stochastic_transition_order(model)
+  expected_keys <- paste(transition_order$from, transition_order$to, sep = "->")
+  observed_keys <- paste(rates$from, rates$to, sep = "->")
+  unknown_keys <- setdiff(unique(observed_keys), expected_keys)
+  if (length(unknown_keys) > 0) {
+    stop(
+      "stochastic transition rates contain transition(s) not declared by the model: ",
+      paste(unknown_keys, collapse = ", "),
+      call. = FALSE
+    )
+  }
 
-  data.frame(
-    event = rep(c("infection", "progression", "recovery"), each = n_age_groups),
-    age_group = rep(age_structure$age_groups, times = 3),
-    age_index = rep(seq_len(n_age_groups), times = 3),
-    from = rep(c("S", "E", "I"), each = n_age_groups),
-    to = rep(c("E", "I", "R"), each = n_age_groups),
-    rate = c(infection_rates, progression_rates, recovery_rates),
-    stringsAsFactors = FALSE
-  )
+  invisible(rates)
 }
 
 stochastic_sample_event <- function(rates, total_rate) {
@@ -419,8 +422,11 @@ validate_stochastic_seed <- function(seed) {
 }
 
 validate_stochastic_model <- function(model) {
-  if (!identical(model$model_type, "SIR") && !identical(model$model_type, "SEIR")) {
-    stop("simulate_stochastic() currently supports only SIRModel() and SEIRModel() models.", call. = FALSE)
+  if (!model$model_type %in% c("SIR", "SEIR", "CompartmentModel")) {
+    stop(
+      "simulate_stochastic() currently supports SIRModel(), SEIRModel(), and supported CompartmentModel() models.",
+      call. = FALSE
+    )
   }
 
   invisible(model)
