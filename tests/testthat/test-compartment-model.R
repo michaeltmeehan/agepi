@@ -225,6 +225,151 @@ test_that("generic model can use arbitrary infectious compartments", {
   expect_equal(rates$rate, c(27, 0, 126, 0))
 })
 
+test_that("generic model weights multiple infectious compartments", {
+  ages <- generic_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "IP", "IC", "R"),
+    infection_transitions = data.frame(from = "S", to = "IP", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("IP", "IC"),
+      to = c("IC", "R"),
+      rate = c(0, 0),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("IP", "IC"),
+    infectiousness_weights = c(IC = 0.5, IP = 1)
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "IP", "IC", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 4),
+    value = c(70, 140, 10, 20, 20, 40, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(model$infectiousness_weights, c(IP = 1, IC = 0.5))
+  expect_equal(rates$rate, c(42, 0, 0, 196, 0, 0))
+})
+
+test_that("generic model supports COVID-like relative infectiousness weights", {
+  ages <- generic_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "IP", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("IP", "IC", "IS"),
+      to = c("IC", "R", "R"),
+      rate = c(0, 0, 0),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 5),
+    value = c(90, 180, 10, 20, 5, 10, 8, 16, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(rates$rate, c(45.398230088496, 0, 0, 0, 211.858407079646, 0, 0, 0))
+})
+
+test_that("generic model rejects malformed infectiousness weights", {
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = c(1, 0.5)
+    ),
+    "must be named"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = c(IP = 1, IS = 0.5)
+    ),
+    "unknown infectious compartment"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = c(IP = -1, IC = 0.5)
+    ),
+    "cannot contain negative"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = c(IP = Inf, IC = 0.5)
+    ),
+    "finite numeric vector"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = c(IP = 0, IC = 0)
+    ),
+    "at least one positive"
+  )
+})
+
+test_that("generic deterministic simulation supports multiple infectious compartments", {
+  ages <- AgeStructure("all", 0, Inf)
+  model <- CompartmentModel(
+    compartments = c("S", "IP", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "IP", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("IP", "IS"),
+      to = c("IS", "R"),
+      rate = c(0.2, 0.1),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("IP", "IS"),
+    infectiousness_weights = c(IP = 1, IS = 0.5)
+  )
+  state <- data.frame(
+    compartment = c("S", "IP", "IS", "R"),
+    age_group = "all",
+    value = c(90, 5, 10, 0),
+    stringsAsFactors = FALSE
+  )
+
+  output <- simulate_deterministic(
+    initial_state = state,
+    times = c(0, 0.1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = matrix(2, nrow = 1),
+    beta = 0.2,
+    method = "euler"
+  )
+
+  expect_equal(output$value[output$time == 0.1], c(89.657142857143, 5.242857142857, 10, 0.1))
+})
+
 test_that("generic contact orientation remains recipient-row source-column", {
   ages <- generic_test_ages()
   state <- generic_sir_state(S = c(100, 100), I = c(0, 10), R = c(0, 0))

@@ -76,12 +76,13 @@ infectious_compartments = "I"
 
 If the compartment vector contains `I`, it is used by default. Models with
 other infectious states can name those states explicitly. When there is more
-than one infectious compartment, `infectiousness_weights` gives fixed weights
-for combining them before the force of infection is calculated:
+than one infectious compartment, named `infectiousness_weights` gives fixed
+relative infectiousness weights for combining them before the force of
+infection is calculated:
 
 ```r
-infectious_compartments = c("Ip", "Ia")
-infectiousness_weights = c(1, 0.5)
+infectious_compartments = c("IP", "IC", "IS")
+infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
 ```
 
 These compartment weights are separate from the age-specific `infectiousness`

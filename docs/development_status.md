@@ -83,8 +83,8 @@ transition-rate interface:
 
 - infection transitions use the shared `force_of_infection()` convention;
 - fixed transitions are per-capita flows with static rates;
-- infectious compartments can be weighted before contributing to force of
-  infection;
+- one or more infectious compartments can contribute to force of infection
+  through named, non-negative relative infectiousness weights;
 - demographic births and susceptible-policy migration can target configured
   compartments.
 

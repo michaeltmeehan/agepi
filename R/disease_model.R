@@ -53,8 +53,9 @@ SIRModel <- function(gamma) {
 #'   `rate`, where `rate` is a non-negative per-capita transition rate.
 #' @param infectious_compartments Character vector naming compartment(s) that
 #'   contribute to infectious pressure. Defaults to `"I"` when present.
-#' @param infectiousness_weights Optional non-negative numeric weights for
-#'   `infectious_compartments`. Defaults to one for each infectious compartment.
+#' @param infectiousness_weights Optional named non-negative numeric weights for
+#'   `infectious_compartments`. Names must match infectious compartments.
+#'   Defaults to one for each infectious compartment.
 #' @param birth_compartment Optional compartment receiving demographic births.
 #'   Defaults to `"S"` when present.
 #' @param migration_compartment Optional compartment receiving net migration
@@ -129,7 +130,8 @@ CompartmentModel <- function(
 
   infectiousness_weights <- validate_generic_infectiousness_weights(
     infectiousness_weights,
-    infectious_compartments
+    infectious_compartments,
+    require_positive = nrow(infection_transitions) > 0
   )
 
   birth_compartment <- validate_optional_generic_compartment(
@@ -274,7 +276,8 @@ validate_disease_model <- function(model) {
     )
     validate_generic_infectiousness_weights(
       model$infectiousness_weights,
-      model$infectious_compartments
+      model$infectious_compartments,
+      require_positive = nrow(model$infection_transitions) > 0
     )
     validate_optional_generic_compartment(
       model$birth_compartment,
@@ -533,9 +536,14 @@ validate_generic_compartment_subset <- function(x, compartments, name, allow_emp
   x
 }
 
-validate_generic_infectiousness_weights <- function(weights, infectious_compartments) {
+validate_generic_infectiousness_weights <- function(
+  weights,
+  infectious_compartments,
+  require_positive = FALSE
+) {
   if (is.null(weights)) {
     weights <- rep(1, length(infectious_compartments))
+    names(weights) <- infectious_compartments
   }
 
   if (!is.numeric(weights) || is.matrix(weights) || is.data.frame(weights) ||
@@ -547,11 +555,53 @@ validate_generic_infectiousness_weights <- function(weights, infectious_compartm
     )
   }
 
+  if (length(weights) > 0) {
+    if (is.null(names(weights)) || anyNA(names(weights)) || any(names(weights) == "")) {
+      stop("infectiousness_weights must be named by infectious compartment.", call. = FALSE)
+    }
+
+    duplicated_names <- unique(names(weights)[duplicated(names(weights))])
+    if (length(duplicated_names) > 0) {
+      stop(
+        "infectiousness_weights names must be unique; duplicate compartment(s): ",
+        paste(duplicated_names, collapse = ", "),
+        call. = FALSE
+      )
+    }
+
+    unknown_names <- setdiff(names(weights), infectious_compartments)
+    if (length(unknown_names) > 0) {
+      stop(
+        "infectiousness_weights contains unknown infectious compartment value(s): ",
+        paste(unknown_names, collapse = ", "),
+        call. = FALSE
+      )
+    }
+
+    missing_names <- setdiff(infectious_compartments, names(weights))
+    if (length(missing_names) > 0) {
+      stop(
+        "infectiousness_weights is missing infectious compartment value(s): ",
+        paste(missing_names, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+
   if (any(weights < 0)) {
     stop("infectiousness_weights cannot contain negative values.", call. = FALSE)
   }
 
-  as.numeric(weights)
+  if (require_positive && !any(weights > 0)) {
+    stop(
+      "infectiousness_weights must contain at least one positive value when infection_transitions are supplied.",
+      call. = FALSE
+    )
+  }
+
+  weights <- as.numeric(weights[infectious_compartments])
+  names(weights) <- infectious_compartments
+  weights
 }
 
 validate_optional_generic_compartment <- function(x, compartments, name) {

@@ -87,11 +87,12 @@ gamma * I_a(t)
 
 For generic `CompartmentModel()` objects, infection transitions declared in
 `infection_transitions` use the same force-of-infection path as deterministic
-simulation. Other declared `transitions` are interpreted as per-capita
-within-age transitions with scalar or age-specific rates. Generic stochastic
-support is therefore limited to fixed-population transitions that can be
-represented as one source compartment and one destination compartment in the
-same age group.
+simulation, including named relative infectiousness weights for multiple
+infectious compartments. Other declared `transitions` are interpreted as
+per-capita within-age transitions with scalar or age-specific rates. Generic
+stochastic support is therefore limited to fixed-population transitions that
+can be represented as one source compartment and one destination compartment
+in the same age group.
 
 ## Demography policy
 

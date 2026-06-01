@@ -26,8 +26,9 @@ Infection flow is \code{lambda * state[from]} within each recipient age group.}
 \item{infectious_compartments}{Character vector naming compartment(s) that
 contribute to infectious pressure. Defaults to \code{"I"} when present.}
 
-\item{infectiousness_weights}{Optional non-negative numeric weights for
-\code{infectious_compartments}. Defaults to one for each infectious compartment.}
+\item{infectiousness_weights}{Optional named non-negative numeric weights for
+\code{infectious_compartments}. Names must match infectious compartments.
+Defaults to one for each infectious compartment.}
 
 \item{birth_compartment}{Optional compartment receiving demographic births.
 Defaults to \code{"S"} when present.}
