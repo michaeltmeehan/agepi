@@ -25,8 +25,10 @@
 #'   `age_group`, and `value`, or numeric state vector.
 #' @param times Numeric vector of finite, non-missing, strictly increasing time
 #'   points. Must have length at least two.
-#' @param model Disease model. `SIRModel()`, `SEIRModel()`, and supported
-#'   `CompartmentModel()` outputs are currently supported.
+#' @param model Disease model. `SIRModel()`, `SEIRModel()`, and
+#'   `CompartmentModel()` outputs with supported fixed-population transition
+#'   structures expressible through `transition_rates()` are currently
+#'   supported.
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.

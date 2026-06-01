@@ -14,6 +14,8 @@ transmission depends on contacts between age groups. It currently supports:
 
 - defining age groups with `AgeStructure()`;
 - running deterministic SIR and SEIR simulations with `simulate_deterministic()`;
+- running fixed-population Gillespie SIR, SEIR, and supported generic
+  compartment simulations with `simulate_stochastic()`;
 - using age-specific contact matrices, susceptibility, and infectiousness;
 - building custom deterministic compartment models with `CompartmentModel()`;
 - simulating demographic-only processes with ageing, fertility, mortality, and
@@ -151,8 +153,11 @@ a compact script version.
 
 ## Custom Compartment Models
 
-Use `CompartmentModel()` when you want a deterministic age-structured model
-that is not one of the built-in `SIRModel()` or `SEIRModel()` constructors.
+Use `CompartmentModel()` when you want an age-structured model that is not one
+of the built-in `SIRModel()` or `SEIRModel()` constructors. Deterministic
+simulation supports generic models through the transition-rate interface, and
+stochastic simulation supports the fixed-population subset that can be
+represented as within-age transitions through `transition_rates()`.
 For example, this defines an MSIR-style model where maternal immunity wanes
 from `M` to `S`, susceptible people are infected, and infectious people recover:
 
@@ -273,9 +278,10 @@ reproduce full external projection systems. See
 
 `agepi` is an early-stage package. The current release is best suited for
 deterministic prototype models, teaching examples, and development of modelling
-workflows. SIR, SEIR, generic deterministic compartment models, fixed-population
-stochastic SIR/SEIR simulation, demographic processes, and adapter utilities are
-implemented, but broader stochastic methods, fitting/calibration, plotting
+workflows. SIR, SEIR, generic deterministic compartment models,
+fixed-population stochastic SIR, SEIR, and supported generic compartment
+simulation, demographic processes, and adapter utilities are implemented, but
+broader stochastic methods, stochastic demography, fitting/calibration, plotting
 helpers, time-varying contact matrices, and full WPP projection matching are not
 yet in scope.
 

@@ -250,7 +250,8 @@ Planned:
 Implemented:
 
 - `simulate_stochastic()`;
-- fixed-population stochastic SIR and SEIR support;
+- fixed-population stochastic SIR, SEIR, and supported generic
+  `CompartmentModel()` support;
 - Gillespie/direct-method dynamics only;
 - observation-time-aligned trajectory output;
 - optional event log output;
@@ -267,6 +268,8 @@ Current stochastic support is deliberately narrow:
 - no fertility;
 - no migration;
 - no tau-leaping;
+- generic `CompartmentModel()` support is limited to fixed-population
+  transition structures expressible through `transition_rates()`;
 - SIR event semantics: `S -> I` infection and `I -> R` recovery;
 - SEIR event semantics: `S -> E` infection, `E -> I` progression, and
   `I -> R` recovery;
@@ -275,7 +278,8 @@ Current stochastic support is deliberately narrow:
 
 Future stochastic work may include:
 
-- broader stochastic simulator design beyond fixed-population SIR/SEIR;
+- broader stochastic simulator design beyond fixed-population supported
+  transition-rate models;
 - additional stochastic methods beyond Gillespie/direct-method dynamics;
 - ageing remains deterministic;
 - stochastic mortality, fertility, and migration may be later optional

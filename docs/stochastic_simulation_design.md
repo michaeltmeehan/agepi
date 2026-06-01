@@ -177,7 +177,7 @@ A later hybrid simulator could combine:
 If deterministic demographic updates are applied to a stochastic state, they
 may create non-integer compartment values. That may be acceptable for a hybrid
 approximation, but it should be documented clearly because the current
-fixed-population SIR/SEIR implementation keeps integer counts.
+fixed-population implementation keeps integer counts.
 
 There is an open design choice between:
 

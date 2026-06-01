@@ -27,8 +27,10 @@ simulate_stochastic(
 \item{times}{Numeric vector of finite, non-missing, strictly increasing time
 points. Must have length at least two.}
 
-\item{model}{Disease model. \code{SIRModel()}, \code{SEIRModel()}, and supported
-\code{CompartmentModel()} outputs are currently supported.}
+\item{model}{Disease model. \code{SIRModel()}, \code{SEIRModel()}, and
+\code{CompartmentModel()} outputs with supported fixed-population transition
+structures expressible through \code{transition_rates()} are currently
+supported.}
 
 \item{age_structure}{Valid age structure.}
 

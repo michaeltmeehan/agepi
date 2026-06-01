@@ -7,7 +7,8 @@ workflow development, but its modelling scope is intentionally narrow.
 ## Current Support
 
 The current implementation supports deterministic age-structured SIR, SEIR, and
-generic `CompartmentModel()` workflows:
+generic `CompartmentModel()` workflows, plus fixed-population Gillespie
+simulation for supported disease transition structures:
 
 - define and validate age groups with `AgeStructure()` and
   `validate_age_structure()`;
@@ -18,6 +19,8 @@ generic `CompartmentModel()` workflows:
 - construct custom deterministic compartment models with `CompartmentModel()`;
 - compute transition rates and convert them to deterministic derivatives;
 - run deterministic simulations through a shared solver path;
+- run fixed-population stochastic SIR, SEIR, and supported generic
+  `CompartmentModel()` simulations with `simulate_stochastic()`;
 - optionally couple deterministic models to a first-pass demographic process;
 - summarise deterministic simulation output with `compartment_totals()`,
   `age_group_totals()`, and `total_population()`.
@@ -49,7 +52,8 @@ The current package scope is deliberately small:
 
 - static contact matrix;
 - static `beta`, susceptibility, and infectiousness inputs;
-- deterministic simulation plus fixed-population stochastic SIR/SEIR;
+- deterministic simulation plus fixed-population stochastic SIR, SEIR, and
+  supported generic compartment models;
 - optional `deSolve` backend for documented deterministic combinations;
 - first-pass epidemic-demography coupling;
 - dependency-free external-data adapters;
@@ -60,7 +64,7 @@ The current package scope is deliberately small:
 Important limitations to keep in mind:
 
 - no stochastic demography, tau-leaping, or stochastic models beyond
-  fixed-population SIR/SEIR;
+  fixed-population supported transition-rate structures;
 - no time-varying contact matrices in epidemic simulation;
 - no demographic residual forcing or WPP projection matching;
 - no reciprocity correction or population balancing for contact matrices;
@@ -74,8 +78,8 @@ Important limitations to keep in mind:
 
 ## Generic CompartmentModel Limitations
 
-`CompartmentModel()` supports deterministic compartment models that fit the
-current transition-rate interface:
+`CompartmentModel()` supports compartment models that fit the current
+transition-rate interface:
 
 - infection transitions use the shared `force_of_infection()` convention;
 - fixed transitions are per-capita flows with static rates;
@@ -84,9 +88,11 @@ current transition-rate interface:
 - demographic births and susceptible-policy migration can target configured
   compartments.
 
-It does not currently provide time-varying interventions, arbitrary nonlinear
-transition functions, vaccination schedules, stochastic event simulation, or
-model-specific demographic rates.
+Its stochastic support is limited to fixed-population Gillespie simulation for
+supported within-age transition structures expressible through
+`transition_rates()`. It does not currently provide time-varying interventions,
+arbitrary nonlinear transition functions, vaccination schedules, stochastic
+demography, or model-specific demographic rates.
 
 See [generic_compartment_models.md](generic_compartment_models.md) for details.
 
