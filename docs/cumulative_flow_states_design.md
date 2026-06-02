@@ -229,6 +229,12 @@ The cumulative derivative for each requested transition-age row is the same
 `rate` value from `transition_rates()` that is passed to
 `rates_to_derivative()` for ordinary compartment derivatives.
 
+Runnable example: see
+[`examples/deterministic_cumulative_flows.R`](../examples/deterministic_cumulative_flows.R)
+for a SIR simulation that tracks cumulative infections and recoveries while
+leaving the ordinary compartment trajectory as `time`, `compartment`,
+`age_group`, and `value`.
+
 For stochastic simulation, cumulative counters must not generate
 propensities. Two safe approaches are available:
 
@@ -243,6 +249,11 @@ metadata internally, counts matching events with `event_time <= output_time`,
 and returns a cumulative table across all requested output times and age
 groups. The event sampler, stochastic state vector, transition-rate rows, and
 propensities are unchanged by a cumulative-output request.
+
+Runnable example: see
+[`examples/stochastic_cumulative_flows.R`](../examples/stochastic_cumulative_flows.R)
+for a fixed-population generic stochastic simulation that tracks exposures and
+clinical/subclinical onset counts from realised Gillespie events.
 
 ## API Recommendation
 

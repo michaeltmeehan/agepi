@@ -216,6 +216,57 @@ See [docs/generic_compartment_models.md](docs/generic_compartment_models.md),
 [examples/generic_seir.R](examples/generic_seir.R), and
 [examples/generic_msir.R](examples/generic_msir.R).
 
+## Cumulative Flow Outputs
+
+Selected transition flows can be requested at simulation time. Deterministic
+simulation integrates selected transition rates as auxiliary cumulative output:
+
+```r
+deterministic_output <- simulate_deterministic(
+  initial_state = initial_state,
+  times = seq(0, 10, by = 1),
+  model = SIRModel(gamma = 0.25),
+  age_structure = ages,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  cumulative_flows = list(
+    infections = list(from = "S", to = "I"),
+    recoveries = list(from = "I", to = "R")
+  )
+)
+
+head(deterministic_output$trajectory)
+head(deterministic_output$cumulative)
+```
+
+Fixed-population stochastic simulation uses the same request shape, but the
+cumulative table counts realised Gillespie events at each requested output
+time. These counts are derived from event logs and do not add state variables
+or propensities:
+
+```r
+stochastic_output <- simulate_stochastic(
+  initial_state = initial_state,
+  times = seq(0, 10, by = 1),
+  model = SIRModel(gamma = 0.25),
+  age_structure = ages,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  seed = 123,
+  return_events = TRUE,
+  cumulative_flows = list(
+    infections = list(from = "S", to = "I")
+  )
+)
+
+head(stochastic_output$events)
+head(stochastic_output$cumulative)
+```
+
+See [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulative_flows.R)
+and [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R)
+for runnable scripts.
+
 ## Demography
 
 `agepi` includes demographic-only workflows for age-specific population
@@ -289,6 +340,10 @@ reproduce full external projection systems. See
 - [examples/generic_seir.R](examples/generic_seir.R): SEIR through
   `CompartmentModel()`.
 - [examples/generic_msir.R](examples/generic_msir.R): custom MSIR model.
+- [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulative_flows.R):
+  deterministic cumulative infection and recovery flows.
+- [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R):
+  stochastic cumulative flows derived from realised event logs.
 - [examples/mock_seir_demography.R](examples/mock_seir_demography.R): SEIR with
   demographic turnover.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
@@ -302,6 +357,9 @@ reproduce full external projection systems. See
   limitations, solver notes, adapter boundaries, and roadmap notes.
 - [docs/generic_compartment_models.md](docs/generic_compartment_models.md):
   custom compartment models.
+- [docs/cumulative_flow_states_design.md](docs/cumulative_flow_states_design.md):
+  deterministic auxiliary cumulative states and stochastic event-log-derived
+  cumulative outputs.
 - [docs/age_structured_transmission_design.md](docs/age_structured_transmission_design.md):
   age-structured transmission design notes.
 - [docs/external_data_adapters.md](docs/external_data_adapters.md): WPP-style

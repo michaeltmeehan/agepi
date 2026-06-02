@@ -117,6 +117,10 @@ When cumulative flows are supplied, the return value contains the ordinary
 `transition_id`, `from`, `to`, `age_group`, and `value`. The event log is also
 returned when `return_events = TRUE`.
 
+See
+[`examples/stochastic_cumulative_flows.R`](../examples/stochastic_cumulative_flows.R)
+for a runnable example with generic competing clinical and subclinical flows.
+
 ## Demography policy
 
 Ageing must remain deterministic. Stochastic ageing should not be a goal.

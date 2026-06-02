@@ -207,5 +207,6 @@ across all compartments by current age-specific shares instead of using
   SIR and SEIR paths; generic SIR and SEIR are mainly useful for validation and
   as templates for custom structures.
 
-See `examples/generic_sir.R`, `examples/generic_seir.R`, and
-`examples/generic_msir.R` for complete runnable examples.
+See `examples/generic_sir.R`, `examples/generic_seir.R`,
+`examples/generic_msir.R`, `examples/deterministic_cumulative_flows.R`, and
+`examples/stochastic_cumulative_flows.R` for complete runnable examples.
