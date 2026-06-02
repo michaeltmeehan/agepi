@@ -1,0 +1,5 @@
+^\.agents$
+^tests/testthat/\.gitkeep$
+^agepi_[0-9.]+\.tar\.gz$
+^agepi\.Rcheck$
+^\.\.Rcheck$

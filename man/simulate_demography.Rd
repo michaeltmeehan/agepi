@@ -8,7 +8,7 @@ simulate_demography(
   process,
   initial_state,
   times,
-  method = c("euler", "deSolve", "ode"),
+  method = NULL,
   time_policy = c("exact", "step", "linear"),
   ...
 )
@@ -25,7 +25,7 @@ points. Must have length at least two.}
 
 \item{method}{Simulation method. \code{NULL} preserves the demographic wrapper's
 explicit Euler default. \code{"deSolve"} and \code{"ode"} request the optional
-\code{deSolve::ode()} backend.}
+\code{deSolve::ode()} backend. \code{"euler"} requests explicit Euler time steps.}
 
 \item{time_policy}{Schedule lookup policy. \code{"exact"} requires exact schedule
 times and remains the default. \code{"step"} uses interval-start stepwise lookup.
@@ -51,9 +51,8 @@ derivative evaluation times must exactly match required schedule times. With
 a row at schedule time \code{t_i} applies over \verb{[t_i, t_\{i + 1\})}. Euler
 intervals are evaluated at their left endpoints, \code{times[i]}. With
 \code{time_policy = "linear"}, fertility, mortality, and migration schedules are
-linearly interpolated without extrapolation. The optional \code{method = "deSolve"}
-and its alias \code{method = "ode"} use \code{deSolve::ode()} when the suggested
-\code{deSolve} package is installed.
+linearly interpolated without extrapolation. The optional \code{method = "deSolve"} and its alias \code{method = "ode"} use \code{deSolve::ode()} when the
+suggested \code{deSolve} package is installed.
 
 Euler updates are not truncated: if an update would produce a negative
 population value, simulation stops with an error.

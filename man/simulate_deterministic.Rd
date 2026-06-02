@@ -46,11 +46,12 @@ group.}
 \item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for
 infection-only runs when available and \code{"euler"} otherwise; coupled
 demographic runs preserve the existing Euler default. \code{"deSolve"} and
-\code{"ode"} request the optional \code{deSolve::ode()} backend.}
+\code{"ode"} request the optional \code{deSolve::ode()} backend. \code{"euler"} requests
+explicit Euler time steps.}
 
 \item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
-first-pass deterministic SIR/SEIR-demography coupling. Defaults to \code{NULL},
-which preserves infection-only simulation.}
+first-pass deterministic SIR/SEIR/generic-demography coupling. Defaults to
+\code{NULL}, which preserves infection-only simulation.}
 
 \item{time_policy}{Demographic schedule lookup policy used only when
 \code{demographic_process} is supplied. \code{"exact"} requires exact schedule times;
@@ -61,13 +62,13 @@ derivative path.}
 \item{migration_policy}{Net migration allocation policy used only when
 \code{demographic_process} is supplied. \code{"susceptible"} preserves the default
 behaviour by applying all net migration to \code{S}; \code{"proportional"} allocates
-net migration across compartments by current age-specific compartment shares;
-\code{"error"} allows zero migration but errors if any net migration is non-zero
-because age-total migration allocation is ambiguous.}
+net migration across compartments by current age-specific compartment
+shares; \code{"error"} allows zero migration but errors if any net migration is
+non-zero because age-total migration allocation is ambiguous.}
 
 \item{cumulative_flows}{Optional named list or data frame specifying disease
-transition flows to track as auxiliary cumulative state variables. Named list
-entries must contain \code{from} and \code{to} fields; data frames must contain
+transition flows to track as auxiliary cumulative state variables. Named
+list entries must contain \code{from} and \code{to} fields; data frames must contain
 \code{name}, \code{from}, and \code{to} columns. Cumulative flows are supported for
 infection-only deterministic simulation only in this milestone.}
 }
@@ -77,15 +78,15 @@ Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
 innermost when \code{cumulative_flows = NULL}. When \code{cumulative_flows} is
 supplied, a list is returned with \code{trajectory} containing that ordinary
 compartment output and \code{cumulative} containing columns \code{time},
-\code{cumulative_name}, \code{transition_id}, \code{from}, \code{to}, \code{age_group}, and
-\code{value}.
+\code{cumulative_name}, \code{transition_id}, \code{from}, \code{to}, \code{age_group}, and \code{value}.
 }
 \description{
 Runs a simple deterministic prototype simulation. For infection-only runs,
 deSolve is used by default when the suggested \code{deSolve} package is
 installed; otherwise the simulation falls back to explicit Euler time steps.
-Coupled demographic runs keep the existing Euler default because exact schedule
-lookup is the default demographic policy.
+Coupled demographic runs keep the existing Euler default because exact
+schedule lookup is the default demographic policy. Set \code{method = "deSolve"}
+or \code{method = "euler"} explicitly to choose a backend.
 }
 \details{
 The initial state may be supplied either as long-form state data or as a
@@ -114,15 +115,17 @@ A first-pass SIR/SEIR-demography coupling is available via
 \code{demographic_process}. In this coupled mode, births enter the youngest
 susceptible age group, background mortality applies independently to every
 disease compartment, ageing moves each compartment independently using the
-process \code{\link[=AgeingOperator]{AgeingOperator()}} convention, and net migration is applied to
-susceptible compartments only. Fertility and migration-rate exposure use the
-current total infection-state population by age group: \code{S + I + R} for SIR
-and \code{S + E + I + R} for SEIR. This is not WPP projection matching, and
-\code{S}-only migration is an allocation convention for age-total net migration
-inputs rather than a mechanistic movement model. For adaptive deSolve runs,
-\code{time_policy = "linear"} is generally recommended for demographic schedules;
-\code{time_policy = "step"} gives piecewise-constant rates, and
-\code{time_policy = "exact"} will usually fail unless every solver evaluation
+process \code{\link[=AgeingOperator]{AgeingOperator()}} convention, and net migration is allocated using
+\code{migration_policy}. Fertility and migration-rate exposure use the current
+total infection-state population by age group: \code{S + I + R} for SIR and
+\code{S + E + I + R} for SEIR. This is not WPP projection matching, and the
+default \code{S}-only migration rule is an allocation convention for age-total
+net migration inputs rather than a mechanistic movement model. The
+\code{proportional} policy allocates net migration across compartments by current
+age-specific shares, and the \code{error} policy rejects non-zero net migration.
+For adaptive deSolve runs, \code{time_policy = "linear"} is generally recommended for
+demographic schedules; \code{time_policy = "step"} gives piecewise-constant rates,
+and \code{time_policy = "exact"} will usually fail unless every solver evaluation
 time is present in the schedules.
 
 Euler updates are intentionally not truncated: if a step would produce

@@ -37,8 +37,10 @@
 #' total infection-state population by age group: `S + I + R` for SIR and
 #' `S + E + I + R` for SEIR. This is not WPP projection matching, and the
 #' default `S`-only migration rule is an allocation convention for age-total
-#' net migration inputs rather than a mechanistic movement model. For adaptive
-#' deSolve runs, `time_policy = "linear"` is generally recommended for
+#' net migration inputs rather than a mechanistic movement model. The
+#' `proportional` policy allocates net migration across compartments by current
+#' age-specific shares, and the `error` policy rejects non-zero net migration.
+#' For adaptive deSolve runs, `time_policy = "linear"` is generally recommended for
 #' demographic schedules; `time_policy = "step"` gives piecewise-constant rates,
 #' and `time_policy = "exact"` will usually fail unless every solver evaluation
 #' time is present in the schedules.

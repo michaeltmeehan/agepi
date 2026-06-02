@@ -201,7 +201,9 @@ across all compartments by current age-specific shares instead of using
 - Vaccination schedules and time-varying intervention schedules are not yet
   implemented.
 - Infection transitions all use the same force of infection.
-- Cumulative flow tracking is deterministic-only and is unavailable with
+- Cumulative flow tracking is supported for infection-only deterministic
+  simulations and as event-log-derived counts for fixed-population stochastic
+  simulations; deterministic cumulative flows remain unavailable with
   demographic coupling.
 - The built-in convenience constructors still cover the standard specialised
   SIR and SEIR paths; generic SIR and SEIR are mainly useful for validation and
