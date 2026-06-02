@@ -80,10 +80,18 @@ unnamed, negative, or non-finite age-specific rates are rejected when
 `transition_rates()` expands the model. This deferred validation is necessary
 because `CompartmentModel()` does not itself take an `AgeStructure()`.
 
+`transition_rates()` also includes a stable `transition_id` metadata column for
+each logical transition. Age-specific rows for the same logical transition
+share the same ID, such as `infection:S->E` or `transition:E->IP`. This prepares
+future cumulative-flow selection helpers; cumulative flow states and incidence
+tables are not yet implemented.
+
 Multiple outgoing transitions from the same source compartment are supported
 when they have different destinations. For example, `E -> IP` and `E -> IS`
 can represent competing per-capita routes using age-specific rates. This is a
 rate-based representation, not an explicit branching-probability interface.
+Duplicate same-source/same-destination transitions with different meanings are
+not currently supported.
 For example, `M -> S` can represent fixed loss of maternal immunity and
 `I -> R` can represent recovery.
 

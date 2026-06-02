@@ -17,8 +17,8 @@ transition_rates(
 \arguments{
 \item{state}{Long-form state data frame or numeric state vector.}
 
-\item{model}{Disease model. \code{SIRModel()} and \code{SEIRModel()} output are
-supported.}
+\item{model}{Disease model. \code{SIRModel()}, \code{SEIRModel()}, and
+\code{CompartmentModel()} output are supported.}
 
 \item{age_structure}{Valid age structure.}
 
@@ -34,13 +34,15 @@ group.}
 group.}
 }
 \value{
-Data frame with columns \code{from}, \code{to}, \code{age_group}, and \code{rate},
-ordered by age group outermost and transition innermost.
+Data frame with columns \code{from}, \code{to}, \code{age_group}, \code{rate}, and
+\code{transition_id}, ordered by age group outermost and transition innermost.
+\code{transition_id} identifies the logical transition and is shared by all age
+rows for that transition.
 }
 \description{
 Computes transition hazards/flows for a disease model at the supplied state.
 The returned rates are not updated compartment counts. SIR and SEIR disease
-models are supported.
+models and generic \code{CompartmentModel()} models are supported.
 }
 \details{
 \code{state} may be either a long-form data frame with columns \code{compartment},

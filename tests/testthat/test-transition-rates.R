@@ -49,6 +49,12 @@ test_that("transition_rates computes a manually checkable SIR example", {
     to = c("I", "R", "I", "R"),
     age_group = c("0-4", "0-4", "5-9", "5-9"),
     rate = c(27, 2, 126, 4),
+    transition_id = c(
+      "infection:S->I",
+      "transition:I->R",
+      "infection:S->I",
+      "transition:I->R"
+    ),
     stringsAsFactors = FALSE
   )
 
@@ -68,6 +74,14 @@ test_that("transition_rates computes SEIR infection, progression, and recovery r
     to = c("E", "I", "R", "E", "I", "R"),
     age_group = c("0-4", "0-4", "0-4", "5-9", "5-9", "5-9"),
     rate = c(25.514950166113, 1.5, 2, 118.405315614618, 4.5, 4),
+    transition_id = c(
+      "infection:S->E",
+      "transition:E->I",
+      "transition:I->R",
+      "infection:S->E",
+      "transition:E->I",
+      "transition:I->R"
+    ),
     stringsAsFactors = FALSE
   )
 
@@ -232,7 +246,82 @@ test_that("transition_rates returns the expected output columns", {
     contact_matrix = test_contacts()
   )
 
-  expect_identical(names(rates), c("from", "to", "age_group", "rate"))
+  expect_identical(names(rates), c("from", "to", "age_group", "rate", "transition_id"))
+})
+
+test_that("transition_rates includes stable logical transition identifiers", {
+  first <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+  second <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  expect_identical(first$transition_id, second$transition_id)
+  expect_identical(
+    first$transition_id,
+    c(
+      "infection:S->E",
+      "transition:E->I",
+      "transition:I->R",
+      "infection:S->E",
+      "transition:E->I",
+      "transition:I->R"
+    )
+  )
+  expect_identical(
+    unique(first$transition_id[first$from == "S" & first$to == "E"]),
+    "infection:S->E"
+  )
+})
+
+test_that("generic transition_ids distinguish infection and ordinary transitions", {
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("E", "E", "IP", "IS"),
+      to = c("IP", "IS", "R", "R"),
+      rate = c(0.2, 0.3, 0.1, 0.1),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "IP"
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IS", "R"), each = 2),
+    age_group = rep(test_ages()$age_groups, times = 5),
+    value = c(90, 180, 5, 10, 2, 4, 1, 2, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = test_ages(),
+    contact_matrix = test_contacts(),
+    beta = 0
+  )
+
+  expect_identical(
+    unique(rates$transition_id),
+    c(
+      "infection:S->E",
+      "transition:E->IP",
+      "transition:E->IS",
+      "transition:IP->R",
+      "transition:IS->R"
+    )
+  )
+  expect_identical(
+    unique(rates$transition_id[rates$from == "E" & rates$to == "IP"]),
+    "transition:E->IP"
+  )
 })
 
 test_that("transition_rates orders age groups outermost and transitions innermost", {
@@ -245,6 +334,109 @@ test_that("transition_rates orders age groups outermost and transitions innermos
 
   expect_identical(rates$age_group, c("0-4", "0-4", "5-9", "5-9"))
   expect_identical(paste(rates$from, rates$to, sep = "->"), c("S->I", "I->R", "S->I", "I->R"))
+})
+
+test_that("cumulative-flow validation accepts named list specifications", {
+  rates <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  flows <- validate_cumulative_flows(
+    cumulative_flows = list(
+      infections = list(from = "S", to = "E"),
+      progressions = list(from = "E", to = "I")
+    ),
+    transition_rate_table = rates
+  )
+
+  expect_equal(
+    flows,
+    data.frame(
+      cumulative_name = c("infections", "progressions"),
+      transition_id = c("infection:S->E", "transition:E->I"),
+      from = c("S", "E"),
+      to = c("E", "I"),
+      stringsAsFactors = FALSE
+    )
+  )
+})
+
+test_that("cumulative-flow validation accepts data-frame specifications", {
+  rates <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  flows <- validate_cumulative_flows(
+    cumulative_flows = data.frame(
+      name = c("infections", "recoveries"),
+      from = c("S", "I"),
+      to = c("E", "R"),
+      stringsAsFactors = FALSE
+    ),
+    transition_rate_table = rates
+  )
+
+  expect_equal(flows$cumulative_name, c("infections", "recoveries"))
+  expect_equal(flows$transition_id, c("infection:S->E", "transition:I->R"))
+})
+
+test_that("cumulative-flow validation rejects malformed specifications", {
+  rates <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    age_structure = test_ages(),
+    contact_matrix = test_contacts()
+  )
+
+  expect_error(
+    validate_cumulative_flows(list(list(from = "S", to = "E")), rates),
+    "list entries must be named"
+  )
+  expect_error(
+    validate_cumulative_flows(
+      list(infections = list(from = "S", to = "E"), infections = list(from = "E", to = "I")),
+      rates
+    ),
+    "must be unique"
+  )
+  expect_error(
+    validate_cumulative_flows(list(infections = list(from = "S")), rates),
+    "must include from and to"
+  )
+  expect_error(
+    validate_cumulative_flows(list(infections = list(from = "X", to = "E")), rates),
+    "unknown source compartment"
+  )
+  expect_error(
+    validate_cumulative_flows(list(infections = list(from = "S", to = "X")), rates),
+    "unknown destination compartment"
+  )
+  expect_error(
+    validate_cumulative_flows(list(infections = list(from = "E", to = "R")), rates),
+    "does not match a declared transition"
+  )
+})
+
+test_that("cumulative-flow validation rejects ambiguous from-to matches", {
+  rates <- data.frame(
+    transition_id = c("transition:E->I:a", "transition:E->I:b"),
+    from = c("E", "E"),
+    to = c("I", "I"),
+    age_group = c("0-4", "0-4"),
+    rate = c(1, 2),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    validate_cumulative_flows(list(progressions = list(from = "E", to = "I")), rates),
+    "ambiguous"
+  )
 })
 
 test_that("transition_rates rejects missing compartment-age combinations", {

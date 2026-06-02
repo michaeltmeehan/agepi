@@ -21,8 +21,10 @@
 #' @param infectiousness Optional non-negative numeric vector by source age
 #'   group.
 #'
-#' @return Data frame with columns `from`, `to`, `age_group`, and `rate`,
-#'   ordered by age group outermost and transition innermost.
+#' @return Data frame with columns `from`, `to`, `age_group`, `rate`, and
+#'   `transition_id`, ordered by age group outermost and transition innermost.
+#'   `transition_id` identifies the logical transition and is shared by all age
+#'   rows for that transition.
 #' @export
 transition_rates <- function(
   state,
@@ -78,6 +80,14 @@ transition_rates <- function(
       to = rep(model$transitions$to, times = age_structure$n_age_groups),
       age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
       rate = as.numeric(rbind(infection_rates, progression_rates, recovery_rates)),
+      transition_id = rep(
+        transition_identifiers(
+          from = model$transitions$from,
+          to = model$transitions$to,
+          transition_type = c("infection", "transition", "transition")
+        ),
+        times = age_structure$n_age_groups
+      ),
       stringsAsFactors = FALSE
     ))
   }
@@ -89,6 +99,14 @@ transition_rates <- function(
     to = rep(model$transitions$to, times = age_structure$n_age_groups),
     age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
     rate = as.numeric(rbind(infection_rates, recovery_rates)),
+    transition_id = rep(
+      transition_identifiers(
+        from = model$transitions$from,
+        to = model$transitions$to,
+        transition_type = c("infection", "transition")
+      ),
+      times = age_structure$n_age_groups
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -126,7 +144,7 @@ generic_transition_rates <- function(
   rates <- rates[order(rates$age_index, rates$.transition_order), ]
   row.names(rates) <- NULL
 
-  rates[, c("from", "to", "age_group", "rate")]
+  rates[, c("from", "to", "age_group", "rate", "transition_id")]
 }
 
 generic_infection_rates <- function(
@@ -176,6 +194,11 @@ generic_infection_rates <- function(
       to = model$infection_transitions$to[i],
       age_group = age_structure$age_groups,
       rate = as.numeric(lambda) * from_values,
+      transition_id = transition_identifiers(
+        from = model$infection_transitions$from[i],
+        to = model$infection_transitions$to[i],
+        transition_type = "infection"
+      ),
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
@@ -206,6 +229,11 @@ generic_per_capita_transition_rates <- function(state_long, model, age_structure
       to = model$transitions$to[i],
       age_group = age_structure$age_groups,
       rate = per_capita_rate * from_values,
+      transition_id = transition_identifiers(
+        from = model$transitions$from[i],
+        to = model$transitions$to[i],
+        transition_type = "transition"
+      ),
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
@@ -220,9 +248,14 @@ generic_empty_rate_table <- function() {
     to = character(),
     age_group = character(),
     rate = numeric(),
+    transition_id = character(),
     age_index = integer(),
     stringsAsFactors = FALSE
   )
+}
+
+transition_identifiers <- function(from, to, transition_type) {
+  paste0(transition_type, ":", from, "->", to)
 }
 
 validate_transition_rate_for_age <- function(rate, age_structure, name) {

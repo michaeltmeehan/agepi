@@ -135,7 +135,8 @@ explicitly extended.
 
 ## Transition-Rate Table
 
-`transition_rates()` currently returns `from`, `to`, `age_group`, and `rate`.
+`transition_rates()` now returns `from`, `to`, `age_group`, `rate`, and
+`transition_id`.
 Infection transitions and non-infection per-capita transitions both flow
 through this table, so cumulative counters can be derived from one shared
 source of transition logic.
@@ -158,14 +159,33 @@ or at least reserve room for them.
 Recommended transition metadata:
 
 ```text
-transition_id, transition_type, from, to, age_group, rate
+from, to, age_group, rate, transition_id
 ```
 
-For current models, `transition_id` can be generated deterministically from the
-declared transition row, for example `infection:1` or `transition:3`, while
-preserving the existing public columns. Cumulative-flow definitions can then
-prefer `transition_id` and allow `from`/`to` as a convenience only when it
-matches exactly one declared transition.
+For current models, `transition_id` is generated deterministically from the
+declared logical transition, for example `infection:S->E` or
+`transition:E->IP`. Age-specific rows for the same logical transition share the
+same identifier. The identifier distinguishes infection transitions from
+ordinary per-capita transitions and distinguishes different `from`/`to` pairs.
+
+The current architecture still does not support duplicate same-`from`/same-`to`
+logical transitions with different meanings. `CompartmentModel()` rejects
+duplicate `from`/`to` rows within `infection_transitions` and within
+`transitions`, and `rates_to_derivative()` rejects duplicate
+`from`/`to`/`age_group` transition-rate rows. Future duplicate-transition
+support would need explicit declared identifiers rather than deriving IDs only
+from transition type and endpoints.
+
+Internal cumulative-flow validation helpers now normalize named-list and
+data-frame `from`/`to` specifications to:
+
+```text
+cumulative_name, transition_id, from, to
+```
+
+Those helpers only select existing logical transitions. They do not augment
+state vectors, change deterministic outputs, create stochastic propensities, or
+produce incidence tables.
 
 ## Recommended Design
 
@@ -228,10 +248,10 @@ Reasons:
   existing constructor outputs.
 
 Later, `CompartmentModel(cumulative_flows = ...)` could be added as stored
-default metadata, with a simulation-time override. Until transition IDs are
-introduced, `from`/`to` matching should be accepted only when it resolves to one
-declared transition. A data-frame representation should also be supported
-internally and may be preferable publicly for programmatic workflows:
+default metadata, with a simulation-time override. `from`/`to` matching should
+be accepted only when it resolves to one declared logical transition ID. A
+data-frame representation is also supported internally and may be preferable
+publicly for programmatic workflows:
 
 ```text
 name, from, to
@@ -410,12 +430,12 @@ Milestone 1: transition metadata and validation
 
 - Add internal helpers to build declared transition metadata for SIR, SEIR, and
   `CompartmentModel()`.
-- Include stable transition IDs internally while preserving current
-  `transition_rates()` public columns.
+- Include stable transition IDs in `transition_rates()` metadata while
+  preserving the semantics of `from`, `to`, `age_group`, and `rate`.
 - Add `validate_cumulative_flows()` with `from`/`to` matching and room for
   future transition IDs.
-- Add focused tests for valid, invalid, ambiguous, and `"all"` requests if
-  `"all"` is included.
+- Add focused tests for valid, invalid, and ambiguous requests. `"all"` remains
+  deferred.
 
 Milestone 2: deterministic auxiliary states without demography
 
