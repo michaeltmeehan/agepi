@@ -49,9 +49,7 @@ integrate_state_trajectory_euler <- function(initial_state,
     values[[i + 1]] <- output(current_state, times[i + 1])
   }
 
-  result <- do.call(rbind, values)
-  row.names(result) <- NULL
-  result
+  bind_integrated_outputs(values)
 }
 
 integrate_state_trajectory_desolve <- function(initial_state,
@@ -88,6 +86,21 @@ integrate_state_trajectory_desolve <- function(initial_state,
   state_columns <- seq_len(length(initial_state)) + 1
   for (i in seq_along(times)) {
     values[[i]] <- output(as.numeric(solved[i, state_columns]), solved[i, "time"])
+  }
+
+  bind_integrated_outputs(values)
+}
+
+bind_integrated_outputs <- function(values) {
+  if (length(values) > 0 && is.list(values[[1]]) && !is.data.frame(values[[1]])) {
+    result <- lapply(names(values[[1]]), function(component) {
+      component_values <- lapply(values, `[[`, component)
+      bound <- do.call(rbind, component_values)
+      row.names(bound) <- NULL
+      bound
+    })
+    names(result) <- names(values[[1]])
+    return(result)
   }
 
   result <- do.call(rbind, values)

@@ -14,6 +14,7 @@ transmission depends on contacts between age groups. It currently supports:
 
 - defining age groups with `AgeStructure()`;
 - running deterministic SIR and SEIR simulations with `simulate_deterministic()`;
+- tracking selected deterministic transition flows as cumulative outputs;
 - running fixed-population Gillespie SIR, SEIR, and supported generic
   compartment simulations with `simulate_stochastic()`;
 - using age-specific contact matrices, susceptibility, and infectiousness;

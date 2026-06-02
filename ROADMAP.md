@@ -180,6 +180,23 @@ Implemented SEIR-demography policy:
 - no disease-induced mortality, vaccination, waning immunity,
   compartment-specific demographic rates, or WPP projection matching.
 
+### Milestone 4G: Deterministic cumulative flow tracking
+
+Implemented:
+
+- optional `cumulative_flows` argument for `simulate_deterministic()`;
+- deterministic auxiliary cumulative counters for selected transition flows;
+- list output with ordinary `trajectory` and separate `cumulative` tables when
+  cumulative flows are requested;
+- cumulative derivatives based on the same transition-rate rows used for
+  ordinary compartment derivatives;
+- no cumulative counters added to `model$compartments`, stochastic
+  propensities, force-of-infection denominators, population totals, or
+  demographic processes.
+
+Current boundary: cumulative flow tracking is deterministic-only and is not
+supported with `demographic_process`.
+
 ## Future Work
 
 ### Milestone 5: Package-level documentation

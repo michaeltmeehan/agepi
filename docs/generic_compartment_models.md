@@ -82,9 +82,7 @@ because `CompartmentModel()` does not itself take an `AgeStructure()`.
 
 `transition_rates()` also includes a stable `transition_id` metadata column for
 each logical transition. Age-specific rows for the same logical transition
-share the same ID, such as `infection:S->E` or `transition:E->IP`. This prepares
-future cumulative-flow selection helpers; cumulative flow states and incidence
-tables are not yet implemented.
+share the same ID, such as `infection:S->E` or `transition:E->IP`.
 
 Multiple outgoing transitions from the same source compartment are supported
 when they have different destinations. For example, `E -> IP` and `E -> IS`
@@ -98,6 +96,38 @@ For example, `M -> S` can represent fixed loss of maternal immunity and
 Vaccination schedules and time-varying interventions are not yet implemented.
 Static transitions such as `S -> V` or `M -> S` can be represented if supplied
 as fixed per-capita rates.
+
+## Cumulative Flow Tracking
+
+For infection-only deterministic simulations, `simulate_deterministic()` can
+track selected transition flows as auxiliary cumulative states without adding
+them to `model$compartments`:
+
+```r
+output <- simulate_deterministic(
+  initial_state = initial_state,
+  times = seq(0, 10, by = 0.25),
+  model = model,
+  age_structure = ages,
+  contact_matrix = contact_matrix,
+  cumulative_flows = list(
+    exposures = list(from = "S", to = "E"),
+    clinical = list(from = "E", to = "IP"),
+    subclinical = list(from = "E", to = "IS")
+  )
+)
+
+head(output$trajectory)
+head(output$cumulative)
+```
+
+When cumulative flows are requested, the return value is a list with
+`trajectory` containing the ordinary compartment trajectory and `cumulative`
+containing `time`, `cumulative_name`, `transition_id`, `from`, `to`,
+`age_group`, and `value`. The cumulative derivatives use the same
+transition-rate rows as the ordinary deterministic derivative. Cumulative flows
+are not currently supported with `demographic_process`, and stochastic
+cumulative counters are not implemented.
 
 ## Infectious Compartments
 
@@ -166,6 +196,8 @@ across all compartments by current age-specific shares instead of using
 - Vaccination schedules and time-varying intervention schedules are not yet
   implemented.
 - Infection transitions all use the same force of infection.
+- Cumulative flow tracking is deterministic-only and is unavailable with
+  demographic coupling.
 - The built-in convenience constructors still cover the standard specialised
   SIR and SEIR paths; generic SIR and SEIR are mainly useful for validation and
   as templates for custom structures.

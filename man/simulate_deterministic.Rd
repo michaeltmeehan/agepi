@@ -13,9 +13,11 @@ simulate_deterministic(
   beta = 1,
   susceptibility = NULL,
   infectiousness = NULL,
-  method = "euler",
+  method = NULL,
   demographic_process = NULL,
-  time_policy = c("exact", "step", "linear")
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error"),
+  cumulative_flows = NULL
 )
 }
 \arguments{
@@ -55,11 +57,28 @@ which preserves infection-only simulation.}
 \code{"step"} uses left-continuous interval-start lookup; \code{"linear"}
 interpolates rate-like demographic schedules through the same demographic
 derivative path.}
+
+\item{migration_policy}{Net migration allocation policy used only when
+\code{demographic_process} is supplied. \code{"susceptible"} preserves the default
+behaviour by applying all net migration to \code{S}; \code{"proportional"} allocates
+net migration across compartments by current age-specific compartment shares;
+\code{"error"} allows zero migration but errors if any net migration is non-zero
+because age-total migration allocation is ambiguous.}
+
+\item{cumulative_flows}{Optional named list or data frame specifying disease
+transition flows to track as auxiliary cumulative state variables. Named list
+entries must contain \code{from} and \code{to} fields; data frames must contain
+\code{name}, \code{from}, and \code{to} columns. Cumulative flows are supported for
+infection-only deterministic simulation only in this milestone.}
 }
 \value{
 Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and
 \code{value}, ordered by time outermost, compartment next, and age group
-innermost.
+innermost when \code{cumulative_flows = NULL}. When \code{cumulative_flows} is
+supplied, a list is returned with \code{trajectory} containing that ordinary
+compartment output and \code{cumulative} containing columns \code{time},
+\code{cumulative_name}, \code{transition_id}, \code{from}, \code{to}, \code{age_group}, and
+\code{value}.
 }
 \description{
 Runs a simple deterministic prototype simulation. For infection-only runs,

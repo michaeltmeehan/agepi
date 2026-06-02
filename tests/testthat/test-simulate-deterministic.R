@@ -36,14 +36,15 @@ simulate_test_contacts <- function() {
   ), nrow = 2, byrow = TRUE)
 }
 
-simulate_test_run <- function(initial_state = simulate_test_state(), times = c(0, 0.1)) {
+simulate_test_run <- function(initial_state = simulate_test_state(), times = c(0, 0.1), ...) {
   simulate_deterministic(
     initial_state = initial_state,
     times = times,
     model = SIRModel(gamma = 0.2),
     age_structure = simulate_test_ages(),
     contact_matrix = simulate_test_contacts(),
-    method = "euler"
+    method = "euler",
+    ...
   )
 }
 
@@ -614,6 +615,245 @@ test_that("simulate_deterministic does not accept demography objects as initial 
       contact_matrix = simulate_test_contacts()
     ),
     "initial_state must be a long-form data frame or a numeric vector"
+  )
+})
+
+test_that("simulate_deterministic output is unchanged when cumulative_flows is NULL", {
+  without_argument <- simulate_test_run(times = c(0, 0.1, 0.2))
+  explicit_null <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "euler",
+    cumulative_flows = NULL
+  )
+
+  expect_equal(explicit_null, without_argument)
+})
+
+test_that("simulate_deterministic tracks basic cumulative infection flows", {
+  ages <- simulate_test_ages()
+  output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = seq(0, 0.2, by = 0.1),
+    model = SIRModel(gamma = 0),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    method = "euler",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_named(output, c("trajectory", "cumulative"))
+  expect_identical(names(output$trajectory), c("time", "compartment", "age_group", "value"))
+  expect_identical(
+    names(output$cumulative),
+    c("time", "cumulative_name", "transition_id", "from", "to", "age_group", "value")
+  )
+  expect_true(all(output$cumulative$cumulative_name == "infections"))
+  expect_true(all(output$cumulative$value >= 0))
+
+  for (age_group in ages$age_groups) {
+    values <- output$cumulative$value[output$cumulative$age_group == age_group]
+    expect_true(all(diff(values) >= 0))
+    initial_s <- simulate_test_state()$value[
+      simulate_test_state()$compartment == "S" & simulate_test_state()$age_group == age_group
+    ]
+    final_s <- output$trajectory$value[
+      output$trajectory$time == 0.2 &
+        output$trajectory$compartment == "S" &
+        output$trajectory$age_group == age_group
+    ]
+    expect_equal(tail(values, 1), initial_s - final_s)
+  }
+})
+
+test_that("simulate_deterministic cumulative flows support generic clinical and subclinical transitions", {
+  ages <- simulate_test_ages()
+  transitions <- data.frame(
+    from = c("E", "E", "IP", "IC", "IS"),
+    to = c("IP", "IS", "IC", "R", "R"),
+    stringsAsFactors = FALSE
+  )
+  transitions$rate <- I(list(
+    c("0-4" = 0.2, "5-9" = 0.35),
+    c("0-4" = 0.3, "5-9" = 0.15),
+    c("0-4" = 0.25, "5-9" = 0.2),
+    0.1,
+    c("5-9" = 0.4, "0-4" = 0.3)
+  ))
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = transitions,
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 6),
+    value = c(90, 180, 10, 20, 5, 10, 2, 4, 3, 6, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    cumulative_flows = data.frame(
+      name = c("exposures", "clinical", "subclinical"),
+      from = c("S", "E", "E"),
+      to = c("E", "IP", "IS"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  cumulative <- output$cumulative
+  expect_identical(
+    names(cumulative),
+    c("time", "cumulative_name", "transition_id", "from", "to", "age_group", "value")
+  )
+  expect_equal(unique(cumulative$cumulative_name), c("exposures", "clinical", "subclinical"))
+  expect_equal(unique(cumulative$age_group), ages$age_groups)
+  expect_true(all(c("infection:S->E", "transition:E->IP", "transition:E->IS") %in% cumulative$transition_id))
+})
+
+test_that("cumulative derivative equals the transition flow used by compartment derivative", {
+  ages <- simulate_test_ages()
+  state <- state_long_to_vector(simulate_test_state(), ages, c("S", "I", "R"))
+  spec <- prepare_deterministic_cumulative_flows(
+    cumulative_flows = list(infections = list(from = "S", to = "I")),
+    state_vector = state,
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 1,
+    susceptibility = NULL,
+    infectiousness = NULL
+  )
+
+  derivative <- deterministic_derivative_augmented(
+    state_vector = c(state, 0, 0),
+    ordinary_state_length = length(state),
+    time = 0,
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 1,
+    susceptibility = NULL,
+    infectiousness = NULL,
+    cumulative_spec = spec
+  )
+  rates <- transition_rates(state, SIRModel(gamma = 0.2), ages, simulate_test_contacts())
+
+  expect_equal(tail(derivative, 2), rates$rate[rates$transition_id == "infection:S->I"])
+  expect_equal(head(derivative, length(state)), rates_to_derivative(rates, c("S", "I", "R"), ages)$derivative)
+})
+
+test_that("cumulative_flows work with deSolve when available", {
+  skip_if_not_installed("deSolve")
+
+  output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    method = "deSolve",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_named(output, c("trajectory", "cumulative"))
+  expect_true(all(is.finite(output$cumulative$value)))
+  expect_true(all(output$cumulative$value >= -1e-8))
+})
+
+test_that("cumulative states do not alter ordinary trajectories or population totals", {
+  ages <- simulate_test_ages()
+  baseline <- simulate_test_run(times = seq(0, 0.2, by = 0.1))
+  with_cumulative <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = seq(0, 0.2, by = 0.1),
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    method = "euler",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_equal(with_cumulative$trajectory, baseline)
+  expect_equal(total_population(with_cumulative$trajectory), total_population(baseline))
+})
+
+test_that("cumulative_flows do not contaminate force-of-infection denominators", {
+  ages <- simulate_test_ages()
+  state <- state_long_to_vector(simulate_test_state(), ages, c("S", "I", "R"))
+  spec <- prepare_deterministic_cumulative_flows(
+    cumulative_flows = list(infections = list(from = "S", to = "I")),
+    state_vector = state,
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 1,
+    susceptibility = NULL,
+    infectiousness = NULL
+  )
+
+  low_counter <- deterministic_derivative_augmented(
+    c(state, 0, 0), length(state), 0, SIRModel(gamma = 0.2), ages,
+    simulate_test_contacts(), 1, NULL, NULL, cumulative_spec = spec
+  )
+  high_counter <- deterministic_derivative_augmented(
+    c(state, 1e9, 1e9), length(state), 0, SIRModel(gamma = 0.2), ages,
+    simulate_test_contacts(), 1, NULL, NULL, cumulative_spec = spec
+  )
+
+  expect_equal(high_counter, low_counter)
+})
+
+test_that("cumulative_flows with demography errors clearly", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5+"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, Inf)
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "I", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 3),
+    value = c(90, 180, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+  expect_error(
+    simulate_deterministic(
+      initial_state = initial_state,
+      times = c(0, 1),
+      model = SIRModel(0.2),
+      age_structure = ages,
+      contact_matrix = matrix(0, nrow = ages$n_age_groups, ncol = ages$n_age_groups),
+      demographic_process = DemographicProcess(ages),
+      cumulative_flows = list(infections = list(from = "S", to = "I"))
+    ),
+    "currently supported only when demographic_process is NULL"
+  )
+})
+
+test_that("invalid cumulative_flows inputs error clearly", {
+  expect_error(
+    simulate_test_run(cumulative_flows = list(list(from = "S", to = "I"))),
+    "list entries must be named"
+  )
+  expect_error(
+    simulate_test_run(cumulative_flows = list(bad = list(from = "X", to = "I"))),
+    "unknown source compartment"
+  )
+  expect_error(
+    simulate_test_run(cumulative_flows = data.frame(name = "x", from = "S")),
+    "missing required column"
   )
 })
 

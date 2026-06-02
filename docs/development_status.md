@@ -19,6 +19,8 @@ simulation for supported disease transition structures:
 - construct custom deterministic compartment models with `CompartmentModel()`;
 - compute transition rates and convert them to deterministic derivatives;
 - run deterministic simulations through a shared solver path;
+- optionally track selected deterministic transition flows as auxiliary
+  cumulative outputs for infection-only simulations;
 - run fixed-population stochastic SIR, SEIR, and supported generic
   `CompartmentModel()` simulations with `simulate_stochastic()`;
 - optionally couple deterministic models to a first-pass demographic process;
@@ -56,6 +58,7 @@ The current package scope is deliberately small:
   supported generic compartment models;
 - optional `deSolve` backend for documented deterministic combinations;
 - first-pass epidemic-demography coupling;
+- deterministic cumulative flow tracking for infection-only simulations;
 - dependency-free external-data adapters;
 - no plotting, fitting, or calibration layer.
 
@@ -65,6 +68,8 @@ Important limitations to keep in mind:
 
 - no stochastic demography, tau-leaping, or stochastic models beyond
   fixed-population supported transition-rate structures;
+- no stochastic cumulative counters and no cumulative-flow tracking with
+  demographic coupling;
 - no time-varying contact matrices in epidemic simulation;
 - no demographic residual forcing or WPP projection matching;
 - no reciprocity correction or population balancing for contact matrices;

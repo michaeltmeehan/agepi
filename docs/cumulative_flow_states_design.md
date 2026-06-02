@@ -3,7 +3,9 @@
 ## Scope
 
 This document records a design inspection for package-managed cumulative flow
-states. It does not describe an implemented feature.
+states. The narrow deterministic auxiliary-state milestone is implemented in
+`simulate_deterministic(cumulative_flows = ...)`; stochastic cumulative
+counters and cumulative flows with demographic coupling remain future work.
 
 The target use case is to let users request age-specific cumulative counters
 for selected model transitions, for example infections, progressions, or
@@ -49,9 +51,10 @@ only population compartments:
 - `force_of_infection()` receives population denominators from those sums.
 - `rates_to_derivative()` creates derivatives only for supplied compartments
   and subtracts/adds every transition row between those compartments.
-- `simulate_deterministic()` validates the initial state length as
-  `length(model$compartments) * n_age_groups` and outputs only
-  compartment-age rows.
+- `simulate_deterministic()` validates the ordinary initial state length as
+  `length(model$compartments) * n_age_groups`. When `cumulative_flows` is
+  supplied, it augments the solver state internally and returns ordinary
+  compartment trajectories separately from cumulative output.
 - `simulate_stochastic()` validates integer compartment counts, checks fixed
   population totals from `model$compartments`, and turns each transition-rate
   row into a competing event.
@@ -183,9 +186,10 @@ data-frame `from`/`to` specifications to:
 cumulative_name, transition_id, from, to
 ```
 
-Those helpers only select existing logical transitions. They do not augment
-state vectors, change deterministic outputs, create stochastic propensities, or
-produce incidence tables.
+Those helpers select existing logical transitions. Deterministic simulation now
+uses them to augment the internal ODE state with auxiliary cumulative counters.
+They do not add counters to `model$compartments`, create stochastic
+propensities, or apply demographic processes to counters.
 
 ## Recommended Design
 
@@ -205,8 +209,23 @@ For deterministic simulation:
    `dC_flow,age/dt = sum(matching transition rates for that flow and age)`.
 6. Append cumulative derivatives to the compartment derivatives before
    returning to Euler or deSolve.
-7. Output compartment trajectory and cumulative trajectory separately, or add a
-   state-type column only in a deliberate output-format milestone.
+7. Output compartment trajectory and cumulative trajectory separately.
+
+Implemented milestone: `simulate_deterministic()` now follows this design for
+infection-only deterministic runs. With `cumulative_flows = NULL`, the return
+value remains the ordinary tidy trajectory data frame. With cumulative flows
+requested, the return value is:
+
+```r
+list(
+  trajectory = <existing time/compartment/age_group/value table>,
+  cumulative = <time/cumulative_name/transition_id/from/to/age_group/value table>
+)
+```
+
+The cumulative derivative for each requested transition-age row is the same
+`rate` value from `transition_rates()` that is passed to
+`rates_to_derivative()` for ordinary compartment derivatives.
 
 For stochastic simulation, cumulative counters must not generate
 propensities. Two safe approaches are available:

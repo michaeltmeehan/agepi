@@ -79,10 +79,18 @@
 #'   net migration across compartments by current age-specific compartment
 #'   shares; `"error"` allows zero migration but errors if any net migration is
 #'   non-zero because age-total migration allocation is ambiguous.
+#' @param cumulative_flows Optional named list or data frame specifying disease
+#'   transition flows to track as auxiliary cumulative state variables. Named
+#'   list entries must contain `from` and `to` fields; data frames must contain
+#'   `name`, `from`, and `to` columns. Cumulative flows are supported for
+#'   infection-only deterministic simulation only in this milestone.
 #'
 #' @return Data frame with columns `time`, `compartment`, `age_group`, and
 #'   `value`, ordered by time outermost, compartment next, and age group
-#'   innermost.
+#'   innermost when `cumulative_flows = NULL`. When `cumulative_flows` is
+#'   supplied, a list is returned with `trajectory` containing that ordinary
+#'   compartment output and `cumulative` containing columns `time`,
+#'   `cumulative_name`, `transition_id`, `from`, `to`, `age_group`, and `value`.
 #' @export
 simulate_deterministic <- function(
   initial_state,
@@ -96,7 +104,8 @@ simulate_deterministic <- function(
   method = NULL,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
-  migration_policy = c("susceptible", "proportional", "error")
+  migration_policy = c("susceptible", "proportional", "error"),
+  cumulative_flows = NULL
 ) {
   method_was_null <- is.null(method)
   method <- validate_simulation_method(method)
@@ -104,6 +113,12 @@ simulate_deterministic <- function(
   validate_simulation_times(times)
   validate_disease_model(model)
   validate_age_structure(age_structure)
+  if (!is.null(cumulative_flows) && !is.null(demographic_process)) {
+    stop(
+      "cumulative_flows are currently supported only when demographic_process is NULL.",
+      call. = FALSE
+    )
+  }
   time_policy <- validate_simulation_demography_inputs(
     demographic_process = demographic_process,
     time_policy = time_policy,
@@ -123,6 +138,20 @@ simulate_deterministic <- function(
   )
   validate_non_negative_simulation_state(state_vector, "initial_state")
 
+  cumulative_spec <- NULL
+  if (!is.null(cumulative_flows)) {
+    cumulative_spec <- prepare_deterministic_cumulative_flows(
+      cumulative_flows = cumulative_flows,
+      state_vector = state_vector,
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness
+    )
+  }
+
   simulate_deterministic_integrated(
     state_vector = state_vector,
     times = times,
@@ -135,7 +164,8 @@ simulate_deterministic <- function(
     infectiousness = infectiousness,
     demographic_process = demographic_process,
     time_policy = time_policy,
-    migration_policy = migration_policy
+    migration_policy = migration_policy,
+    cumulative_spec = cumulative_spec
   )
 }
 
@@ -151,15 +181,22 @@ simulate_deterministic_integrated <- function(
   infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
-  migration_policy = c("susceptible", "proportional", "error")
+  migration_policy = c("susceptible", "proportional", "error"),
+  cumulative_spec = NULL
 ) {
-  integrate_state_trajectory(
+  ordinary_state_length <- length(state_vector)
+  if (!is.null(cumulative_spec)) {
+    state_vector <- c(state_vector, numeric(nrow(cumulative_spec$state_order)))
+  }
+
+  integrated <- integrate_state_trajectory(
     initial_state = state_vector,
     times = times,
     method = method,
     derivative = function(time, state) {
-      deterministic_derivative(
+      deterministic_derivative_augmented(
         state_vector = state,
+        ordinary_state_length = ordinary_state_length,
         time = time,
         model = model,
         age_structure = age_structure,
@@ -169,15 +206,18 @@ simulate_deterministic_integrated <- function(
         infectiousness = infectiousness,
         demographic_process = demographic_process,
         time_policy = time_policy,
-        migration_policy = migration_policy
+        migration_policy = migration_policy,
+        cumulative_spec = cumulative_spec
       )
     },
     output = function(state, time) {
-      simulation_state_output(
-        state,
+      deterministic_augmented_state_output(
+        state = state,
+        ordinary_state_length = ordinary_state_length,
         time = time,
         age_structure = age_structure,
-        compartments = model$compartments
+        compartments = model$compartments,
+        cumulative_spec = cumulative_spec
       )
     },
     non_negative = validate_non_negative_euler_state,
@@ -186,6 +226,180 @@ simulate_deterministic_integrated <- function(
       "method = \"deSolve\" requires the optional deSolve package.",
       "Install deSolve or use method = \"euler\"."
     )
+  )
+
+  if (is.null(cumulative_spec)) {
+    return(integrated)
+  }
+
+  list(
+    trajectory = integrated$trajectory,
+    cumulative = integrated$cumulative
+  )
+}
+
+deterministic_derivative_augmented <- function(
+  state_vector,
+  ordinary_state_length,
+  time,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness,
+  demographic_process = NULL,
+  time_policy = c("exact", "step", "linear"),
+  migration_policy = c("susceptible", "proportional", "error"),
+  cumulative_spec = NULL
+) {
+  ordinary_state <- as.numeric(state_vector)[seq_len(ordinary_state_length)]
+  if (is.null(cumulative_spec)) {
+    return(deterministic_derivative(
+      state_vector = ordinary_state,
+      time = time,
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness,
+      demographic_process = demographic_process,
+      time_policy = time_policy,
+      migration_policy = migration_policy
+    ))
+  }
+
+  rates <- transition_rates(
+    state = ordinary_state,
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness
+  )
+  derivative <- rates_to_derivative(
+    transition_rate_table = rates,
+    compartments = model$compartments,
+    age_structure = age_structure
+  )
+
+  c(
+    derivative$derivative,
+    cumulative_flow_derivative(
+      transition_rate_table = rates,
+      cumulative_spec = cumulative_spec
+    )
+  )
+}
+
+prepare_deterministic_cumulative_flows <- function(
+  cumulative_flows,
+  state_vector,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness
+) {
+  rates <- transition_rates(
+    state = state_vector,
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness
+  )
+  flows <- validate_cumulative_flows(cumulative_flows, rates)
+
+  state_order <- merge(
+    flows,
+    data.frame(
+      age_group = age_structure$age_groups,
+      .age_order = seq_along(age_structure$age_groups),
+      stringsAsFactors = FALSE
+    ),
+    all = TRUE,
+    sort = FALSE
+  )
+  state_order$.flow_order <- match(state_order$cumulative_name, flows$cumulative_name)
+  state_order <- state_order[order(state_order$.flow_order, state_order$.age_order), ]
+  row.names(state_order) <- NULL
+
+  list(
+    flows = flows,
+    state_order = state_order[, c(
+      "cumulative_name",
+      "transition_id",
+      "from",
+      "to",
+      "age_group"
+    )]
+  )
+}
+
+cumulative_flow_derivative <- function(transition_rate_table, cumulative_spec) {
+  state_order <- cumulative_spec$state_order
+  derivative <- numeric(nrow(state_order))
+
+  for (i in seq_len(nrow(state_order))) {
+    matched <- transition_rate_table$transition_id == state_order$transition_id[i] &
+      transition_rate_table$age_group == state_order$age_group[i]
+    if (sum(matched) != 1) {
+      stop(
+        "cumulative flow '",
+        state_order$cumulative_name[i],
+        "' did not match exactly one transition-rate row for age group ",
+        state_order$age_group[i],
+        ".",
+        call. = FALSE
+      )
+    }
+    derivative[i] <- transition_rate_table$rate[matched]
+  }
+
+  derivative
+}
+
+deterministic_augmented_state_output <- function(
+  state,
+  ordinary_state_length,
+  time,
+  age_structure,
+  compartments,
+  cumulative_spec = NULL
+) {
+  ordinary_state <- as.numeric(state)[seq_len(ordinary_state_length)]
+  trajectory <- simulation_state_output(
+    ordinary_state,
+    time = time,
+    age_structure = age_structure,
+    compartments = compartments
+  )
+
+  if (is.null(cumulative_spec)) {
+    return(trajectory)
+  }
+
+  cumulative <- cumulative_spec$state_order
+  cumulative$time <- time
+  cumulative$value <- as.numeric(state)[ordinary_state_length + seq_len(nrow(cumulative))]
+  cumulative <- cumulative[, c(
+    "time",
+    "cumulative_name",
+    "transition_id",
+    "from",
+    "to",
+    "age_group",
+    "value"
+  )]
+
+  list(
+    trajectory = trajectory,
+    cumulative = cumulative
   )
 }
 
