@@ -17,7 +17,8 @@ simulate_stochastic(
   method = "gillespie",
   seed = NULL,
   return_events = FALSE,
-  demographic_process = NULL
+  demographic_process = NULL,
+  cumulative_flows = NULL
 )
 }
 \arguments{
@@ -58,13 +59,23 @@ If \code{TRUE}, return a list with \code{trajectory} and \code{events}.}
 
 \item{demographic_process}{Unsupported. Stochastic demography is not included
 and must be \code{NULL}.}
+
+\item{cumulative_flows}{Optional named list or data frame specifying disease
+transition flows to summarise from realised stochastic events. Named list
+entries must contain \code{from} and \code{to} fields; data frames must contain
+\code{name}, \code{from}, and \code{to} columns. Cumulative flows are derived from the
+event log and do not add stochastic state variables or propensities.}
 }
 \value{
 If \code{return_events = FALSE}, a data frame with columns \code{time},
 \code{compartment}, \code{age_group}, and \code{value}, ordered by time outermost,
 compartment next, and age group innermost. If \code{return_events = TRUE}, a
 list with \code{trajectory} and an event log containing \code{time}, \code{event},
-\code{age_group}, \code{from}, \code{to}, and \code{rate}.
+\code{transition_id}, \code{age_group}, \code{from}, \code{to}, and \code{rate}. When
+\code{cumulative_flows} is supplied, a list is returned with \code{trajectory} and
+\code{cumulative}, and also \code{events} when \code{return_events = TRUE}. \code{cumulative}
+contains columns \code{time}, \code{cumulative_name}, \code{transition_id}, \code{from}, \code{to},
+\code{age_group}, and \code{value}.
 }
 \description{
 Runs a narrow stochastic simulation for supported age-structured

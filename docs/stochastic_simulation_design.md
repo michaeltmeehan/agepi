@@ -27,10 +27,11 @@ The implemented stochastic surface is deliberately narrow:
 - Gillespie/direct-method continuous-time simulation;
 - output aligned to requested observation times;
 - reproducible trajectories when a random seed is supplied;
-- optional event log output.
+- optional event log output;
+- optional cumulative flow output derived from realised event logs.
 
 Each Gillespie propensity is built from `transition_rates()`. A transition-rate
-row with `from`, `to`, `age_group`, and `rate` becomes one possible
+row with `transition_id`, `from`, `to`, `age_group`, and `rate` becomes one possible
 individual-level event in that age group. When the event fires, one individual
 is removed from `from` and added to `to`. This keeps event semantics aligned
 with deterministic derivatives from `rates_to_derivative()` while preserving
@@ -95,6 +96,26 @@ generic simulation inherits the same supported transition-rate structures as
 deterministic simulation. Generic stochastic support is therefore limited to
 fixed-population transitions that can be represented as one source compartment
 and one destination compartment in the same age group.
+
+## Cumulative flow output
+
+`simulate_stochastic(cumulative_flows = ...)` can summarise selected disease
+transition flows from realised Gillespie events. The cumulative request is an
+output request only: it does not add counters to `model$compartments`, does not
+extend the stochastic state vector, and does not add transition-rate rows or
+propensities.
+
+Requested flows are validated against `transition_rates()` metadata. During the
+simulation, realised events carry `time`, `event`, `transition_id`,
+`age_group`, `from`, `to`, and `rate`. The cumulative table then counts
+matching events by flow and age group at each requested output time, using the
+inclusive convention `event_time <= output_time`. Initial output times have
+zero cumulative counts unless an event is realised at that exact time.
+
+When cumulative flows are supplied, the return value contains the ordinary
+`trajectory` and a `cumulative` table with `time`, `cumulative_name`,
+`transition_id`, `from`, `to`, `age_group`, and `value`. The event log is also
+returned when `return_events = TRUE`.
 
 ## Demography policy
 
@@ -204,6 +225,7 @@ cases and deterministic expectations. Targets include:
 - averages over many stochastic simulations approximately track the
   deterministic trajectory;
 - event times are nondecreasing;
+- cumulative event counts are nondecreasing and match the realised event log;
 - outputs are aligned to requested observation times.
 
 The output should follow the existing agepi long-format convention with columns

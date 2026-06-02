@@ -126,8 +126,13 @@ When cumulative flows are requested, the return value is a list with
 containing `time`, `cumulative_name`, `transition_id`, `from`, `to`,
 `age_group`, and `value`. The cumulative derivatives use the same
 transition-rate rows as the ordinary deterministic derivative. Cumulative flows
-are not currently supported with `demographic_process`, and stochastic
-cumulative counters are not implemented.
+are not currently supported with `demographic_process`.
+
+For fixed-population stochastic simulations, `simulate_stochastic()` can use
+the same `cumulative_flows` specification to return cumulative counts derived
+from realised event logs. These stochastic cumulative outputs count events with
+`event_time <= output_time`; they are not stochastic state variables and do not
+change propensities or event sampling.
 
 ## Infectious Compartments
 

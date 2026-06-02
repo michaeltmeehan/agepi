@@ -23,6 +23,8 @@ simulation for supported disease transition structures:
   cumulative outputs for infection-only simulations;
 - run fixed-population stochastic SIR, SEIR, and supported generic
   `CompartmentModel()` simulations with `simulate_stochastic()`;
+- optionally summarise selected stochastic transition flows as cumulative
+  outputs derived from realised event logs;
 - optionally couple deterministic models to a first-pass demographic process;
 - summarise deterministic simulation output with `compartment_totals()`,
   `age_group_totals()`, and `total_population()`.
@@ -59,6 +61,8 @@ The current package scope is deliberately small:
 - optional `deSolve` backend for documented deterministic combinations;
 - first-pass epidemic-demography coupling;
 - deterministic cumulative flow tracking for infection-only simulations;
+- event-log-derived stochastic cumulative flow output for fixed-population
+  disease simulations;
 - dependency-free external-data adapters;
 - no plotting, fitting, or calibration layer.
 
@@ -68,8 +72,8 @@ Important limitations to keep in mind:
 
 - no stochastic demography, tau-leaping, or stochastic models beyond
   fixed-population supported transition-rate structures;
-- no stochastic cumulative counters and no cumulative-flow tracking with
-  demographic coupling;
+- no stochastic cumulative counters as state variables and no cumulative-flow
+  tracking with demographic coupling;
 - no time-varying contact matrices in epidemic simulation;
 - no demographic residual forcing or WPP projection matching;
 - no reciprocity correction or population balancing for contact matrices;

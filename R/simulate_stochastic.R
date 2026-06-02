@@ -46,12 +46,21 @@
 #'   If `TRUE`, return a list with `trajectory` and `events`.
 #' @param demographic_process Unsupported. Stochastic demography is not included
 #'   and must be `NULL`.
+#' @param cumulative_flows Optional named list or data frame specifying disease
+#'   transition flows to summarise from realised stochastic events. Named list
+#'   entries must contain `from` and `to` fields; data frames must contain
+#'   `name`, `from`, and `to` columns. Cumulative flows are derived from the
+#'   event log and do not add stochastic state variables or propensities.
 #'
 #' @return If `return_events = FALSE`, a data frame with columns `time`,
 #'   `compartment`, `age_group`, and `value`, ordered by time outermost,
 #'   compartment next, and age group innermost. If `return_events = TRUE`, a
 #'   list with `trajectory` and an event log containing `time`, `event`,
-#'   `age_group`, `from`, `to`, and `rate`.
+#'   `transition_id`, `age_group`, `from`, `to`, and `rate`. When
+#'   `cumulative_flows` is supplied, a list is returned with `trajectory` and
+#'   `cumulative`, and also `events` when `return_events = TRUE`. `cumulative`
+#'   contains columns `time`, `cumulative_name`, `transition_id`, `from`, `to`,
+#'   `age_group`, and `value`.
 #' @export
 simulate_stochastic <- function(
   initial_state,
@@ -66,7 +75,8 @@ simulate_stochastic <- function(
   method = "gillespie",
   seed = NULL,
   return_events = FALSE,
-  demographic_process = NULL
+  demographic_process = NULL,
+  cumulative_flows = NULL
 ) {
   validate_stochastic_method(method)
   validate_stochastic_return_events(return_events)
@@ -104,6 +114,20 @@ simulate_stochastic <- function(
     compartments = model$compartments
   )
 
+  cumulative_spec <- NULL
+  if (!is.null(cumulative_flows)) {
+    cumulative_spec <- prepare_stochastic_cumulative_flows(
+      cumulative_flows = cumulative_flows,
+      state_vector = state_vector,
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness
+    )
+  }
+
   with_stochastic_seed(seed, {
     stochastic_gillespie_fixed_population(
       state_vector = state_vector,
@@ -115,7 +139,8 @@ simulate_stochastic <- function(
       susceptibility = susceptibility,
       infectiousness = infectiousness,
       population = population,
-      return_events = return_events
+      return_events = return_events,
+      cumulative_spec = cumulative_spec
     )
   })
 }
@@ -130,7 +155,8 @@ stochastic_gillespie_fixed_population <- function(
   susceptibility,
   infectiousness,
   population,
-  return_events
+  return_events,
+  cumulative_spec = NULL
 ) {
   current_state <- as.numeric(state_vector)
   current_time <- times[1]
@@ -197,11 +223,12 @@ stochastic_gillespie_fixed_population <- function(
     )
     current_time <- next_event_time
 
-    if (return_events) {
+    if (return_events || !is.null(cumulative_spec)) {
       event_count <- event_count + 1L
       event_rows[[event_count]] <- data.frame(
         time = current_time,
         event = event$event,
+        transition_id = event$transition_id,
         age_group = event$age_group,
         from = event$from,
         to = event$to,
@@ -224,12 +251,28 @@ stochastic_gillespie_fixed_population <- function(
   trajectory <- do.call(rbind, output_states)
   row.names(trajectory) <- NULL
 
-  if (!return_events) {
+  if (!return_events && is.null(cumulative_spec)) {
     return(trajectory)
   }
 
   events <- stochastic_event_log(event_rows)
-  list(trajectory = trajectory, events = events)
+  if (is.null(cumulative_spec)) {
+    return(list(trajectory = trajectory, events = events))
+  }
+
+  result <- list(
+    trajectory = trajectory,
+    cumulative = stochastic_cumulative_output(
+      events = events,
+      times = times,
+      cumulative_spec = cumulative_spec
+    )
+  )
+  if (return_events) {
+    result$events <- events
+    result <- result[c("trajectory", "events", "cumulative")]
+  }
+  result
 }
 
 stochastic_propensities <- function(
@@ -285,7 +328,7 @@ stochastic_event_table <- function(
   rates <- rates[order(rates$.transition_index, rates$age_index), ]
   row.names(rates) <- NULL
 
-  rates[, c("event", "age_group", "age_index", "from", "to", "rate")]
+  rates[, c("event", "transition_id", "age_group", "age_index", "from", "to", "rate")]
 }
 
 stochastic_transition_order <- function(model) {
@@ -378,6 +421,7 @@ stochastic_event_log <- function(event_rows) {
     return(data.frame(
       time = numeric(),
       event = character(),
+      transition_id = character(),
       age_group = character(),
       from = character(),
       to = character(),
@@ -389,6 +433,86 @@ stochastic_event_log <- function(event_rows) {
   events <- do.call(rbind, event_rows)
   row.names(events) <- NULL
   events
+}
+
+prepare_stochastic_cumulative_flows <- function(
+  cumulative_flows,
+  state_vector,
+  model,
+  age_structure,
+  contact_matrix,
+  beta,
+  susceptibility,
+  infectiousness
+) {
+  rates <- transition_rates(
+    state = state_vector,
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    susceptibility = susceptibility,
+    infectiousness = infectiousness
+  )
+  flows <- validate_cumulative_flows(cumulative_flows, rates)
+
+  output_order <- merge(
+    flows,
+    data.frame(
+      age_group = age_structure$age_groups,
+      .age_order = seq_along(age_structure$age_groups),
+      stringsAsFactors = FALSE
+    ),
+    all = TRUE,
+    sort = FALSE
+  )
+  output_order$.flow_order <- match(output_order$cumulative_name, flows$cumulative_name)
+  output_order <- output_order[order(output_order$.flow_order, output_order$.age_order), ]
+  row.names(output_order) <- NULL
+
+  list(
+    flows = flows,
+    output_order = output_order[, c(
+      "cumulative_name",
+      "transition_id",
+      "from",
+      "to",
+      "age_group"
+    )]
+  )
+}
+
+stochastic_cumulative_output <- function(events, times, cumulative_spec) {
+  output_order <- cumulative_spec$output_order
+  rows <- vector("list", length(times))
+
+  for (i in seq_along(times)) {
+    cumulative <- output_order
+    cumulative$time <- times[i]
+    cumulative$value <- numeric(nrow(cumulative))
+
+    for (j in seq_len(nrow(cumulative))) {
+      cumulative$value[j] <- sum(
+        events$time <= times[i] &
+          events$transition_id == cumulative$transition_id[j] &
+          events$age_group == cumulative$age_group[j]
+      )
+    }
+
+    rows[[i]] <- cumulative[, c(
+      "time",
+      "cumulative_name",
+      "transition_id",
+      "from",
+      "to",
+      "age_group",
+      "value"
+    )]
+  }
+
+  cumulative <- do.call(rbind, rows)
+  row.names(cumulative) <- NULL
+  cumulative
 }
 
 validate_stochastic_method <- function(method) {

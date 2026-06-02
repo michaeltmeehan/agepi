@@ -4,8 +4,10 @@
 
 This document records a design inspection for package-managed cumulative flow
 states. The narrow deterministic auxiliary-state milestone is implemented in
-`simulate_deterministic(cumulative_flows = ...)`; stochastic cumulative
-counters and cumulative flows with demographic coupling remain future work.
+`simulate_deterministic(cumulative_flows = ...)`. Stochastic cumulative outputs
+are implemented in `simulate_stochastic(cumulative_flows = ...)` by summarising
+realised event logs; stochastic cumulative counters as state variables and
+cumulative flows with demographic coupling remain out of scope.
 
 The target use case is to let users request age-specific cumulative counters
 for selected model transitions, for example infections, progressions, or
@@ -235,12 +237,12 @@ propensities. Two safe approaches are available:
 - update an auxiliary counter vector immediately after the selected real event
   is applied.
 
-The event-log approach is simpler and less invasive for current
-`simulate_stochastic()` because it already supports `return_events`. It avoids
-changing the event sampler and guarantees that counters reflect realised
-events. The alongside-event approach is useful if future simulations need
-counter state available during the run, but still must update counters only
-after sampling the true event.
+Implemented stochastic milestone: `simulate_stochastic()` uses the event-log
+approach. When cumulative flows are requested, it records realised event
+metadata internally, counts matching events with `event_time <= output_time`,
+and returns a cumulative table across all requested output times and age
+groups. The event sampler, stochastic state vector, transition-rate rows, and
+propensities are unchanged by a cumulative-output request.
 
 ## API Recommendation
 
@@ -344,20 +346,22 @@ Stochastic cumulative counters should be derived from realised events or
 updated alongside the realised event. They must not be encoded as ordinary
 transition-rate rows.
 
-The smallest robust first stochastic design is:
+The implemented first stochastic design is:
 
 1. Validate `cumulative_flows` against stochastic transition metadata.
 2. Run the existing Gillespie simulation unchanged, with event logging enabled
    internally when cumulative output is requested.
 3. At requested output times, derive cumulative counts by age group and flow
    from events with `time <= output_time`.
-4. Return the usual trajectory plus a cumulative table, and optionally the
-   event log if `return_events = TRUE`.
+4. Return the usual trajectory plus a cumulative table, and the event log when
+   `return_events = TRUE`.
 
-This avoids changing `stochastic_event_table()` and `stochastic_apply_event()`.
-If counters are instead held in state, `stochastic_apply_event()` should return
-both the updated compartment state and updated counters after a sampled event.
-The propensities must still be computed from compartment state only.
+This keeps cumulative counters out of `model$compartments`, state mapping,
+fixed-population checks, `transition_rates()`, and `stochastic_apply_event()`.
+If counters are instead held in state in a future design,
+`stochastic_apply_event()` should return both the updated compartment state and
+updated counters after a sampled event. The propensities must still be computed
+from compartment state only.
 
 The deterministic and stochastic APIs can share `cumulative_flows`, but their
 interpretation differs:
@@ -480,6 +484,7 @@ Milestone 4: stochastic cumulative outputs
 - Derive cumulative tables from realised event logs at requested output times.
 - Ensure internal event logging does not force event-log return unless
   `return_events = TRUE`.
+- Status: implemented for fixed-population stochastic disease simulations.
 - Test that counters equal event counts and that trajectory/population
   conservation is unchanged.
 

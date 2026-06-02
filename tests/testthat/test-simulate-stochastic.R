@@ -44,7 +44,8 @@ stochastic_test_run <- function(
   method = "gillespie",
   beta = 0.03,
   gamma = 0.2,
-  demographic_process = NULL
+  demographic_process = NULL,
+  cumulative_flows = NULL
 ) {
   simulate_stochastic(
     initial_state = initial_state,
@@ -56,7 +57,8 @@ stochastic_test_run <- function(
     method = method,
     seed = seed,
     return_events = return_events,
-    demographic_process = demographic_process
+    demographic_process = demographic_process,
+    cumulative_flows = cumulative_flows
   )
 }
 
@@ -155,7 +157,7 @@ test_that("zero total event rate carries state forward to requested times", {
   expected_values <- rep(initial_state$value, times = 3)
   expect_equal(result$trajectory$value, expected_values)
   expect_equal(result$trajectory$time, rep(c(0, 0.5, 2), each = 6))
-  expect_identical(names(result$events), c("time", "event", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
   expect_equal(nrow(result$events), 0)
 })
 
@@ -169,7 +171,7 @@ test_that("event log records recovery-only semantics when beta is zero", {
     return_events = TRUE
   )
 
-  expect_identical(names(result$events), c("time", "event", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(nrow(result$events) > 0)
   expect_true(all(result$events$event == "recovery"))
   expect_true(all(result$events$from == "I"))
@@ -290,7 +292,7 @@ test_that("SEIR event times are nondecreasing", {
 test_that("SEIR event log uses stable column order and event labels", {
   result <- stochastic_test_seir_run(times = c(0, 20), seed = 36, return_events = TRUE)
 
-  expect_identical(names(result$events), c("time", "event", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(all(result$events$event %in% c("infection", "progression", "recovery")))
 })
 
@@ -404,11 +406,188 @@ test_that("generic event log keeps the stochastic event structure", {
     return_events = TRUE
   )
 
-  expect_identical(names(result$events), c("time", "event", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(nrow(result$events) > 0)
+  expect_true(all(result$events$transition_id %in% c("infection:S->I", "transition:I->R")))
   expect_true(all(result$events$from %in% c("S", "I")))
   expect_true(all(result$events$to %in% c("I", "R")))
   expect_true(all(diff(result$events$time) >= 0))
+})
+
+test_that("simulate_stochastic output is unchanged when cumulative_flows is NULL", {
+  baseline <- stochastic_test_run(seed = 51)
+  explicit_null <- stochastic_test_run(seed = 51, cumulative_flows = NULL)
+
+  expect_equal(explicit_null, baseline)
+  expect_identical(names(explicit_null), c("time", "compartment", "age_group", "value"))
+})
+
+test_that("stochastic cumulative infection counts match realised events", {
+  result <- stochastic_test_run(
+    initial_state = stochastic_test_state(S = c(3, 3), I = c(5, 5), R = c(0, 0)),
+    times = c(0, 1, 5, 20),
+    beta = 2,
+    gamma = 0,
+    seed = 52,
+    return_events = TRUE,
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_named(result, c("trajectory", "events", "cumulative"))
+  expect_identical(
+    names(result$cumulative),
+    c("time", "cumulative_name", "transition_id", "from", "to", "age_group", "value")
+  )
+  expect_true(all(result$cumulative$cumulative_name == "infections"))
+  expect_true(all(result$cumulative$transition_id == "infection:S->I"))
+
+  for (age_group in stochastic_test_ages()$age_groups) {
+    values <- result$cumulative$value[result$cumulative$age_group == age_group]
+    expect_true(all(diff(values) >= 0))
+    expect_equal(
+      tail(values, 1),
+      sum(result$events$transition_id == "infection:S->I" & result$events$age_group == age_group)
+    )
+  }
+})
+
+test_that("stochastic cumulative outputs support generic clinical and subclinical flows", {
+  ages <- stochastic_test_ages()
+  transitions <- data.frame(
+    from = c("E", "E", "IP", "IC", "IS"),
+    to = c("IP", "IS", "IC", "R", "R"),
+    stringsAsFactors = FALSE
+  )
+  transitions$rate <- I(list(
+    c("0-4" = 2, "5-9" = 3),
+    c("0-4" = 4, "5-9" = 1),
+    1,
+    1,
+    1
+  ))
+  model <- CompartmentModel(
+    compartments = c("S", "E", "IP", "IC", "IS", "R"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = transitions,
+    infectious_compartments = c("IP", "IC", "IS"),
+    infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "E", "IP", "IC", "IS", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 6),
+    value = c(10, 10, 2, 2, 3, 3, 0, 0, 1, 1, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  result <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(0, 0.5, 2),
+    model = model,
+    age_structure = ages,
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0.2,
+    seed = 53,
+    return_events = TRUE,
+    cumulative_flows = data.frame(
+      name = c("exposures", "clinical", "subclinical"),
+      from = c("S", "E", "E"),
+      to = c("E", "IP", "IS"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  expect_identical(
+    names(result$cumulative),
+    c("time", "cumulative_name", "transition_id", "from", "to", "age_group", "value")
+  )
+  expect_equal(unique(result$cumulative$cumulative_name), c("exposures", "clinical", "subclinical"))
+  expect_equal(unique(result$cumulative$age_group), ages$age_groups)
+  expect_true(all(c("infection:S->E", "transition:E->IP", "transition:E->IS") %in% result$cumulative$transition_id))
+})
+
+test_that("stochastic cumulative output remains zero for selected flows with no events", {
+  result <- stochastic_test_run(
+    initial_state = stochastic_test_state(S = c(10, 10), I = c(0, 0), R = c(0, 0)),
+    times = c(0, 1, 2),
+    beta = 0,
+    gamma = 0,
+    seed = 54,
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_named(result, c("trajectory", "cumulative"))
+  expect_equal(result$cumulative$value, rep(0, 6))
+  expect_equal(result$cumulative$age_group, rep(stochastic_test_ages()$age_groups, times = 3))
+})
+
+test_that("stochastic cumulative counts use inclusive output-time convention", {
+  events <- data.frame(
+    time = c(0.5, 1),
+    event = c("infection", "infection"),
+    transition_id = c("infection:S->I", "infection:S->I"),
+    age_group = c("0-4", "0-4"),
+    from = c("S", "S"),
+    to = c("I", "I"),
+    rate = c(1, 1),
+    stringsAsFactors = FALSE
+  )
+  spec <- list(
+    output_order = data.frame(
+      cumulative_name = "infections",
+      transition_id = "infection:S->I",
+      from = "S",
+      to = "I",
+      age_group = c("0-4", "5-9"),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  cumulative <- stochastic_cumulative_output(events, times = c(0, 0.5, 1), cumulative_spec = spec)
+
+  expect_equal(cumulative$value[cumulative$age_group == "0-4"], c(0, 1, 2))
+  expect_equal(cumulative$value[cumulative$age_group == "5-9"], c(0, 0, 0))
+})
+
+test_that("cumulative_flows do not alter stochastic trajectories or event sequence", {
+  baseline <- stochastic_test_run(
+    initial_state = stochastic_test_state(S = c(3, 3), I = c(5, 5), R = c(0, 0)),
+    times = c(0, 1, 5, 20),
+    beta = 2,
+    gamma = 0.5,
+    seed = 55,
+    return_events = TRUE
+  )
+  with_cumulative <- stochastic_test_run(
+    initial_state = stochastic_test_state(S = c(3, 3), I = c(5, 5), R = c(0, 0)),
+    times = c(0, 1, 5, 20),
+    beta = 2,
+    gamma = 0.5,
+    seed = 55,
+    return_events = TRUE,
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  expect_equal(with_cumulative$trajectory, baseline$trajectory)
+  expect_equal(with_cumulative$events, baseline$events)
+  expect_equal(
+    aggregate(value ~ time + age_group, with_cumulative$trajectory, sum),
+    aggregate(value ~ time + age_group, baseline$trajectory, sum)
+  )
+})
+
+test_that("invalid stochastic cumulative_flows inputs error clearly", {
+  expect_error(
+    stochastic_test_run(cumulative_flows = list(list(from = "S", to = "I"))),
+    "cumulative_flows list entries must be named"
+  )
+  expect_error(
+    stochastic_test_run(cumulative_flows = list(bad = list(from = "X", to = "I"))),
+    "unknown source compartment"
+  )
+  expect_error(
+    stochastic_test_run(cumulative_flows = data.frame(name = "x", from = "S")),
+    "missing required column"
+  )
 })
 
 test_that("simulate_stochastic rejects unsupported model structures and method", {

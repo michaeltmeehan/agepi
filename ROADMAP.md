@@ -194,8 +194,10 @@ Implemented:
   propensities, force-of-infection denominators, population totals, or
   demographic processes.
 
-Current boundary: cumulative flow tracking is deterministic-only and is not
-supported with `demographic_process`.
+Current boundary: deterministic cumulative flow tracking is not supported with
+`demographic_process`. Stochastic cumulative outputs are event-log-derived
+counts for fixed-population disease simulations, not stochastic state
+variables or propensities.
 
 ## Future Work
 
