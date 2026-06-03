@@ -257,10 +257,13 @@ dynamics and reciprocity correction remain future work.
 Implemented:
 
 - minimal deterministic infection-only SEIR support.
+- optional `rate_from_epiparameter()` interoperability for collapsing an
+  `<epiparameter>` delay object to a Markov transition rate via `1 / mean`.
 
 Planned:
 
 - broader transition-rate validation for additional compartment structures;
+- Erlang/gamma dwell-time helpers for non-exponential delay approximations;
 - vaccination, waning immunity, and event handling only after explicit design
   decisions.
 

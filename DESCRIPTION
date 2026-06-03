@@ -13,6 +13,7 @@ RoxygenNote: 7.3.2
 Suggests: 
     conmat,
     deSolve,
+    epiparameter,
     socialmixr,
     wpp2024,
     testthat (>= 3.0.0)

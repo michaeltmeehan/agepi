@@ -47,10 +47,10 @@ Creates a simple generic disease-model object for deterministic
 age-structured compartmental models. Infection transitions use the existing
 \code{\link[=force_of_infection]{force_of_infection()}} convention. Other transitions are per-capita flows
 from \code{from} to \code{to}, with rates supplied either as finite non-negative
-scalars or as named age-specific vectors when transition rates are evaluated.
+scalars or as age-specific vectors when transition rates are evaluated.
 }
 \details{
-\code{\link[=SIRModel]{SIRModel()}} and \code{\link[=SEIRModel]{SEIRModel()}} remain supported convenience constructors for
+\code{SIRModel()} and \code{SEIRModel()} remain supported convenience constructors for
 the built-in SIR and SEIR workflows. \code{CompartmentModel()} is intended for
 explicit custom models with the same compartment-major state ordering.
 }

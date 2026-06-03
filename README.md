@@ -216,6 +216,36 @@ See [docs/generic_compartment_models.md](docs/generic_compartment_models.md),
 [examples/generic_seir.R](examples/generic_seir.R), and
 [examples/generic_msir.R](examples/generic_msir.R).
 
+## Optional Epiparameter Interoperability
+
+`rate_from_epiparameter()` converts an `<epiparameter>` delay object, such as
+one returned by `epiparameter::epiparameter_db()`, to a Markov per-capita
+transition rate by taking `1 / mean(delay)`. The `epiparameter` package is
+suggested, not imported, and is only required when this helper is called.
+
+This intentionally collapses the full delay distribution into an exponential
+waiting-time approximation with the same mean. It does not preserve the
+distribution shape, variance, truncation, or other non-Markov dwell-time
+features.
+
+```r
+if (requireNamespace("epiparameter", quietly = TRUE)) {
+  incubation <- epiparameter::epiparameter_db(
+    disease = "COVID-19",
+    epi_name = "incubation period",
+    single_epiparameter = TRUE
+  )
+
+  seir <- SEIRModel(
+    sigma = rate_from_epiparameter(incubation),
+    gamma = 0.25
+  )
+}
+```
+
+See [examples/epiparameter_seir.R](examples/epiparameter_seir.R) for a compact
+age-structured SEIR example. Erlang/gamma dwell-time helpers are future work.
+
 ## Cumulative Flow Outputs
 
 Selected transition flows can be requested at simulation time. Deterministic
@@ -340,6 +370,8 @@ reproduce full external projection systems. See
 - [examples/generic_seir.R](examples/generic_seir.R): SEIR through
   `CompartmentModel()`.
 - [examples/generic_msir.R](examples/generic_msir.R): custom MSIR model.
+- [examples/epiparameter_seir.R](examples/epiparameter_seir.R): optional
+  `epiparameter` incubation-period parameterisation for SEIR.
 - [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulative_flows.R):
   deterministic cumulative infection and recovery flows.
 - [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R):
