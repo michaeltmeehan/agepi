@@ -11,6 +11,7 @@ Rscript examples/validation/epidynamics_sir2_age_classes.R
 Rscript examples/validation/epidynamics_sir.R
 Rscript examples/validation/epidynamics_sir_birth_death.R
 Rscript examples/validation/epidynamics_seir.R
+Rscript examples/validation/finalsize_sir_final_size.R
 ```
 
 The scripts load the local source tree using the same convention as the existing
@@ -58,6 +59,25 @@ matches the `EpiDynamics` density-dependent equations while those age totals
 remain at equilibrium. This makes the comparison a transparent partial
 reproduction rather than a claim that the two public interfaces have identical
 semantics.
+
+## Optional final-size comparison
+
+- `finalsize_sir_final_size.R` compares a closed-population age-structured
+  `agepi::SIRModel()` simulation with `finalsize::final_size()` when the
+  optional `finalsize` package is installed. It simulates to a long horizon,
+  tracks `S -> I` cumulative infections with `cumulative_flows`, and compares
+  age-specific attack rates.
+
+The script documents the compatibility assumptions in place: no births, deaths,
+migration, waning, or reinfection; recipient-row/source-column contact-matrix
+orientation; `finalsize` demography input normalised to population proportions;
+`finalsize` contact-matrix normalisation so `contact_matrix * demography_vector`
+has dominant real eigenvalue 1; and the translation from `agepi`'s `beta`/`gamma`
+parameters to `finalsize`'s `r0` using the dominant eigenvalue of the fully
+susceptible next-generation matrix.
+`finalsize` is used only behind
+`requireNamespace("finalsize", quietly = TRUE)` and is not required to run the
+package.
 
 ## Investigated but skipped
 

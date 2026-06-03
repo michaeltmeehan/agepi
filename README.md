@@ -348,6 +348,9 @@ reproduce full external projection systems. See
   demographic turnover.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
   demographic-only workflow with diagnostics.
+- [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
+  optional closed-population final-size comparison using `finalsize` when it is
+  installed.
 
 ## Documentation
 
