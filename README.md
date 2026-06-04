@@ -293,6 +293,22 @@ head(stochastic_output$events)
 head(stochastic_output$cumulative)
 ```
 
+For downstream CFR or severity workflows, `as_cfr_data()` selects one
+cumulative flow as cases and one as deaths, then converts cumulative values to
+interval increments by default:
+
+```r
+cfr_input <- as_cfr_data(
+  deterministic_output,
+  cases = "infections",
+  deaths = "recoveries"
+)
+
+if (requireNamespace("cfr", quietly = TRUE)) {
+  head(cfr_input)
+}
+```
+
 See [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulative_flows.R)
 and [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R)
 for runnable scripts.

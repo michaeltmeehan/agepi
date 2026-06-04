@@ -186,6 +186,9 @@ Implemented:
 
 - optional `cumulative_flows` argument for `simulate_deterministic()`;
 - deterministic auxiliary cumulative counters for selected transition flows;
+- optional `as_cfr_data()` export helper for converting selected cumulative
+  flows to case/death interval counts for downstream CFR or severity analysis
+  without importing `cfr`;
 - list output with ordinary `trajectory` and separate `cumulative` tables when
   cumulative flows are requested;
 - cumulative derivatives based on the same transition-rate rows used for
