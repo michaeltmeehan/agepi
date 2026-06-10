@@ -11,7 +11,6 @@ validate_cumulative_flows <- function(cumulative_flows, transition_rate_table) {
 
   validate_cumulative_transition_rate_table(transition_rate_table)
   normalized <- normalize_cumulative_flows(cumulative_flows)
-  validate_cumulative_flow_names(normalized$cumulative_name)
 
   rows <- vector("list", nrow(normalized))
   for (i in seq_len(nrow(normalized))) {
@@ -45,6 +44,7 @@ normalize_cumulative_flow_list <- function(cumulative_flows) {
   if (is.null(flow_names) || length(flow_names) != length(cumulative_flows)) {
     stop("cumulative_flows list entries must be named.", call. = FALSE)
   }
+  validate_cumulative_flow_list_names(flow_names)
 
   rows <- vector("list", length(cumulative_flows))
   for (i in seq_along(cumulative_flows)) {
@@ -56,10 +56,16 @@ normalize_cumulative_flow_list <- function(cumulative_flows) {
       stop("each cumulative flow must include from and to fields.", call. = FALSE)
     }
 
+    from <- validate_cumulative_flow_compartments(flow$from, "from")
+    to <- validate_cumulative_flow_compartments(flow$to, "to")
+    if (length(from) != length(to)) {
+      stop("cumulative flow from and to must have the same length.", call. = FALSE)
+    }
+
     rows[[i]] <- data.frame(
-      cumulative_name = flow_names[i],
-      from = validate_cumulative_flow_compartment(flow$from, "from"),
-      to = validate_cumulative_flow_compartment(flow$to, "to"),
+      cumulative_name = rep(flow_names[i], length(from)),
+      from = from,
+      to = to,
       stringsAsFactors = FALSE
     )
   }
@@ -78,11 +84,14 @@ normalize_cumulative_flow_data_frame <- function(cumulative_flows) {
     )
   }
 
+  cumulative_name <- validate_cumulative_flow_character_column(
+    cumulative_flows$name,
+    "name"
+  )
+  validate_cumulative_flow_names(cumulative_name)
+
   data.frame(
-    cumulative_name = validate_cumulative_flow_character_column(
-      cumulative_flows$name,
-      "name"
-    ),
+    cumulative_name = cumulative_name,
     from = validate_cumulative_flow_character_column(
       cumulative_flows$from,
       "from"
@@ -93,6 +102,10 @@ normalize_cumulative_flow_data_frame <- function(cumulative_flows) {
     ),
     stringsAsFactors = FALSE
   )
+}
+
+validate_cumulative_flow_list_names <- function(cumulative_names) {
+  validate_cumulative_flow_names(cumulative_names)
 }
 
 validate_cumulative_flow_names <- function(cumulative_names) {
@@ -112,9 +125,9 @@ validate_cumulative_flow_names <- function(cumulative_names) {
   invisible(cumulative_names)
 }
 
-validate_cumulative_flow_compartment <- function(x, field) {
-  if (!is.character(x) || length(x) != 1 || anyNA(x) || x == "") {
-    stop("cumulative flow ", field, " must be a non-missing character scalar.", call. = FALSE)
+validate_cumulative_flow_compartments <- function(x, field) {
+  if (!is.character(x) || length(x) < 1 || anyNA(x) || any(x == "")) {
+    stop("cumulative flow ", field, " must contain non-empty character value(s).", call. = FALSE)
   }
 
   x
@@ -214,5 +227,52 @@ match_cumulative_flow_transition <- function(cumulative_name, from, to, transiti
     from = logical_matches$from[1],
     to = logical_matches$to[1],
     stringsAsFactors = FALSE
+  )
+}
+
+cumulative_flow_state_spec <- function(flows, age_groups) {
+  flow_names <- unique(flows$cumulative_name)
+  age_order <- data.frame(
+    age_group = age_groups,
+    .age_order = seq_along(age_groups),
+    stringsAsFactors = FALSE
+  )
+
+  rows <- vector("list", length(flow_names))
+  transition_sets <- vector("list", length(flow_names) * length(age_groups))
+  transition_index <- 1
+
+  for (i in seq_along(flow_names)) {
+    flow_rows <- flows[flows$cumulative_name == flow_names[i], , drop = FALSE]
+    rows[[i]] <- data.frame(
+      cumulative_name = flow_names[i],
+      transition_id = paste(flow_rows$transition_id, collapse = ","),
+      from = paste(flow_rows$from, collapse = ","),
+      to = paste(flow_rows$to, collapse = ","),
+      age_group = age_groups,
+      .flow_order = i,
+      .age_order = age_order$.age_order,
+      stringsAsFactors = FALSE
+    )
+
+    for (j in seq_along(age_groups)) {
+      transition_sets[[transition_index]] <- flow_rows$transition_id
+      transition_index <- transition_index + 1
+    }
+  }
+
+  state_order <- do.call(rbind, rows)
+  state_order <- state_order[order(state_order$.flow_order, state_order$.age_order), ]
+  row.names(state_order) <- NULL
+
+  list(
+    state_order = state_order[, c(
+      "cumulative_name",
+      "transition_id",
+      "from",
+      "to",
+      "age_group"
+    )],
+    transition_sets = transition_sets
   )
 }

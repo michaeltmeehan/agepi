@@ -36,6 +36,43 @@ simulate_test_contacts <- function() {
   ), nrow = 2, byrow = TRUE)
 }
 
+simulate_onset_model <- function() {
+  transitions <- data.frame(
+    from = c("Lr", "Ld", "I"),
+    to = c("I", "I", "T"),
+    rate = c(0.2, 0.1, 0.3),
+    stringsAsFactors = FALSE
+  )
+
+  CompartmentModel(
+    compartments = c("S", "Lr", "Ld", "I", "T"),
+    infection_transitions = data.frame(from = "S", to = "Lr", stringsAsFactors = FALSE),
+    transitions = transitions,
+    infectious_compartments = "I"
+  )
+}
+
+simulate_onset_state <- function(
+  S = c(100, 200),
+  Lr = c(20, 30),
+  Ld = c(40, 50),
+  I = c(10, 15),
+  T = c(0, 0)
+) {
+  data.frame(
+    compartment = rep(c("S", "Lr", "Ld", "I", "T"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 5),
+    value = c(S, Lr, Ld, I, T),
+    stringsAsFactors = FALSE
+  )
+}
+
+cumulative_values_by_time_age <- function(cumulative, cumulative_name) {
+  rows <- cumulative[cumulative$cumulative_name == cumulative_name, ]
+  rows <- rows[order(rows$time, rows$age_group), ]
+  rows$value
+}
+
 simulate_test_run <- function(initial_state = simulate_test_state(), times = c(0, 0.1), ...) {
   simulate_deterministic(
     initial_state = initial_state,
@@ -723,6 +760,67 @@ test_that("simulate_deterministic cumulative flows support generic clinical and 
   expect_true(all(c("infection:S->E", "transition:E->IP", "transition:E->IS") %in% cumulative$transition_id))
 })
 
+test_that("simulate_deterministic aggregates multiple transitions into one cumulative flow", {
+  output <- simulate_deterministic(
+    initial_state = simulate_onset_state(),
+    times = seq(0, 0.3, by = 0.1),
+    model = simulate_onset_model(),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    cumulative_flows = list(
+      infections = list(from = "S", to = "Lr"),
+      disease_onset = list(from = c("Lr", "Ld"), to = c("I", "I")),
+      treatment = list(from = "I", to = "T")
+    )
+  )
+
+  cumulative <- output$cumulative
+  expect_equal(unique(cumulative$cumulative_name), c("infections", "disease_onset", "treatment"))
+  expect_equal(
+    unique(cumulative$transition_id[cumulative$cumulative_name == "disease_onset"]),
+    "transition:Lr->I,transition:Ld->I"
+  )
+  expect_equal(nrow(cumulative), length(seq(0, 0.3, by = 0.1)) * 3 * 2)
+  expect_true(all(cumulative_values_by_time_age(cumulative, "disease_onset") >= 0))
+})
+
+test_that("multi-transition cumulative flow equals the corresponding separate counters", {
+  times <- seq(0, 0.3, by = 0.1)
+  aggregate_output <- simulate_deterministic(
+    initial_state = simulate_onset_state(),
+    times = times,
+    model = simulate_onset_model(),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    cumulative_flows = list(
+      disease_onset = list(from = c("Lr", "Ld"), to = c("I", "I"))
+    )
+  )
+  separate_output <- simulate_deterministic(
+    initial_state = simulate_onset_state(),
+    times = times,
+    model = simulate_onset_model(),
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    cumulative_flows = list(
+      recent_onset = list(from = "Lr", to = "I"),
+      remote_onset = list(from = "Ld", to = "I")
+    )
+  )
+
+  aggregate_values <- cumulative_values_by_time_age(aggregate_output$cumulative, "disease_onset")
+  separate_values <- cumulative_values_by_time_age(separate_output$cumulative, "recent_onset") +
+    cumulative_values_by_time_age(separate_output$cumulative, "remote_onset")
+
+  expect_equal(aggregate_values, separate_values)
+})
+
 test_that("cumulative derivative equals the transition flow used by compartment derivative", {
   ages <- simulate_test_ages()
   state <- state_long_to_vector(simulate_test_state(), ages, c("S", "I", "R"))
@@ -816,7 +914,7 @@ test_that("cumulative_flows do not contaminate force-of-infection denominators",
   expect_equal(high_counter, low_counter)
 })
 
-test_that("cumulative_flows with demography errors clearly", {
+test_that("cumulative_flows with demography preserves the ordinary trajectory", {
   ages <- AgeStructure(
     age_groups = c("0-4", "5+"),
     lower_bounds = c(0, 5),
@@ -828,18 +926,76 @@ test_that("cumulative_flows with demography errors clearly", {
     value = c(90, 180, 10, 20, 0, 0),
     stringsAsFactors = FALSE
   )
-  expect_error(
-    simulate_deterministic(
-      initial_state = initial_state,
-      times = c(0, 1),
-      model = SIRModel(0.2),
-      age_structure = ages,
-      contact_matrix = matrix(0, nrow = ages$n_age_groups, ncol = ages$n_age_groups),
-      demographic_process = DemographicProcess(ages),
-      cumulative_flows = list(infections = list(from = "S", to = "I"))
-    ),
-    "currently supported only when demographic_process is NULL"
+  process <- DemographicProcess(ages)
+  baseline <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    method = "euler",
+    demographic_process = process
   )
+  output <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.1, 0.2),
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    method = "euler",
+    demographic_process = process,
+    cumulative_flows = list(
+      infections = list(from = "S", to = "I"),
+      removals = list(from = "I", to = "R")
+    )
+  )
+
+  expect_named(output, c("trajectory", "cumulative"))
+  expect_equal(output$trajectory, baseline)
+  expect_true(all(output$cumulative$value >= 0))
+})
+
+test_that("multi-transition cumulative_flows work with demography", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, Inf)
+  )
+  times <- seq(0, 0.3, by = 0.1)
+  aggregate_output <- simulate_deterministic(
+    initial_state = simulate_onset_state(),
+    times = times,
+    model = simulate_onset_model(),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    demographic_process = DemographicProcess(ages),
+    cumulative_flows = list(
+      disease_onset = list(from = c("Lr", "Ld"), to = c("I", "I"))
+    )
+  )
+  separate_output <- simulate_deterministic(
+    initial_state = simulate_onset_state(),
+    times = times,
+    model = simulate_onset_model(),
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.01,
+    method = "euler",
+    demographic_process = DemographicProcess(ages),
+    cumulative_flows = list(
+      recent_onset = list(from = "Lr", to = "I"),
+      remote_onset = list(from = "Ld", to = "I")
+    )
+  )
+
+  aggregate_values <- cumulative_values_by_time_age(aggregate_output$cumulative, "disease_onset")
+  separate_values <- cumulative_values_by_time_age(separate_output$cumulative, "recent_onset") +
+    cumulative_values_by_time_age(separate_output$cumulative, "remote_onset")
+
+  expect_equal(aggregate_values, separate_values)
+  expect_true(all(aggregate_values >= 0))
 })
 
 test_that("invalid cumulative_flows inputs error clearly", {
@@ -854,6 +1010,18 @@ test_that("invalid cumulative_flows inputs error clearly", {
   expect_error(
     simulate_test_run(cumulative_flows = data.frame(name = "x", from = "S")),
     "missing required column"
+  )
+  expect_error(
+    simulate_deterministic(
+      initial_state = simulate_onset_state(),
+      times = c(0, 0.1),
+      model = simulate_onset_model(),
+      age_structure = simulate_test_ages(),
+      contact_matrix = simulate_test_contacts(),
+      method = "euler",
+      cumulative_flows = list(disease_onset = list(from = c("Lr", "Ld"), to = "I"))
+    ),
+    "same length"
   )
 })
 

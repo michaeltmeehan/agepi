@@ -80,3 +80,40 @@ test_that("repository examples run after loading the package like a user", {
     )
   }
 })
+
+test_that("toy age-structured TB demography example exposes expected outputs", {
+  example_file <- test_path("../../examples/tb_age_structured_demography.R")
+  skip_if_not(file.exists(example_file))
+
+  env <- new.env(parent = globalenv())
+  invisible(capture.output(source(example_file, local = env)))
+
+  expect_named(env$tb_output, c("trajectory", "cumulative"))
+  expect_s3_class(env$trajectory, "data.frame")
+  expect_s3_class(env$cumulative_flows, "data.frame")
+  expect_s3_class(env$compartment_summary, "data.frame")
+  expect_s3_class(env$age_group_summary, "data.frame")
+  expect_s3_class(env$population_summary, "data.frame")
+  expect_s3_class(env$disease_onset_total, "data.frame")
+
+  expect_setequal(
+    unique(env$cumulative_flows$cumulative_name),
+    c(
+      "infections",
+      "disease_onset",
+      "treatment_initiation",
+      "treatment_completion",
+      "relapse"
+    )
+  )
+  disease_onset_rows <- env$cumulative_flows[
+    env$cumulative_flows$cumulative_name == "disease_onset",
+    ,
+    drop = FALSE
+  ]
+  expect_true(any(grepl("Lr", disease_onset_rows$from, fixed = TRUE)))
+  expect_true(any(grepl("Ld", disease_onset_rows$from, fixed = TRUE)))
+  expect_true(any(grepl("I", disease_onset_rows$to, fixed = TRUE)))
+  expect_true(all(env$trajectory$value >= 0))
+  expect_true(all(diff(env$disease_onset_total$cumulative_disease_onset) >= -1e-8))
+})

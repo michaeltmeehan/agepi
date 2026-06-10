@@ -24,6 +24,8 @@ transmission depends on contacts between age groups. It currently supports:
   migration;
 - using dependency-free adapters for WPP-style demographic tables and
   socialmixr/conmat-style contact matrix outputs;
+- mapping observed case/event records into agepi age groups with
+  `as_agepi_cases()`;
 - summarising simulation output with `compartment_totals()`,
   `age_group_totals()`, and `total_population()`.
 
@@ -269,6 +271,15 @@ head(deterministic_output$trajectory)
 head(deterministic_output$cumulative)
 ```
 
+One cumulative name can also sum multiple disease transitions by supplying
+equal-length `from` and `to` vectors:
+
+```r
+cumulative_flows = list(
+  disease_onset = list(from = c("Lr", "Ld"), to = c("I", "I"))
+)
+```
+
 Fixed-population stochastic simulation uses the same request shape, but the
 cumulative table counts realised Gillespie events at each requested output
 time. These counts are derived from event logs and do not add state variables
@@ -313,6 +324,41 @@ See [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulativ
 and [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R)
 for runnable scripts.
 
+[examples/tb_age_structured_demography.R](examples/tb_age_structured_demography.R)
+shows the same public API pieces in a toy TB-style model with susceptible,
+recent latent, remote latent, infectious, treatment, and recovered states,
+closed demographic turnover, age-assortative mixing, and cumulative event
+accounting. Its parameters are illustrative only; it is not a calibrated
+Kiribati model and should not be used for policy analysis.
+
+## Observed Case Data
+
+`as_agepi_cases()` maps a user-supplied case or event data frame into the
+`age_group` labels used by an `AgeStructure()`. It can derive groups from a
+numeric exact-age column or validate an existing age-group column. This is an
+input-preparation helper for observed records; it does not turn deterministic
+compartment trajectories into individual-level line lists.
+
+```r
+observed_cases <- data.frame(
+  case_id = c("a", "b", "c"),
+  onset_day = c(0, 1, 1),
+  age = c(3, 8, 24)
+)
+
+agepi_cases <- as_agepi_cases(
+  observed_cases,
+  age_structure = ages,
+  age_col = "age"
+)
+
+aggregate(case_id ~ onset_day + age_group, agepi_cases, length)
+```
+
+If the optional `linelist` package is installed and the input already inherits
+from `linelist`, existing tags are preserved where possible. `linelist` is
+suggested, not imported.
+
 ## Demography
 
 `agepi` includes demographic-only workflows for age-specific population
@@ -354,6 +400,12 @@ See [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R)
 and [docs/demographic_residuals.md](docs/demographic_residuals.md) for a fuller
 demographic workflow and diagnostics.
 
+Lightweight exploratory plotting helpers are available when `ggplot2` is
+installed. `plot_population_pyramid()`, `plot_population_projection()`,
+`plot_age_structure()`, and `plot_demography()` inspect supplied population
+tables or `Demography()` objects without downloading data, interpolating
+population values, or changing simulation behaviour.
+
 ## Contact Matrices And External Data
 
 Contact matrices can be supplied directly as numeric matrices. The current
@@ -392,10 +444,16 @@ reproduce full external projection systems. See
   deterministic cumulative infection and recovery flows.
 - [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R):
   stochastic cumulative flows derived from realised event logs.
+- [examples/tb_age_structured_demography.R](examples/tb_age_structured_demography.R):
+  toy TB-style `CompartmentModel()` with demography and cumulative flows.
+- [examples/observed_case_age_groups.R](examples/observed_case_age_groups.R):
+  observed case records mapped into agepi age groups.
 - [examples/mock_seir_demography.R](examples/mock_seir_demography.R): SEIR with
   demographic turnover.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
   demographic-only workflow with diagnostics.
+- [examples/demography_plots.R](examples/demography_plots.R): synthetic
+  exploratory demography plots using optional `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
   optional closed-population final-size comparison using `finalsize` when it is
   installed.

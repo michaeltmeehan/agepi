@@ -189,6 +189,9 @@ Implemented:
 - optional `as_cfr_data()` export helper for converting selected cumulative
   flows to case/death interval counts for downstream CFR or severity analysis
   without importing `cfr`;
+- optional `as_agepi_cases()` helper for mapping user-supplied observed
+  case/event rows into agepi `AgeStructure()` labels, preserving `linelist`
+  tags when available;
 - list output with ordinary `trajectory` and separate `cumulative` tables when
   cumulative flows are requested;
 - cumulative derivatives based on the same transition-rate rows used for
@@ -200,7 +203,24 @@ Implemented:
 Current boundary: deterministic cumulative flow tracking is not supported with
 `demographic_process`. Stochastic cumulative outputs are event-log-derived
 counts for fixed-population disease simulations, not stochastic state
-variables or propensities.
+variables or propensities. `as_agepi_cases()` is only an observed-data adapter;
+agepi remains an aggregate compartmental simulator and does not synthesise true
+individual-level line lists from deterministic trajectories.
+
+### Milestone 4H: Exploratory demography plotting
+
+Implemented:
+
+- `plot_population_pyramid()` for age-specific population distributions with
+  optional year comparison;
+- `plot_population_projection()` for total population over time;
+- `plot_age_structure()` for age-group proportions over time;
+- `plot_demography()` as a named-list convenience wrapper.
+
+These helpers accept supplied population tables or `Demography()` objects and
+return `ggplot2` plot objects. They do not download data, arrange dashboards,
+interpolate population values, or change demographic or epidemic simulation
+semantics.
 
 ## Future Work
 

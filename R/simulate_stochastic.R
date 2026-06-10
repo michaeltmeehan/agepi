@@ -48,9 +48,11 @@
 #'   and must be `NULL`.
 #' @param cumulative_flows Optional named list or data frame specifying disease
 #'   transition flows to summarise from realised stochastic events. Named list
-#'   entries must contain `from` and `to` fields; data frames must contain
-#'   `name`, `from`, and `to` columns. Cumulative flows are derived from the
-#'   event log and do not add stochastic state variables or propensities.
+#'   entries must contain `from` and `to` fields, each either a character scalar
+#'   or equal-length character vector; vector entries are summed into one
+#'   cumulative counter per name and age group. Data frames must contain `name`,
+#'   `from`, and `to` columns. Cumulative flows are derived from the event log
+#'   and do not add stochastic state variables or propensities.
 #'
 #' @return If `return_events = FALSE`, a data frame with columns `time`,
 #'   `compartment`, `age_group`, and `value`, ordered by time outermost,
@@ -455,30 +457,12 @@ prepare_stochastic_cumulative_flows <- function(
     infectiousness = infectiousness
   )
   flows <- validate_cumulative_flows(cumulative_flows, rates)
-
-  output_order <- merge(
-    flows,
-    data.frame(
-      age_group = age_structure$age_groups,
-      .age_order = seq_along(age_structure$age_groups),
-      stringsAsFactors = FALSE
-    ),
-    all = TRUE,
-    sort = FALSE
-  )
-  output_order$.flow_order <- match(output_order$cumulative_name, flows$cumulative_name)
-  output_order <- output_order[order(output_order$.flow_order, output_order$.age_order), ]
-  row.names(output_order) <- NULL
+  output_spec <- cumulative_flow_state_spec(flows, age_structure$age_groups)
 
   list(
     flows = flows,
-    output_order = output_order[, c(
-      "cumulative_name",
-      "transition_id",
-      "from",
-      "to",
-      "age_group"
-    )]
+    output_order = output_spec$state_order,
+    output_transitions = output_spec$transition_sets
   )
 }
 
@@ -492,9 +476,14 @@ stochastic_cumulative_output <- function(events, times, cumulative_spec) {
     cumulative$value <- numeric(nrow(cumulative))
 
     for (j in seq_len(nrow(cumulative))) {
+      transition_ids <- if (is.null(cumulative_spec$output_transitions)) {
+        cumulative$transition_id[j]
+      } else {
+        cumulative_spec$output_transitions[[j]]
+      }
       cumulative$value[j] <- sum(
         events$time <= times[i] &
-          events$transition_id == cumulative$transition_id[j] &
+          events$transition_id %in% transition_ids &
           events$age_group == cumulative$age_group[j]
       )
     }

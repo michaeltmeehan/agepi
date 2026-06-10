@@ -68,9 +68,11 @@ non-zero because age-total migration allocation is ambiguous.}
 
 \item{cumulative_flows}{Optional named list or data frame specifying disease
 transition flows to track as auxiliary cumulative state variables. Named
-list entries must contain \code{from} and \code{to} fields; data frames must contain
-\code{name}, \code{from}, and \code{to} columns. Cumulative flows are supported for
-infection-only deterministic simulation only in this milestone.}
+list entries must contain \code{from} and \code{to} fields, each either a character
+scalar or equal-length character vector; vector entries are summed into one
+cumulative counter per name and age group. Data frames must contain \code{name},
+\code{from}, and \code{to} columns. Cumulative flows track disease transition flows
+only, and are supported with or without \code{demographic_process}.}
 }
 \value{
 Data frame with columns \code{time}, \code{compartment}, \code{age_group}, and

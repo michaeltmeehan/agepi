@@ -394,18 +394,12 @@ to `compartment_demographic_derivative()`. The cumulative derivative should
 come only from selected disease transition-rate rows unless future APIs add
 explicit cumulative demographic flows.
 
-For a first implementation, it is reasonable to reject
-`cumulative_flows != NULL` when `demographic_process != NULL` if that keeps the
-milestone small. A more useful first deterministic milestone can still support
-demography safely by:
+The implemented deterministic milestone supports demography safely by:
 
 - computing disease transition rates from compartment state only;
 - computing demographic derivatives from compartment state only;
 - appending cumulative disease-flow derivatives;
 - leaving demographic flows untracked.
-
-The rejection route is safer if output shape and summary semantics are not yet
-settled.
 
 Stochastic demography is already unsupported, so no additional demographic
 stochastic interaction is needed in the current fixed-population Gillespie

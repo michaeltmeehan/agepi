@@ -62,9 +62,11 @@ and must be \code{NULL}.}
 
 \item{cumulative_flows}{Optional named list or data frame specifying disease
 transition flows to summarise from realised stochastic events. Named list
-entries must contain \code{from} and \code{to} fields; data frames must contain
-\code{name}, \code{from}, and \code{to} columns. Cumulative flows are derived from the
-event log and do not add stochastic state variables or propensities.}
+entries must contain \code{from} and \code{to} fields, each either a character scalar
+or equal-length character vector; vector entries are summed into one
+cumulative counter per name and age group. Data frames must contain \code{name},
+\code{from}, and \code{to} columns. Cumulative flows are derived from the event log
+and do not add stochastic state variables or propensities.}
 }
 \value{
 If \code{return_events = FALSE}, a data frame with columns \code{time},

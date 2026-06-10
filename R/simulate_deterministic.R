@@ -83,9 +83,11 @@
 #'   non-zero because age-total migration allocation is ambiguous.
 #' @param cumulative_flows Optional named list or data frame specifying disease
 #'   transition flows to track as auxiliary cumulative state variables. Named
-#'   list entries must contain `from` and `to` fields; data frames must contain
-#'   `name`, `from`, and `to` columns. Cumulative flows are supported for
-#'   infection-only deterministic simulation only in this milestone.
+#'   list entries must contain `from` and `to` fields, each either a character
+#'   scalar or equal-length character vector; vector entries are summed into one
+#'   cumulative counter per name and age group. Data frames must contain `name`,
+#'   `from`, and `to` columns. Cumulative flows track disease transition flows
+#'   only, and are supported with or without `demographic_process`.
 #'
 #' @return Data frame with columns `time`, `compartment`, `age_group`, and
 #'   `value`, ordered by time outermost, compartment next, and age group
@@ -115,12 +117,6 @@ simulate_deterministic <- function(
   validate_simulation_times(times)
   validate_disease_model(model)
   validate_age_structure(age_structure)
-  if (!is.null(cumulative_flows) && !is.null(demographic_process)) {
-    stop(
-      "cumulative_flows are currently supported only when demographic_process is NULL.",
-      call. = FALSE
-    )
-  }
   time_policy <- validate_simulation_demography_inputs(
     demographic_process = demographic_process,
     time_policy = time_policy,
@@ -286,9 +282,22 @@ deterministic_derivative_augmented <- function(
     compartments = model$compartments,
     age_structure = age_structure
   )
+  compartment_derivative <- derivative$derivative
+  if (!is.null(demographic_process)) {
+    compartment_derivative <- compartment_derivative +
+      compartment_demographic_derivative(
+        state_vector = ordinary_state,
+        time = time,
+        model = model,
+        age_structure = age_structure,
+        demographic_process = demographic_process,
+        time_policy = time_policy,
+        migration_policy = migration_policy
+      )
+  }
 
   c(
-    derivative$derivative,
+    compartment_derivative,
     cumulative_flow_derivative(
       transition_rate_table = rates,
       cumulative_spec = cumulative_spec
@@ -316,30 +325,12 @@ prepare_deterministic_cumulative_flows <- function(
     infectiousness = infectiousness
   )
   flows <- validate_cumulative_flows(cumulative_flows, rates)
-
-  state_order <- merge(
-    flows,
-    data.frame(
-      age_group = age_structure$age_groups,
-      .age_order = seq_along(age_structure$age_groups),
-      stringsAsFactors = FALSE
-    ),
-    all = TRUE,
-    sort = FALSE
-  )
-  state_order$.flow_order <- match(state_order$cumulative_name, flows$cumulative_name)
-  state_order <- state_order[order(state_order$.flow_order, state_order$.age_order), ]
-  row.names(state_order) <- NULL
+  state_spec <- cumulative_flow_state_spec(flows, age_structure$age_groups)
 
   list(
     flows = flows,
-    state_order = state_order[, c(
-      "cumulative_name",
-      "transition_id",
-      "from",
-      "to",
-      "age_group"
-    )]
+    state_order = state_spec$state_order,
+    state_transitions = state_spec$transition_sets
   )
 }
 
@@ -348,19 +339,24 @@ cumulative_flow_derivative <- function(transition_rate_table, cumulative_spec) {
   derivative <- numeric(nrow(state_order))
 
   for (i in seq_len(nrow(state_order))) {
-    matched <- transition_rate_table$transition_id == state_order$transition_id[i] &
+    transition_ids <- if (is.null(cumulative_spec$state_transitions)) {
+      state_order$transition_id[i]
+    } else {
+      cumulative_spec$state_transitions[[i]]
+    }
+    matched <- transition_rate_table$transition_id %in% transition_ids &
       transition_rate_table$age_group == state_order$age_group[i]
-    if (sum(matched) != 1) {
+    if (sum(matched) != length(transition_ids)) {
       stop(
         "cumulative flow '",
         state_order$cumulative_name[i],
-        "' did not match exactly one transition-rate row for age group ",
+        "' did not match the requested transition-rate row(s) for age group ",
         state_order$age_group[i],
         ".",
         call. = FALSE
       )
     }
-    derivative[i] <- transition_rate_table$rate[matched]
+    derivative[i] <- sum(transition_rate_table$rate[matched])
   }
 
   derivative

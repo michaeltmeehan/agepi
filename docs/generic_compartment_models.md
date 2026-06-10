@@ -112,7 +112,7 @@ output <- simulate_deterministic(
   contact_matrix = contact_matrix,
   cumulative_flows = list(
     exposures = list(from = "S", to = "E"),
-    clinical = list(from = "E", to = "IP"),
+    symptomatic = list(from = c("E", "IP"), to = c("IP", "IC")),
     subclinical = list(from = "E", to = "IS")
   )
 )
@@ -124,9 +124,13 @@ head(output$cumulative)
 When cumulative flows are requested, the return value is a list with
 `trajectory` containing the ordinary compartment trajectory and `cumulative`
 containing `time`, `cumulative_name`, `transition_id`, `from`, `to`,
-`age_group`, and `value`. The cumulative derivatives use the same
-transition-rate rows as the ordinary deterministic derivative. Cumulative flows
-are not currently supported with `demographic_process`.
+`age_group`, and `value`. A named-list entry can provide equal-length `from`
+and `to` vectors to sum several disease transitions into one cumulative counter.
+The cumulative derivatives use the same transition-rate rows as the ordinary
+deterministic derivative. When
+`demographic_process` is supplied, the cumulative counters still track disease
+transition flows only and remain separate from demographic ageing, fertility,
+mortality, and migration.
 
 For fixed-population stochastic simulations, `simulate_stochastic()` can use
 the same `cumulative_flows` specification to return cumulative counts derived
@@ -201,10 +205,9 @@ across all compartments by current age-specific shares instead of using
 - Vaccination schedules and time-varying intervention schedules are not yet
   implemented.
 - Infection transitions all use the same force of infection.
-- Cumulative flow tracking is supported for infection-only deterministic
-  simulations and as event-log-derived counts for fixed-population stochastic
-  simulations; deterministic cumulative flows remain unavailable with
-  demographic coupling.
+- Cumulative flow tracking is supported for deterministic simulations with or
+  without `demographic_process`, and as event-log-derived counts for
+  fixed-population stochastic simulations.
 - The built-in convenience constructors still cover the standard specialised
   SIR and SEIR paths; generic SIR and SEIR are mainly useful for validation and
   as templates for custom structures.
@@ -212,3 +215,9 @@ across all compartments by current age-specific shares instead of using
 See `examples/generic_sir.R`, `examples/generic_seir.R`,
 `examples/generic_msir.R`, `examples/deterministic_cumulative_flows.R`, and
 `examples/stochastic_cumulative_flows.R` for complete runnable examples.
+`examples/tb_age_structured_demography.R` gives a toy TB-style chronic
+infection example using only the public API: `CompartmentModel()`, static
+age-assortative mixing, closed demographic turnover, and cumulative flows,
+including aggregation of `Lr -> I` and `Ld -> I` into one disease-onset output.
+The TB example uses illustrative parameters only; it is not calibrated to
+Kiribati or any other setting and should not be interpreted as policy evidence.

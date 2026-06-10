@@ -364,6 +364,35 @@ test_that("cumulative-flow validation accepts named list specifications", {
   )
 })
 
+test_that("cumulative-flow validation accepts multi-transition named list specifications", {
+  rates <- data.frame(
+    transition_id = c("infection:S->Lr", "transition:Lr->I", "transition:Ld->I", "transition:I->T"),
+    from = c("S", "Lr", "Ld", "I"),
+    to = c("Lr", "I", "I", "T"),
+    age_group = "0-4",
+    rate = c(1, 2, 3, 4),
+    stringsAsFactors = FALSE
+  )
+
+  flows <- validate_cumulative_flows(
+    cumulative_flows = list(
+      disease_onset = list(from = c("Lr", "Ld"), to = c("I", "I"))
+    ),
+    transition_rate_table = rates
+  )
+
+  expect_equal(
+    flows,
+    data.frame(
+      cumulative_name = c("disease_onset", "disease_onset"),
+      transition_id = c("transition:Lr->I", "transition:Ld->I"),
+      from = c("Lr", "Ld"),
+      to = c("I", "I"),
+      stringsAsFactors = FALSE
+    )
+  )
+})
+
 test_that("cumulative-flow validation accepts data-frame specifications", {
   rates <- transition_rates(
     state = test_seir_state(),
@@ -420,6 +449,14 @@ test_that("cumulative-flow validation rejects malformed specifications", {
   expect_error(
     validate_cumulative_flows(list(infections = list(from = "E", to = "R")), rates),
     "does not match a declared transition"
+  )
+  expect_error(
+    validate_cumulative_flows(list(onsets = list(from = c("E", "I"), to = "R")), rates),
+    "same length"
+  )
+  expect_error(
+    validate_cumulative_flows(list(onsets = list(from = character(), to = character())), rates),
+    "non-empty character value"
   )
 })
 

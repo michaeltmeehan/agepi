@@ -242,6 +242,59 @@ test_that("SEIR coupled fertility births enter only youngest S using total S plu
   )
 })
 
+test_that("cumulative_flows work with coupled demography and remain monotone", {
+  ages <- coupled_test_ages()
+  process <- DemographicProcess(ages)
+  contact_matrix <- matrix(c(
+    2, 1, 0.5,
+    1, 2, 1,
+    0.5, 1, 2
+  ), nrow = ages$n_age_groups, byrow = TRUE)
+  cumulative_flows <- data.frame(
+    name = c("infections", "onset", "treatment"),
+    from = c("S", "E", "I"),
+    to = c("E", "I", "R"),
+    stringsAsFactors = FALSE
+  )
+
+  baseline <- coupled_run(
+    initial_state = coupled_seir_state(),
+    process = process,
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    contact_matrix = contact_matrix,
+    times = seq(0, 1, by = 0.25),
+    method = "euler"
+  )
+  output <- coupled_run(
+    initial_state = coupled_seir_state(),
+    process = process,
+    model = SEIRModel(sigma = 0.3, gamma = 0.2),
+    contact_matrix = contact_matrix,
+    times = seq(0, 1, by = 0.25),
+    method = "euler",
+    cumulative_flows = cumulative_flows
+  )
+
+  expect_named(output, c("trajectory", "cumulative"))
+  expect_equal(output$trajectory, baseline)
+  expect_identical(
+    names(output$cumulative),
+    c("time", "cumulative_name", "transition_id", "from", "to", "age_group", "value")
+  )
+  expect_true(all(output$cumulative$value >= 0))
+
+  flow_keys <- unique(paste(output$cumulative$cumulative_name, output$cumulative$age_group))
+  for (key in flow_keys) {
+    rows <- output$cumulative[
+      paste(output$cumulative$cumulative_name, output$cumulative$age_group) == key,
+      ,
+      drop = FALSE
+    ]
+    rows <- rows[order(rows$time), ]
+    expect_true(all(diff(rows$value) >= -1e-8))
+  }
+})
+
 test_that("coupled mortality removes proportionally from S I and R", {
   ages <- coupled_test_ages()
   mortality <- MortalitySchedule(
