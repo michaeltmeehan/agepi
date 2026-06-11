@@ -49,6 +49,7 @@ test_that("DemographicProcess accepts closed process with ageing only", {
       "age_structure",
       "ageing_operator",
       "fertility_schedule",
+      "fertility_exposure_fraction",
       "mortality_schedule",
       "migration_schedule",
       "mode",
@@ -58,6 +59,7 @@ test_that("DemographicProcess accepts closed process with ageing only", {
   expect_identical(process$age_structure, ages)
   expect_s3_class(process$ageing_operator, "agepi_ageing_operator")
   expect_null(process$fertility_schedule)
+  expect_identical(process$fertility_exposure_fraction, 1)
   expect_null(process$mortality_schedule)
   expect_null(process$migration_schedule)
   expect_identical(process$mode, "closed")
@@ -80,6 +82,42 @@ test_that("DemographicProcess accepts closed process with fertility and mortalit
   expect_identical(process$fertility_schedule, fertility)
   expect_identical(process$mortality_schedule, mortality)
   expect_identical(process$times, c(2020, 2025))
+})
+
+test_that("DemographicProcess stores fertility exposure fraction", {
+  ages <- test_process_age_structure()
+  process <- DemographicProcess(
+    age_structure = ages,
+    fertility_exposure_fraction = 0.5
+  )
+
+  expect_identical(process$fertility_exposure_fraction, 0.5)
+  expect_silent(validate_demographic_process(process))
+})
+
+test_that("DemographicProcess rejects invalid fertility exposure fractions", {
+  ages <- test_process_age_structure()
+
+  expect_error(
+    DemographicProcess(age_structure = ages, fertility_exposure_fraction = "0.5"),
+    "fertility_exposure_fraction.*numeric"
+  )
+  expect_error(
+    DemographicProcess(age_structure = ages, fertility_exposure_fraction = c(0.5, 0.6)),
+    "single numeric"
+  )
+  expect_error(
+    DemographicProcess(age_structure = ages, fertility_exposure_fraction = Inf),
+    "finite"
+  )
+  expect_error(
+    DemographicProcess(age_structure = ages, fertility_exposure_fraction = NA_real_),
+    "non-missing"
+  )
+  expect_error(
+    DemographicProcess(age_structure = ages, fertility_exposure_fraction = -0.1),
+    "non-negative"
+  )
 })
 
 test_that("DemographicProcess records NULL common times for different schedule grids", {

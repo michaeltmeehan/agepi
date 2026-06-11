@@ -1,3 +1,46 @@
+load_agepi_for_public_api_tests <- function() {
+  if ("package:agepi" %in% search()) {
+    return(invisible(TRUE))
+  }
+
+  package_root <- normalizePath(test_path("../.."), mustWork = FALSE)
+  r_dir <- file.path(package_root, "R")
+  if (dir.exists(r_dir) && requireNamespace("pkgload", quietly = TRUE)) {
+    pkgload::load_all(package_root, quiet = TRUE)
+    return(invisible(TRUE))
+  }
+  if (dir.exists(r_dir)) {
+    invisible(lapply(list.files(r_dir, pattern = "[.]R$", full.names = TRUE), source))
+    return(invisible(TRUE))
+  }
+  if (requireNamespace("agepi", quietly = TRUE)) {
+    library(agepi)
+    return(invisible(TRUE))
+  }
+
+  stop(
+    "Package agepi is not installed. Run this test from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+
+source_example_command <- paste(
+  "example_file <- normalizePath(commandArgs(TRUE)[1], mustWork = TRUE)",
+  "package_root <- normalizePath(file.path(dirname(example_file), '..'), mustWork = FALSE)",
+  "if (dir.exists(file.path(package_root, 'R')) && requireNamespace('pkgload', quietly = TRUE)) {",
+  "  pkgload::load_all(package_root, quiet = TRUE)",
+  "} else if (dir.exists(file.path(package_root, 'R'))) {",
+  "  invisible(lapply(list.files(file.path(package_root, 'R'), pattern = '[.]R$', full.names = TRUE), source))",
+  "} else if (requireNamespace('agepi', quietly = TRUE)) {",
+  "  library(agepi)",
+  "}",
+  "source(example_file)",
+  sep = "; "
+)
+
+load_agepi_for_public_api_tests()
+
 test_that("documented public functions are exported and implemented", {
   namespace_file <- test_path("../../NAMESPACE")
   if (file.exists(namespace_file)) {
@@ -53,7 +96,23 @@ test_that("repository examples run after loading the package like a user", {
     return(invisible(NULL))
   }
 
-  example_files <- list.files(examples_dir, pattern = "[.]R$", full.names = TRUE)
+  core_example_names <- c(
+    "demography_plots.R",
+    "deterministic_cumulative_flows.R",
+    "generic_msir.R",
+    "generic_seir.R",
+    "generic_sir.R",
+    "mock_demographic_workflow.R",
+    "mock_seir_demography.R",
+    "mock_sir_deterministic.R",
+    "observed_case_age_groups.R",
+    "stochastic_cumulative_flows.R",
+    "stochastic_seir.R",
+    "stochastic_sir.R",
+    "tb_age_structured_demography.R"
+  )
+  example_files <- file.path(examples_dir, core_example_names)
+  example_files <- example_files[file.exists(example_files)]
   expect_gt(length(example_files), 0)
 
   for (example_file in example_files) {
@@ -61,7 +120,7 @@ test_that("repository examples run after loading the package like a user", {
       "Rscript",
       c(
         "-e",
-        shQuote("devtools::load_all(quiet = TRUE); source(commandArgs(TRUE)[1])"),
+        shQuote(source_example_command),
         shQuote(example_file)
       ),
       stdout = TRUE,
@@ -77,6 +136,51 @@ test_that("repository examples run after loading the package like a user", {
       status,
       0,
       info = paste(c("Example failed:", example_file, result), collapse = "\n")
+    )
+  }
+})
+
+test_that("optional integration examples are guarded and non-blocking", {
+  source_examples_dir <- test_path("../../examples")
+  installed_examples_dir <- system.file("examples", package = "agepi")
+  examples_dir <- if (dir.exists(source_examples_dir)) {
+    source_examples_dir
+  } else if (nzchar(installed_examples_dir) && dir.exists(installed_examples_dir)) {
+    installed_examples_dir
+  } else {
+    NA_character_
+  }
+
+  skip_if(is.na(examples_dir))
+
+  optional_example_names <- c(
+    "epiparameter_seir.R",
+    "wpp_demography_validation.R"
+  )
+  optional_example_files <- file.path(examples_dir, optional_example_names)
+  optional_example_files <- optional_example_files[file.exists(optional_example_files)]
+
+  for (example_file in optional_example_files) {
+    result <- system2(
+      "Rscript",
+      c(
+        "-e",
+        shQuote(source_example_command),
+        shQuote(example_file)
+      ),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+
+    status <- attr(result, "status")
+    if (is.null(status)) {
+      status <- 0
+    }
+
+    expect_equal(
+      status,
+      0,
+      info = paste(c("Optional example failed:", example_file, result), collapse = "\n")
     )
   }
 })

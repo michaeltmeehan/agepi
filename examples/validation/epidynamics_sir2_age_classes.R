@@ -1,6 +1,12 @@
 source("examples/validation/validation_helpers.R")
 load_local_agepi()
-library(EpiDynamics)
+
+if (!requireNamespace("EpiDynamics", quietly = TRUE)) {
+  message(
+    "Skipping EpiDynamics age-class SIR validation example: optional package ",
+    "EpiDynamics is not installed."
+  )
+} else {
 
 parameters <- c(
   betaCC = 100,
@@ -102,3 +108,4 @@ cat("Interpretation: partial age-structured reproduction, not an exact validatio
 cat("agepi carries recovered states explicitly and applies demographic coupling to them; EpiDynamics omits recovered states from this model, so recovery exits the reported four-state system.\n")
 cat("The contact matrix is column-scaled by equilibrium age totals to align the transmission convention as closely as the current public interface allows.\n")
 print(summary, row.names = FALSE)
+}

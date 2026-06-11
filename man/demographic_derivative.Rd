@@ -44,7 +44,8 @@ time \code{t}, the greatest schedule time less than or equal to \code{t} is used
 \code{time_policy = "linear"}, rate-like schedules are linearly interpolated
 between bracketing schedule times without extrapolation. Fertility currently
 uses the total state in each age group as the exposure population, as a
-first-pass convention, and births enter the youngest age group only.
+first-pass convention, scaled by \code{process$fertility_exposure_fraction}, and
+births enter the youngest age group only.
 }
 \examples{
 ages <- AgeStructure(

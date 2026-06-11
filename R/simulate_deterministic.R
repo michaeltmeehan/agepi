@@ -563,7 +563,8 @@ compartment_demographic_derivative <- function(
     age_groups,
     time_policy
   )
-  derivative[birth_index[1]] <- derivative[birth_index[1]] + sum(fertility_rates * population)
+  derivative[birth_index[1]] <- derivative[birth_index[1]] +
+    sum(fertility_rates * demographic_process$fertility_exposure_fraction * population)
 
   mortality_rates <- mortality_rates_at(
     demographic_process$mortality_schedule,

@@ -224,6 +224,8 @@ See [docs/generic_compartment_models.md](docs/generic_compartment_models.md),
 one returned by `epiparameter::epiparameter_db()`, to a Markov per-capita
 transition rate by taking `1 / mean(delay)`. The `epiparameter` package is
 suggested, not imported, and is only required when this helper is called.
+Epiverse integrations are optional; install their packages separately when you
+want to run the corresponding examples.
 
 This intentionally collapses the full delay distribution into an exponential
 waiting-time approximation with the same mean. It does not preserve the
@@ -431,6 +433,10 @@ reproduce full external projection systems. See
 
 ## Examples
 
+Core examples are designed to run with the package's regular imports. Optional
+integration examples check for their extra packages with `requireNamespace()`
+and print a message instead of failing when those packages are unavailable.
+
 - [examples/mock_sir_deterministic.R](examples/mock_sir_deterministic.R):
   deterministic age-structured SIR.
 - [examples/generic_sir.R](examples/generic_sir.R): SIR through
@@ -452,11 +458,15 @@ reproduce full external projection systems. See
   demographic turnover.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
   demographic-only workflow with diagnostics.
+- [examples/wpp_demography_validation.R](examples/wpp_demography_validation.R):
+  optional WPP-connected demography benchmark using `wpp2024`.
 - [examples/demography_plots.R](examples/demography_plots.R): synthetic
-  exploratory demography plots using optional `ggplot2`.
+  exploratory demography plots using imported `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
   optional closed-population final-size comparison using `finalsize` when it is
   installed.
+- `examples/validation/epidynamics_*.R`: optional comparisons with
+  `EpiDynamics` when it is installed.
 
 ## Documentation
 

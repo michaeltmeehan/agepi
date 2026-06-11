@@ -1,6 +1,12 @@
 source("examples/validation/validation_helpers.R")
 load_local_agepi()
-library(EpiDynamics)
+
+if (!requireNamespace("EpiDynamics", quietly = TRUE)) {
+  message(
+    "Skipping EpiDynamics SIR validation example: optional package ",
+    "EpiDynamics is not installed."
+  )
+} else {
 
 parameters <- c(beta = 1.4247, gamma = 0.14286)
 initials <- c(S = 1 - 1e-06, I = 1e-06, R = 1 - (1 - 1e-06 - 1e-06))
@@ -33,3 +39,4 @@ summary <- compare_shared_columns(reference_table, agepi_table, c("S", "I", "R")
 cat("EpiDynamics::SIR validation against agepi SIRModel\n")
 cat("Interpretation: exact one-age infection-only validation, up to solver tolerance.\n")
 print(summary, row.names = FALSE)
+}

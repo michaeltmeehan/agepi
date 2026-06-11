@@ -10,11 +10,13 @@ test_derivative_process <- function(
   ages = test_derivative_age_structure(),
   fertility = NULL,
   mortality = NULL,
-  migration = NULL
+  migration = NULL,
+  fertility_exposure_fraction = 1
 ) {
   DemographicProcess(
     age_structure = ages,
     fertility_schedule = fertility,
+    fertility_exposure_fraction = fertility_exposure_fraction,
     mortality_schedule = mortality,
     migration_schedule = migration,
     mode = if (is.null(migration)) "closed" else "migration"
@@ -59,6 +61,48 @@ test_that("demographic_derivative adds fertility births to youngest group only",
   derivative <- demographic_derivative(state, 2020, process)
 
   expect_equal(derivative, c("0-4" = -10, "5-9" = 10, "10+" = 10))
+})
+
+test_that("default fertility_exposure_fraction preserves fertility births", {
+  ages <- test_derivative_age_structure()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 2020,
+      age_group = "5-9",
+      fertility_rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- test_derivative_process(ages, fertility = fertility)
+  state <- c(0, 100, 0)
+
+  derivative <- demographic_derivative(state, 2020, process)
+
+  expect_equal(unname(derivative["0-4"]), 10)
+})
+
+test_that("fertility_exposure_fraction scales fertility births", {
+  ages <- test_derivative_age_structure()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 2020,
+      age_group = "5-9",
+      fertility_rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- test_derivative_process(
+    ages,
+    fertility = fertility,
+    fertility_exposure_fraction = 0.5
+  )
+  state <- c(0, 100, 0)
+
+  derivative <- demographic_derivative(state, 2020, process)
+
+  expect_equal(unname(derivative["0-4"]), 5)
 })
 
 test_that("demographic_derivative subtracts mortality rates by age", {

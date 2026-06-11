@@ -9,6 +9,12 @@
 #' @param ageing_operator Optional ageing operator. Defaults to
 #'   [AgeingOperator()] for `age_structure`.
 #' @param fertility_schedule Optional [FertilitySchedule()] object.
+#' @param fertility_exposure_fraction Single non-negative finite multiplier
+#'   applied to fertility exposure when computing births. The default, `1`,
+#'   preserves the historical total-population exposure convention. Use values
+#'   such as `0.5` only as an approximate female-exposure correction for
+#'   total-population simulations with female ASFR; this is not a substitute for
+#'   sex-structured demography.
 #' @param mortality_schedule Optional [MortalitySchedule()] object.
 #' @param migration_schedule Optional [MigrationSchedule()] object.
 #' @param mode Process mode, either `"closed"` or `"migration"`.
@@ -23,12 +29,14 @@ DemographicProcess <- function(
   age_structure,
   ageing_operator = NULL,
   fertility_schedule = NULL,
+  fertility_exposure_fraction = 1,
   mortality_schedule = NULL,
   migration_schedule = NULL,
   mode = c("closed", "migration")
 ) {
   mode <- match.arg(mode)
   validate_age_structure(age_structure)
+  fertility_exposure_fraction <- validate_fertility_exposure_fraction(fertility_exposure_fraction)
 
   if (is.null(ageing_operator)) {
     ageing_operator <- AgeingOperator(age_structure)
@@ -38,6 +46,7 @@ DemographicProcess <- function(
     age_structure = age_structure,
     ageing_operator = ageing_operator,
     fertility_schedule = fertility_schedule,
+    fertility_exposure_fraction = fertility_exposure_fraction,
     mortality_schedule = mortality_schedule,
     migration_schedule = migration_schedule,
     mode = mode,
@@ -71,6 +80,7 @@ validate_demographic_process <- function(x) {
     "age_structure",
     "ageing_operator",
     "fertility_schedule",
+    "fertility_exposure_fraction",
     "mortality_schedule",
     "migration_schedule",
     "mode",
@@ -105,6 +115,8 @@ validate_demographic_process <- function(x) {
     stop("closed demographic_process mode requires migration_schedule to be NULL.", call. = FALSE)
   }
 
+  validate_fertility_exposure_fraction(x$fertility_exposure_fraction)
+
   validate_optional_process_schedule(
     x$fertility_schedule,
     "fertility_schedule",
@@ -137,6 +149,22 @@ validate_demographic_process <- function(x) {
   }
 
   invisible(x)
+}
+
+validate_fertility_exposure_fraction <- function(fertility_exposure_fraction) {
+  if (!is.numeric(fertility_exposure_fraction) || length(fertility_exposure_fraction) != 1) {
+    stop("fertility_exposure_fraction must be a single numeric value.", call. = FALSE)
+  }
+
+  if (anyNA(fertility_exposure_fraction) || !is.finite(fertility_exposure_fraction)) {
+    stop("fertility_exposure_fraction must be finite and non-missing.", call. = FALSE)
+  }
+
+  if (fertility_exposure_fraction < 0) {
+    stop("fertility_exposure_fraction must be non-negative.", call. = FALSE)
+  }
+
+  as.numeric(fertility_exposure_fraction)
 }
 
 validate_optional_process_schedule <- function(

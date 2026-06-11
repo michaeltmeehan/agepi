@@ -12,6 +12,8 @@
 #'
 #' @param age_structure Age structure validated by [validate_age_structure()].
 #' @param fertility_schedule Optional [FertilitySchedule()] object.
+#' @param fertility_exposure_fraction Single non-negative finite multiplier
+#'   applied to fertility exposure when computing births. Defaults to `1`.
 #' @param mortality_schedule Optional [MortalitySchedule()] object.
 #' @param migration_schedule Optional [MigrationSchedule()] object.
 #' @param mode Process mode, either `"closed"` or `"migration"`.
@@ -37,6 +39,7 @@
 #' @export
 build_demographic_process <- function(age_structure,
                                       fertility_schedule = NULL,
+                                      fertility_exposure_fraction = 1,
                                       mortality_schedule = NULL,
                                       migration_schedule = NULL,
                                       mode = c("closed", "migration")) {
@@ -47,6 +50,7 @@ build_demographic_process <- function(age_structure,
     age_structure = age_structure,
     ageing_operator = ageing_operator,
     fertility_schedule = fertility_schedule,
+    fertility_exposure_fraction = fertility_exposure_fraction,
     mortality_schedule = mortality_schedule,
     migration_schedule = migration_schedule,
     mode = mode

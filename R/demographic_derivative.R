@@ -12,7 +12,8 @@
 #' `time_policy = "linear"`, rate-like schedules are linearly interpolated
 #' between bracketing schedule times without extrapolation. Fertility currently
 #' uses the total state in each age group as the exposure population, as a
-#' first-pass convention, and births enter the youngest age group only.
+#' first-pass convention, scaled by `process$fertility_exposure_fraction`, and
+#' births enter the youngest age group only.
 #'
 #' @param state Numeric vector of non-negative population counts ordered by the
 #'   age groups in `process`.
@@ -57,7 +58,7 @@ demographic_derivative <- function(state,
     dNdt[ageing$destination_index[has_destination]] + ageing_out[has_destination]
 
   fertility_rates <- fertility_rates_at(process$fertility_schedule, time, age_groups, time_policy)
-  births <- sum(fertility_rates * state)
+  births <- sum(fertility_rates * process$fertility_exposure_fraction * state)
   dNdt[1] <- dNdt[1] + births
 
   mortality_rates <- mortality_rates_at(process$mortality_schedule, time, age_groups, time_policy)

@@ -8,6 +8,7 @@ DemographicProcess(
   age_structure,
   ageing_operator = NULL,
   fertility_schedule = NULL,
+  fertility_exposure_fraction = 1,
   mortality_schedule = NULL,
   migration_schedule = NULL,
   mode = c("closed", "migration")
@@ -20,6 +21,13 @@ DemographicProcess(
 \code{\link[=AgeingOperator]{AgeingOperator()}} for \code{age_structure}.}
 
 \item{fertility_schedule}{Optional \code{\link[=FertilitySchedule]{FertilitySchedule()}} object.}
+
+\item{fertility_exposure_fraction}{Single non-negative finite multiplier
+applied to fertility exposure when computing births. The default, \code{1},
+preserves the historical total-population exposure convention. Use values
+such as \code{0.5} only as an approximate female-exposure correction for
+total-population simulations with female ASFR; this is not a substitute for
+sex-structured demography.}
 
 \item{mortality_schedule}{Optional \code{\link[=MortalitySchedule]{MortalitySchedule()}} object.}
 

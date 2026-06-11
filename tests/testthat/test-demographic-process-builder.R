@@ -47,6 +47,7 @@ test_that("build_demographic_process creates closed process with ageing only", {
   expect_identical(process$age_structure, ages)
   expect_identical(process$mode, "closed")
   expect_null(process$fertility_schedule)
+  expect_identical(process$fertility_exposure_fraction, 1)
   expect_null(process$mortality_schedule)
   expect_null(process$migration_schedule)
   expect_silent(validate_demographic_process(process))
@@ -67,6 +68,17 @@ test_that("build_demographic_process stores fertility and mortality schedules", 
   expect_identical(process$fertility_schedule, fertility)
   expect_identical(process$mortality_schedule, mortality)
   expect_identical(process$times, c(2020, 2025))
+  expect_silent(validate_demographic_process(process))
+})
+
+test_that("build_demographic_process passes fertility exposure fraction", {
+  ages <- builder_age_structure()
+  process <- build_demographic_process(
+    age_structure = ages,
+    fertility_exposure_fraction = 0.5
+  )
+
+  expect_identical(process$fertility_exposure_fraction, 0.5)
   expect_silent(validate_demographic_process(process))
 })
 
@@ -131,6 +143,7 @@ test_that("build_demographic_process matches direct construction in key fields",
     age_structure = ages,
     ageing_operator = AgeingOperator(ages),
     fertility_schedule = fertility,
+    fertility_exposure_fraction = 1,
     mortality_schedule = mortality,
     migration_schedule = migration,
     mode = "migration"
@@ -139,6 +152,7 @@ test_that("build_demographic_process matches direct construction in key fields",
   expect_identical(built$age_structure$age_groups, direct$age_structure$age_groups)
   expect_identical(built$mode, direct$mode)
   expect_identical(built$fertility_schedule, direct$fertility_schedule)
+  expect_identical(built$fertility_exposure_fraction, direct$fertility_exposure_fraction)
   expect_identical(built$mortality_schedule, direct$mortality_schedule)
   expect_identical(built$migration_schedule, direct$migration_schedule)
   expect_identical(built$ageing_operator$departure_rate, direct$ageing_operator$departure_rate)

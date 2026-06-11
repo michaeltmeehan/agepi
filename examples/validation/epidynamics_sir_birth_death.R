@@ -1,6 +1,12 @@
 source("examples/validation/validation_helpers.R")
 load_local_agepi()
-library(EpiDynamics)
+
+if (!requireNamespace("EpiDynamics", quietly = TRUE)) {
+  message(
+    "Skipping EpiDynamics SIR birth-death validation example: optional package ",
+    "EpiDynamics is not installed."
+  )
+} else {
 
 parameters <- c(mu = 1 / (70 * 365), beta = 520 / 365, gamma = 1 / 7)
 initials <- c(S = 0.1, I = 1e-4, R = 1 - 0.1 - 1e-4)
@@ -45,3 +51,4 @@ summary <- compare_shared_columns(reference_table, agepi_table, c("S", "I", "R")
 cat("EpiDynamics::SIRBirthDeath validation against agepi SIRModel + demography\n")
 cat("Interpretation: exact one-age validation of equal births and deaths, up to solver tolerance.\n")
 print(summary, row.names = FALSE)
+}

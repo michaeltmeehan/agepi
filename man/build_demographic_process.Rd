@@ -7,6 +7,7 @@
 build_demographic_process(
   age_structure,
   fertility_schedule = NULL,
+  fertility_exposure_fraction = 1,
   mortality_schedule = NULL,
   migration_schedule = NULL,
   mode = c("closed", "migration")
@@ -16,6 +17,9 @@ build_demographic_process(
 \item{age_structure}{Age structure validated by \code{\link[=validate_age_structure]{validate_age_structure()}}.}
 
 \item{fertility_schedule}{Optional \code{\link[=FertilitySchedule]{FertilitySchedule()}} object.}
+
+\item{fertility_exposure_fraction}{Single non-negative finite multiplier
+applied to fertility exposure when computing births. Defaults to \code{1}.}
 
 \item{mortality_schedule}{Optional \code{\link[=MortalitySchedule]{MortalitySchedule()}} object.}
 
