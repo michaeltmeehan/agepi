@@ -10,14 +10,32 @@ simulate_demography_process <- function(
   ages = simulate_demography_test_ages(),
   fertility = NULL,
   mortality = NULL,
-  migration = NULL
+  migration = NULL,
+  fertility_exposure_fraction = 1
 ) {
   DemographicProcess(
     age_structure = ages,
     fertility_schedule = fertility,
+    fertility_exposure_fraction = fertility_exposure_fraction,
     mortality_schedule = mortality,
     migration_schedule = migration,
     mode = if (is.null(migration)) "closed" else "migration"
+  )
+}
+
+simulate_demography_annual_ages <- function() {
+  wpp_age_structure_1year(max_age = 2)
+}
+
+simulate_demography_zero_annual_mortality <- function(ages = simulate_demography_annual_ages(), time = 0) {
+  MortalitySchedule(
+    data.frame(
+      time = time,
+      age_group = ages$age_groups,
+      mortality_rate = 0,
+      stringsAsFactors = FALSE
+    ),
+    ages
   )
 }
 
@@ -178,6 +196,181 @@ test_that("simulate_demography returns tidy output ordered by time then age grou
   expect_identical(output$age_group, rep(process$age_structure$age_groups, times = 3))
   expect_equal(output$population[output$time == 0], c(100, 50, 25))
   expect_type(output$population, "double")
+})
+
+test_that("simulate_demography default ageing policy matches explicit exponential policy", {
+  process <- simulate_demography_process()
+
+  default_output <- simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1))
+  exponential_output <- simulate_demography(
+    process,
+    initial_state = c(100, 50, 25),
+    times = c(0, 1),
+    ageing_policy = "exponential"
+  )
+
+  expect_equal(default_output, exponential_output)
+})
+
+test_that("annual cohort simulate_demography shifts a cohort from age 0 to age 1", {
+  ages <- simulate_demography_annual_ages()
+  process <- simulate_demography_process(
+    ages = ages,
+    mortality = simulate_demography_zero_annual_mortality(ages)
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(10, 0, 0),
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(output$population[output$time == 1], c(0, 10, 0))
+})
+
+test_that("annual cohort simulate_demography conserves population under ageing only", {
+  ages <- simulate_demography_annual_ages()
+  process <- simulate_demography_process(
+    ages = ages,
+    mortality = simulate_demography_zero_annual_mortality(ages)
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(4, 6, 8),
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(sum(output$population[output$time == 1]), 18)
+})
+
+test_that("annual cohort simulate_demography handles the open-ended final age group", {
+  ages <- simulate_demography_annual_ages()
+  process <- simulate_demography_process(
+    ages = ages,
+    mortality = simulate_demography_zero_annual_mortality(ages)
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(0, 7, 11),
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(output$population[output$time == 1], c(0, 0, 18))
+})
+
+test_that("annual cohort simulate_demography applies mortality as exp minus hazard survival", {
+  ages <- AgeStructure("0+", lower_bounds = 0, upper_bounds = Inf)
+  mortality <- MortalitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "0+",
+      mortality_rate = log(2),
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- simulate_demography_process(ages = ages, mortality = mortality)
+
+  output <- simulate_demography(
+    process,
+    initial_state = 100,
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(output$population[output$time == 1], 50)
+})
+
+test_that("annual cohort simulate_demography applies births to the youngest age group", {
+  ages <- simulate_demography_annual_ages()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "1",
+      fertility_rate = 0.25,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- simulate_demography_process(
+    ages = ages,
+    fertility = fertility,
+    mortality = simulate_demography_zero_annual_mortality(ages)
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(0, 20, 0),
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(output$population[output$time == 1], c(5, 0, 20))
+})
+
+test_that("annual cohort simulate_demography uses fertility exposure fraction", {
+  ages <- simulate_demography_annual_ages()
+  fertility <- FertilitySchedule(
+    data.frame(
+      time = 0,
+      age_group = "1",
+      fertility_rate = 0.25,
+      stringsAsFactors = FALSE
+    ),
+    ages
+  )
+  process <- simulate_demography_process(
+    ages = ages,
+    fertility = fertility,
+    mortality = simulate_demography_zero_annual_mortality(ages),
+    fertility_exposure_fraction = 0.5
+  )
+
+  output <- simulate_demography(
+    process,
+    initial_state = c(0, 20, 0),
+    times = c(0, 1),
+    ageing_policy = "annual_cohort"
+  )
+
+  expect_equal(output$population[output$time == 1], c(2.5, 0, 20))
+})
+
+test_that("annual cohort simulate_demography errors for non-annual time steps", {
+  ages <- simulate_demography_annual_ages()
+  process <- simulate_demography_process(
+    ages = ages,
+    mortality = simulate_demography_zero_annual_mortality(ages)
+  )
+
+  expect_error(
+    simulate_demography(
+      process,
+      initial_state = c(10, 0, 0),
+      times = c(0, 0.5, 1),
+      ageing_policy = "annual_cohort"
+    ),
+    "annual time steps"
+  )
+})
+
+test_that("annual cohort simulate_demography errors for non-1-year age grids", {
+  process <- simulate_demography_process()
+
+  expect_error(
+    simulate_demography(
+      process,
+      initial_state = c(100, 50, 25),
+      times = c(0, 1),
+      ageing_policy = "annual_cohort"
+    ),
+    "1-year finite age groups"
+  )
 })
 
 test_that("simulate_demography validates process initial state times schedules and method", {

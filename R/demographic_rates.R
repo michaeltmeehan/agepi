@@ -219,6 +219,68 @@ validate_migration_schedule <- function(x) {
   invisible(x)
 }
 
+expand_fertility_schedule_age_grid <- function(fertility_schedule, mapping) {
+  validate_fertility_schedule(fertility_schedule)
+  validate_schedule_age_grid_mapping(fertility_schedule, mapping, "fertility_schedule")
+
+  fertility <- expand_age_rates(
+    fertility_schedule$data,
+    mapping = mapping,
+    value_col = "fertility_rate"
+  )
+
+  FertilitySchedule(fertility, mapping$to_age_groups)
+}
+
+expand_mortality_schedule_age_grid <- function(mortality_schedule, mapping) {
+  validate_mortality_schedule(mortality_schedule)
+  validate_schedule_age_grid_mapping(mortality_schedule, mapping, "mortality_schedule")
+
+  mortality <- expand_age_hazards(
+    mortality_schedule$data,
+    mapping = mapping,
+    value_col = "mortality_rate"
+  )
+
+  MortalitySchedule(mortality, mapping$to_age_groups)
+}
+
+expand_migration_schedule_age_grid <- function(migration_schedule, mapping) {
+  validate_migration_schedule(migration_schedule)
+  validate_schedule_age_grid_mapping(migration_schedule, mapping, "migration_schedule")
+
+  value_column <- paste0("migration_", migration_schedule$migration_type)
+  if (identical(migration_schedule$migration_type, "count")) {
+    migration <- expand_age_counts(
+      migration_schedule$data,
+      mapping = mapping,
+      value_col = value_column,
+      allow_negative = TRUE
+    )
+  } else {
+    migration <- expand_age_rates(
+      migration_schedule$data,
+      mapping = mapping,
+      value_col = value_column
+    )
+  }
+
+  MigrationSchedule(migration, mapping$to_age_groups)
+}
+
+validate_schedule_age_grid_mapping <- function(schedule, mapping, schedule_name) {
+  validate_age_grid_mapping(mapping)
+  if (!identical(schedule$age_structure, mapping$from_age_groups)) {
+    stop(
+      schedule_name,
+      " age_structure must match mapping$from_age_groups.",
+      call. = FALSE
+    )
+  }
+
+  invisible(mapping)
+}
+
 validate_fertility_schedule_table <- function(fertility, age_structure) {
   validate_demographic_rate_table(
     fertility,

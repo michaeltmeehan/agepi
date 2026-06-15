@@ -31,6 +31,10 @@
 #' @param time_policy Schedule lookup policy. `"exact"` requires exact schedule
 #'   times and remains the default. `"step"` uses interval-start stepwise lookup.
 #'   `"linear"` interpolates rate-like demographic schedules only.
+#' @param ageing_policy Ageing implementation. `"exponential"` preserves the
+#'   existing derivative-based ageing implementation. `"annual_cohort"` applies
+#'   [annual_cohort_demographic_step()] once per annual interval and requires a
+#'   complete 1-year age grid ending in an open-ended age group.
 #' @param ... Reserved for future method-specific arguments. Currently unused.
 #'
 #' @return Data frame with columns `time`, `age_group`, and `population`,
@@ -54,15 +58,27 @@ simulate_demography <- function(
   times,
   method = NULL,
   time_policy = c("exact", "step", "linear"),
+  ageing_policy = c("exponential", "annual_cohort"),
   ...
 ) {
   method <- if (is.null(method)) "euler" else validate_simulation_method(method)
   validate_demographic_process(process)
   validate_simulation_times(times)
   time_policy <- validate_demographic_time_policy(time_policy)
+  ageing_policy <- validate_demography_ageing_policy(ageing_policy)
   check_dots_empty(...)
 
   state <- validate_demography_initial_state(initial_state, process)
+
+  if (identical(ageing_policy, "annual_cohort")) {
+    return(simulate_demography_annual_cohort(
+      process = process,
+      initial_state = state,
+      times = times,
+      method = method,
+      time_policy = time_policy
+    ))
+  }
 
   simulate_demography_integrated(
     process = process,
@@ -71,6 +87,128 @@ simulate_demography <- function(
     method = method,
     time_policy = time_policy
   )
+}
+
+simulate_demography_annual_cohort <- function(process,
+                                              initial_state,
+                                              times,
+                                              method,
+                                              time_policy = c("exact", "step", "linear")) {
+  time_policy <- validate_demographic_time_policy(time_policy)
+  if (!identical(method, "euler")) {
+    stop("ageing_policy = \"annual_cohort\" requires method = NULL or method = \"euler\".", call. = FALSE)
+  }
+
+  validate_annual_cohort_simulation_times(times)
+  validate_simulate_demography_annual_cohort_age_structure(process$age_structure)
+  validate_demography_schedule_coverage(
+    process,
+    times,
+    time_policy,
+    include_output_times = FALSE
+  )
+
+  age_groups <- process$age_structure$age_groups
+  output <- vector("list", length(times))
+  state <- stats::setNames(as.numeric(initial_state), age_groups)
+  output[[1]] <- demographic_state_output(state, time = times[1], process = process)
+
+  for (time_index in seq_len(length(times) - 1)) {
+    interval_start <- times[time_index]
+    fertility <- fertility_rates_at(
+      process$fertility_schedule,
+      time = interval_start,
+      age_groups = age_groups,
+      time_policy = time_policy
+    )
+    mortality <- mortality_rates_at(
+      process$mortality_schedule,
+      time = interval_start,
+      age_groups = age_groups,
+      time_policy = time_policy
+    )
+    migration <- annual_cohort_migration_values_at(
+      process$migration_schedule,
+      time = interval_start,
+      age_groups = age_groups,
+      time_policy = time_policy
+    )
+
+    step <- annual_cohort_demographic_step(
+      population = state,
+      age_structure = process$age_structure,
+      fertility = stats::setNames(fertility, age_groups),
+      mortality = stats::setNames(mortality, age_groups),
+      migration = migration$values,
+      fertility_exposure_fraction = process$fertility_exposure_fraction,
+      migration_type = migration$type
+    )
+
+    state <- stats::setNames(step$population, age_groups)
+    output[[time_index + 1]] <- demographic_state_output(
+      state,
+      time = times[time_index + 1],
+      process = process
+    )
+  }
+
+  do.call(rbind, output)
+}
+
+annual_cohort_migration_values_at <- function(schedule,
+                                              time,
+                                              age_groups,
+                                              time_policy = c("exact", "step", "linear")) {
+  time_policy <- validate_demographic_time_policy(time_policy)
+  if (is.null(schedule)) {
+    return(list(
+      type = NULL,
+      values = NULL
+    ))
+  }
+
+  value_column <- paste0("migration_", schedule$migration_type)
+  values <- schedule_values_at(
+    schedule = schedule,
+    time = time,
+    value_column = value_column,
+    age_groups = age_groups,
+    fill_value = 0,
+    time_policy = time_policy
+  )
+
+  list(
+    type = schedule$migration_type,
+    values = stats::setNames(values, age_groups)
+  )
+}
+
+validate_demography_ageing_policy <- function(ageing_policy = c("exponential", "annual_cohort")) {
+  match.arg(ageing_policy)
+}
+
+validate_annual_cohort_simulation_times <- function(times,
+                                                    tolerance = sqrt(.Machine$double.eps)) {
+  time_steps <- diff(times)
+  if (any(abs(time_steps - 1) > tolerance)) {
+    stop("ageing_policy = \"annual_cohort\" requires annual time steps of exactly 1 year.", call. = FALSE)
+  }
+
+  invisible(times)
+}
+
+validate_simulate_demography_annual_cohort_age_structure <- function(age_structure) {
+  validate_annual_cohort_age_structure(age_structure)
+
+  if (!identical(age_structure$lower_bounds[1], 0)) {
+    stop("ageing_policy = \"annual_cohort\" requires the first age group to start at age 0.", call. = FALSE)
+  }
+
+  if (!is.infinite(age_structure$upper_bounds[age_structure$n_age_groups])) {
+    stop("ageing_policy = \"annual_cohort\" requires a terminal open-ended age group.", call. = FALSE)
+  }
+
+  invisible(age_structure)
 }
 
 simulate_demography_euler <- function(process, initial_state, times, time_policy = c("exact", "step", "linear")) {
