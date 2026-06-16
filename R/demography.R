@@ -327,6 +327,219 @@ population_from_wpp <- function(data = NULL,
   )
 }
 
+#' Build a projection-backed population trajectory from WPP-style data
+#'
+#' Converts an already-loaded WPP-style annual age-specific population
+#' projection into the standard agepi demography trajectory table with columns
+#' `time`, `age_group`, and `population`. This helper replays an external
+#' projection as supplied by the caller; it does not simulate births, deaths,
+#' ageing, fertility, mortality, migration, sex structure, or cohort-component
+#' assumptions.
+#'
+#' The main WPP use case is `wpp2024::popprojAge1dt` with
+#' `wpp_age_structure_1year(max_age = 100)`. The `wpp2024` package is not
+#' required when `data` is supplied directly.
+#'
+#' @param data Data frame containing WPP-like age-specific population
+#'   projections.
+#' @param age_structure Target age-structure object validated by
+#'   [validate_age_structure()].
+#' @param location Single location/country value to select.
+#' @param years Numeric vector of projection years to include.
+#' @param location_col,time_col,age_group_col,population_col Column names in
+#'   `data` containing location, year/time, age group, and population values.
+#'
+#' @return Data frame with columns `time`, `age_group`, and `population`,
+#'   ordered by requested year and `age_structure$age_groups`.
+#'
+#' @examples
+#' ages <- wpp_age_structure_1year(max_age = 3)
+#' wpp_like <- data.frame(
+#'   name = "Kiribati",
+#'   year = rep(2020:2021, each = ages$n_age_groups),
+#'   age = rep(c(0, 1, 2, "3+"), times = 2),
+#'   pop = c(100, 95, 90, 85, 101, 96, 91, 86)
+#' )
+#'
+#' population_trajectory_from_wpp(
+#'   wpp_like,
+#'   age_structure = ages,
+#'   location = "Kiribati",
+#'   years = 2020:2021,
+#'   population_col = "pop"
+#' )
+#' @export
+population_trajectory_from_wpp <- function(data,
+                                           age_structure,
+                                           location,
+                                           years,
+                                           location_col = "name",
+                                           time_col = "year",
+                                           age_group_col = "age",
+                                           population_col = "pop") {
+  missing_arguments <- c(
+    if (missing(data)) "data",
+    if (missing(age_structure)) "age_structure",
+    if (missing(location)) "location",
+    if (missing(years)) "years"
+  )
+  if (length(missing_arguments) > 0) {
+    stop(
+      "population_trajectory_from_wpp() requires argument(s): ",
+      paste(missing_arguments, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  validate_age_structure(age_structure)
+
+  if (!is.data.frame(data)) {
+    stop("WPP projection data must be a data frame.", call. = FALSE)
+  }
+
+  required_columns <- c(location_col, time_col, age_group_col, population_col)
+  missing_columns <- setdiff(required_columns, names(data))
+  if (length(missing_columns) > 0) {
+    stop(
+      "WPP projection data is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (length(location) != 1 || anyNA(location)) {
+    stop("location must be a single non-missing value.", call. = FALSE)
+  }
+
+  if (!is.numeric(years) || length(years) == 0 || anyNA(years) || any(!is.finite(years))) {
+    stop("years must be a non-empty finite numeric vector.", call. = FALSE)
+  }
+
+  if (any(duplicated(years))) {
+    stop("years cannot contain duplicate values.", call. = FALSE)
+  }
+
+  locations <- unique(data[[location_col]])
+  if (!location %in% locations) {
+    stop("Requested location is not present in WPP projection data: ", location, call. = FALSE)
+  }
+
+  data <- data[data[[location_col]] == location, , drop = FALSE]
+
+  time_values <- suppressWarnings(as.numeric(data[[time_col]]))
+  if (anyNA(time_values) || any(!is.finite(time_values))) {
+    stop("WPP projection time values must be numeric, finite, and non-missing.", call. = FALSE)
+  }
+
+  available_years <- unique(time_values)
+  missing_years <- setdiff(years, available_years)
+  if (length(missing_years) > 0) {
+    stop(
+      "WPP projection data is missing requested year(s): ",
+      paste(missing_years, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  requested_rows <- time_values %in% years
+  data <- data[requested_rows, , drop = FALSE]
+  time_values <- time_values[requested_rows]
+  population_values <- suppressWarnings(as.numeric(data[[population_col]]))
+
+  trajectory <- data.frame(
+    time = time_values,
+    age_group = parse_wpp_age_labels(data[[age_group_col]], age_structure),
+    population = population_values,
+    stringsAsFactors = FALSE
+  )
+
+  validate_demography_table(trajectory, age_structure)
+
+  complete_years <- unique(trajectory$time)
+  missing_complete_years <- setdiff(years, complete_years)
+  if (length(missing_complete_years) > 0) {
+    stop(
+      "WPP projection data is missing requested year(s): ",
+      paste(missing_complete_years, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  trajectory <- trajectory[trajectory$time %in% years, c("time", "age_group", "population")]
+  row_order <- order(
+    match(trajectory$time, years),
+    match(trajectory$age_group, age_structure$age_groups)
+  )
+  trajectory <- trajectory[row_order, ]
+  row.names(trajectory) <- NULL
+
+  trajectory
+}
+
+#' Extract an age-specific population vector from a projection trajectory
+#'
+#' Retrieves age-specific population values from a projection-backed demography
+#' trajectory. `time_policy = "exact"` requires an available projection time,
+#' `"step"` uses the most recent available time not after `time`, and
+#' `"linear"` linearly interpolates age-specific populations between adjacent
+#' projection times.
+#'
+#' @param projection Data frame with `time`, `age_group`, and `population`
+#'   columns, or an `agepi_demography` object.
+#' @param time Finite numeric scalar time to retrieve.
+#' @param time_policy Time lookup policy: `"exact"`, `"step"`, or `"linear"`.
+#'
+#' @return Numeric vector of population values named by age group.
+#' @export
+projection_population_vector <- function(projection,
+                                         time,
+                                         time_policy = c("exact", "step", "linear")) {
+  time_policy <- match.arg(time_policy)
+
+  if (!is.numeric(time) || length(time) != 1 || anyNA(time) || !is.finite(time)) {
+    stop("time must be a finite numeric scalar.", call. = FALSE)
+  }
+
+  projection_info <- normalise_projection_table(projection)
+  table <- projection_info$table
+  age_groups <- projection_info$age_groups
+  times <- sort(unique(table$time))
+
+  selected_time <- switch(
+    time_policy,
+    exact = projection_exact_time(time, times),
+    step = projection_step_time(time, times),
+    linear = NA_real_
+  )
+
+  if (!identical(time_policy, "linear")) {
+    return(projection_vector_at_time(table, age_groups, selected_time))
+  }
+
+  if (time %in% times) {
+    return(projection_vector_at_time(table, age_groups, time))
+  }
+
+  if (time < min(times) || time > max(times)) {
+    stop(
+      "time is outside the projection range for linear interpolation: ",
+      time,
+      ". Available time point(s): ",
+      paste(times, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  lower_time <- max(times[times < time])
+  upper_time <- min(times[times > time])
+  lower_population <- projection_vector_at_time(table, age_groups, lower_time)
+  upper_population <- projection_vector_at_time(table, age_groups, upper_time)
+  weight <- (time - lower_time) / (upper_time - lower_time)
+  population <- lower_population + weight * (upper_population - lower_population)
+  names(population) <- age_groups
+  population
+}
+
 #' Get demography time points
 #'
 #' @param demography An `agepi_demography` object.
@@ -458,4 +671,109 @@ validate_demography_time <- function(time, available_times) {
   }
 
   invisible(time)
+}
+
+normalise_projection_table <- function(projection) {
+  if (inherits(projection, "agepi_demography")) {
+    validate_agepi_demography(projection)
+    return(list(
+      table = projection$demography,
+      age_groups = projection$age_groups
+    ))
+  }
+
+  if (!is.data.frame(projection)) {
+    stop("projection must be a data frame or agepi_demography object.", call. = FALSE)
+  }
+
+  required_columns <- c("time", "age_group", "population")
+  missing_columns <- setdiff(required_columns, names(projection))
+  if (length(missing_columns) > 0) {
+    stop(
+      "projection is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  table <- projection[, required_columns]
+  if (!is.numeric(table$time) || anyNA(table$time) || any(!is.finite(table$time))) {
+    stop("projection time must contain finite non-missing numeric values.", call. = FALSE)
+  }
+
+  if (!is.numeric(table$population) || anyNA(table$population) || any(!is.finite(table$population))) {
+    stop("projection population must contain finite non-missing numeric values.", call. = FALSE)
+  }
+
+  if (any(table$population < 0)) {
+    stop("projection population cannot be negative.", call. = FALSE)
+  }
+
+  if (anyNA(table$age_group)) {
+    stop("projection age_group cannot contain missing values.", call. = FALSE)
+  }
+
+  table$age_group <- as.character(table$age_group)
+  first_time <- min(table$time)
+  age_groups <- table$age_group[table$time == first_time]
+
+  duplicate_rows <- duplicated(data.frame(time = table$time, age_group = table$age_group))
+  if (any(duplicate_rows)) {
+    stop("projection contains duplicate time-age_group rows.", call. = FALSE)
+  }
+
+  for (this_time in sort(unique(table$time))) {
+    observed_age_groups <- table$age_group[table$time == this_time]
+    missing_age_groups <- setdiff(age_groups, observed_age_groups)
+    extra_age_groups <- setdiff(observed_age_groups, age_groups)
+    if (length(missing_age_groups) > 0 || length(extra_age_groups) > 0) {
+      stop(
+        "projection must contain the same complete age grid at every time point.",
+        call. = FALSE
+      )
+    }
+  }
+
+  row_order <- order(table$time, match(table$age_group, age_groups))
+  table <- table[row_order, ]
+  row.names(table) <- NULL
+
+  list(table = table, age_groups = age_groups)
+}
+
+projection_exact_time <- function(time, times) {
+  if (!time %in% times) {
+    stop(
+      "time is not available in projection: ",
+      time,
+      ". Available time point(s): ",
+      paste(times, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  time
+}
+
+projection_step_time <- function(time, times) {
+  previous_times <- times[times <= time]
+  if (length(previous_times) == 0) {
+    stop(
+      "time is before the first available projection time: ",
+      time,
+      ". Available time point(s): ",
+      paste(times, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  max(previous_times)
+}
+
+projection_vector_at_time <- function(table, age_groups, time) {
+  rows <- table[table$time == time, ]
+  rows <- rows[match(age_groups, rows$age_group), ]
+  population <- rows$population
+  names(population) <- age_groups
+  population
 }
