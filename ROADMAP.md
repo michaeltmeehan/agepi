@@ -200,12 +200,13 @@ Implemented:
   propensities, force-of-infection denominators, population totals, or
   demographic processes.
 
-Current boundary: deterministic cumulative flow tracking is not supported with
-`demographic_process`. Stochastic cumulative outputs are event-log-derived
-counts for fixed-population disease simulations, not stochastic state
-variables or propensities. `as_agepi_cases()` is only an observed-data adapter;
-agepi remains an aggregate compartmental simulator and does not synthesise true
-individual-level line lists from deterministic trajectories.
+Current boundary: deterministic cumulative flow tracking records disease
+transitions only, including during deterministic demographic coupling.
+Stochastic cumulative outputs are event-log-derived counts for fixed-population
+disease simulations, not stochastic state variables or propensities.
+`as_agepi_cases()` is only an observed-data adapter; agepi remains an aggregate
+compartmental simulator and does not synthesise true individual-level line lists
+from deterministic trajectories.
 
 ### Milestone 4H: Exploratory demography plotting
 
@@ -221,6 +222,33 @@ These helpers accept supplied population tables or `Demography()` objects and
 return `ggplot2` plot objects. They do not download data, arrange dashboards,
 interpolate population values, or change demographic or epidemic simulation
 semantics.
+
+### Milestone 4I: Annual-cohort deterministic epidemic-demography coupling
+
+Implemented:
+
+- `ageing_policy = "annual_cohort"` for opt-in deterministic operator splitting
+  in `simulate_deterministic()`;
+- annual loop that integrates epidemic ODEs over each one-year interval, then
+  applies the annual cohort demographic operator at the year boundary;
+- internal compartment-wise annual cohort helper where births enter the model
+  birth compartment, background mortality and ageing apply to every
+  compartment, and age-total migration follows `migration_policy`;
+- validation that annual-cohort coupling with a `demographic_process` uses a
+  complete 1-year internal age grid starting at 0 and ending in an open-ended
+  terminal group;
+- `output_age_structure` aggregation for deterministic trajectories and
+  age-stratified cumulative flows using the existing age-grid mapping helpers;
+- tests against standalone `simulate_demography(ageing_policy =
+  "annual_cohort")`, no-demography split equivalence, cumulative flows, and a
+  toy SIR annual-demography sanity case;
+- design documentation in
+  `docs/coupled_epidemic_demography_operator_splitting_design.md`.
+
+Annual-cohort coupling is deterministic-only. It does not implement stochastic
+demography, subannual reporting inside a split interval, demographic cumulative
+event counters, time-varying contact matrices, automatic reporting-grid
+expansion, or WPP projection matching.
 
 ## Future Work
 

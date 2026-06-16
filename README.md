@@ -22,6 +22,8 @@ transmission depends on contacts between age groups. It currently supports:
 - building custom deterministic compartment models with `CompartmentModel()`;
 - simulating demographic-only processes with ageing, fertility, mortality, and
   migration;
+- coupling deterministic epidemic models to demography either with the default
+  continuous derivative policy or with opt-in annual-cohort operator splitting;
 - using dependency-free adapters for WPP-style demographic tables and
   socialmixr/conmat-style contact matrix outputs;
 - mapping observed case/event records into agepi age groups with
@@ -402,6 +404,26 @@ See [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R)
 and [docs/demographic_residuals.md](docs/demographic_residuals.md) for a fuller
 demographic workflow and diagnostics.
 
+Demographic-only and deterministic epidemic-demography simulations support two
+ageing policies:
+
+- `ageing_policy = "exponential"` is the default derivative-based path and
+  preserves existing behaviour.
+- `ageing_policy = "annual_cohort"` applies a discrete cohort projection once
+  per annual interval. In deterministic epidemic simulations, infection ODEs run
+  over each one-year interval and the annual demographic operator is applied at
+  the year boundary. This mode is opt-in, deterministic-only, and requires a
+  complete 1-year internal age grid ending in an open-ended age group when a
+  `demographic_process` is supplied.
+
+Annual-cohort coupling keeps births in the configured birth compartment
+(`S` for `SIRModel()` and `SEIRModel()`), applies background mortality and
+ageing to every compartment, and allocates age-total net migration using
+`migration_policy`. Use `output_age_structure` to aggregate 1-year internal
+outputs back to broader reporting groups. See
+[docs/coupled_epidemic_demography_operator_splitting_design.md](docs/coupled_epidemic_demography_operator_splitting_design.md)
+and [examples/annual_cohort_sir_demography.R](examples/annual_cohort_sir_demography.R).
+
 Lightweight exploratory plotting helpers are available when `ggplot2` is
 installed. `plot_population_pyramid()`, `plot_population_projection()`,
 `plot_age_structure()`, and `plot_demography()` inspect supplied population
@@ -456,6 +478,8 @@ and print a message instead of failing when those packages are unavailable.
   observed case records mapped into agepi age groups.
 - [examples/mock_seir_demography.R](examples/mock_seir_demography.R): SEIR with
   demographic turnover.
+- [examples/annual_cohort_sir_demography.R](examples/annual_cohort_sir_demography.R):
+  toy deterministic SIR with annual-cohort demographic operator splitting.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
   demographic-only workflow with diagnostics.
 - [examples/wpp_demography_validation.R](examples/wpp_demography_validation.R):

@@ -17,6 +17,8 @@ simulate_deterministic(
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
+  ageing_policy = c("exponential", "annual_cohort"),
+  output_age_structure = NULL,
   cumulative_flows = NULL
 )
 }
@@ -45,9 +47,9 @@ group.}
 
 \item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for
 infection-only runs when available and \code{"euler"} otherwise; coupled
-demographic runs preserve the existing Euler default. \code{"deSolve"} and
-\code{"ode"} request the optional \code{deSolve::ode()} backend. \code{"euler"} requests
-explicit Euler time steps.}
+demographic runs with \code{ageing_policy = "exponential"} preserve the existing
+Euler default. \code{"deSolve"} and \code{"ode"} request the optional \code{deSolve::ode()}
+backend. \code{"euler"} requests explicit Euler time steps.}
 
 \item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
 first-pass deterministic SIR/SEIR/generic-demography coupling. Defaults to
@@ -65,6 +67,19 @@ behaviour by applying all net migration to \code{S}; \code{"proportional"} alloc
 net migration across compartments by current age-specific compartment
 shares; \code{"error"} allows zero migration but errors if any net migration is
 non-zero because age-total migration allocation is ambiguous.}
+
+\item{ageing_policy}{Demographic ageing implementation. \code{"exponential"}
+preserves the existing derivative-based coupling. \code{"annual_cohort"} runs
+deterministic infection dynamics over each 1-year interval, then applies
+\code{annual_cohort_demographic_step()} compartment-wise at the annual boundary.
+Annual-cohort coupling is deterministic-only, opt-in, and requires annual
+output times. If \code{demographic_process} is supplied, it must use a complete
+1-year age grid ending in an open-ended age group.}
+
+\item{output_age_structure}{Optional reporting age structure. When supplied,
+deterministic trajectories and cumulative-flow outputs are aggregated from
+the simulation age grid to this reporting grid using \code{AgeGridMapping()} and
+the existing count-preserving output aggregation helpers.}
 
 \item{cumulative_flows}{Optional named list or data frame specifying disease
 transition flows to track as auxiliary cumulative state variables. Named
@@ -86,9 +101,11 @@ compartment output and \code{cumulative} containing columns \code{time},
 Runs a simple deterministic prototype simulation. For infection-only runs,
 deSolve is used by default when the suggested \code{deSolve} package is
 installed; otherwise the simulation falls back to explicit Euler time steps.
-Coupled demographic runs keep the existing Euler default because exact
-schedule lookup is the default demographic policy. Set \code{method = "deSolve"}
-or \code{method = "euler"} explicitly to choose a backend.
+Coupled demographic runs with the default derivative ageing policy keep the
+existing Euler default because exact schedule lookup is the default
+demographic policy. Annual-cohort operator splitting follows the ordinary
+method default unless \code{method} is set explicitly. Set \code{method = "deSolve"} or
+\code{method = "euler"} explicitly to choose a backend.
 }
 \details{
 The initial state may be supplied either as long-form state data or as a
@@ -105,7 +122,9 @@ Supported combinations are:
 \item SIR + demography + Euler;
 \item SEIR + demography + Euler;
 \item SIR + demography + deSolve;
-\item SEIR + demography + deSolve.
+\item SEIR + demography + deSolve;
+\item deterministic annual-cohort operator splitting for SIR, SEIR, and generic
+deterministic compartment models.
 }
 
 Both solver backends use the same transition-rate and derivative pathway:

@@ -33,7 +33,7 @@
 #'   `"linear"` interpolates rate-like demographic schedules only.
 #' @param ageing_policy Ageing implementation. `"exponential"` preserves the
 #'   existing derivative-based ageing implementation. `"annual_cohort"` applies
-#'   [annual_cohort_demographic_step()] once per annual interval and requires a
+#'   `annual_cohort_demographic_step()` once per annual interval and requires a
 #'   complete 1-year age grid ending in an open-ended age group.
 #' @param ... Reserved for future method-specific arguments. Currently unused.
 #'

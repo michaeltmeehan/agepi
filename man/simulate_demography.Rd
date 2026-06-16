@@ -10,6 +10,7 @@ simulate_demography(
   times,
   method = NULL,
   time_policy = c("exact", "step", "linear"),
+  ageing_policy = c("exponential", "annual_cohort"),
   ...
 )
 }
@@ -30,6 +31,11 @@ explicit Euler default. \code{"deSolve"} and \code{"ode"} request the optional
 \item{time_policy}{Schedule lookup policy. \code{"exact"} requires exact schedule
 times and remains the default. \code{"step"} uses interval-start stepwise lookup.
 \code{"linear"} interpolates rate-like demographic schedules only.}
+
+\item{ageing_policy}{Ageing implementation. \code{"exponential"} preserves the
+existing derivative-based ageing implementation. \code{"annual_cohort"} applies
+\code{annual_cohort_demographic_step()} once per annual interval and requires a
+complete 1-year age grid ending in an open-ended age group.}
 
 \item{...}{Reserved for future method-specific arguments. Currently unused.}
 }
