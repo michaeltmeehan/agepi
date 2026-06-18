@@ -1,7 +1,5 @@
 if ("package:agepi" %in% search()) {
-  # Already loaded by devtools::load_all() or library(agepi).
-} else if (dir.exists("R") && requireNamespace("pkgload", quietly = TRUE)) {
-  pkgload::load_all(".", quiet = TRUE)
+  # Already loaded by library(agepi) or a development loader.
 } else if (dir.exists("R")) {
   invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
 } else if (requireNamespace("agepi", quietly = TRUE)) {

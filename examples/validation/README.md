@@ -15,8 +15,8 @@ Rscript examples/validation/finalsize_sir_final_size.R
 ```
 
 The scripts load the local source tree using the same convention as the existing
-examples: `pkgload::load_all(".")` when available, direct sourcing of `R/*.R`
-when running from the package root, or `library(agepi)` as a fallback. They use
+examples: direct sourcing of `R/*.R` when running from the package root, or
+`library(agepi)` as a fallback. They use
 `EpiDynamics` only at runtime; the package is not added as a hard dependency.
 
 ## Exact validations

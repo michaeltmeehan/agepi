@@ -5,10 +5,6 @@ load_agepi_for_public_api_tests <- function() {
 
   package_root <- normalizePath(test_path("../.."), mustWork = FALSE)
   r_dir <- file.path(package_root, "R")
-  if (dir.exists(r_dir) && requireNamespace("pkgload", quietly = TRUE)) {
-    pkgload::load_all(package_root, quiet = TRUE)
-    return(invisible(TRUE))
-  }
   if (dir.exists(r_dir)) {
     invisible(lapply(list.files(r_dir, pattern = "[.]R$", full.names = TRUE), source))
     return(invisible(TRUE))
@@ -28,9 +24,10 @@ load_agepi_for_public_api_tests <- function() {
 source_example_command <- paste(
   "example_file <- normalizePath(commandArgs(TRUE)[1], mustWork = TRUE)",
   "package_root <- normalizePath(file.path(dirname(example_file), '..'), mustWork = FALSE)",
-  "if (dir.exists(file.path(package_root, 'R')) && requireNamespace('pkgload', quietly = TRUE)) {",
-  "  pkgload::load_all(package_root, quiet = TRUE)",
-  "} else if (dir.exists(file.path(package_root, 'R'))) {",
+  "oldwd <- getwd()",
+  "setwd(package_root)",
+  "on.exit(setwd(oldwd), add = TRUE)",
+  "if (dir.exists(file.path(package_root, 'R'))) {",
   "  invisible(lapply(list.files(file.path(package_root, 'R'), pattern = '[.]R$', full.names = TRUE), source))",
   "} else if (requireNamespace('agepi', quietly = TRUE)) {",
   "  library(agepi)",
@@ -157,10 +154,36 @@ test_that("optional integration examples are guarded and non-blocking", {
     "epiparameter_seir.R",
     "wpp_demography_validation.R"
   )
+  optional_example_dependencies <- c(
+    epiparameter_seir.R = "epiparameter",
+    wpp_demography_validation.R = "wpp2024"
+  )
   optional_example_files <- file.path(examples_dir, optional_example_names)
   optional_example_files <- optional_example_files[file.exists(optional_example_files)]
 
   for (example_file in optional_example_files) {
+    dependency <- optional_example_dependencies[[basename(example_file)]]
+    if (!is.null(dependency)) {
+      dependency_result <- suppressWarnings(system2(
+        "Rscript",
+        c("-e", shQuote(sprintf("library(%s)", dependency))),
+        stdout = TRUE,
+        stderr = TRUE
+      ))
+      dependency_status <- attr(dependency_result, "status")
+      if (is.null(dependency_status)) {
+        dependency_status <- 0
+      }
+      if (dependency_status != 0) {
+        message(
+          "Skipping optional example ", basename(example_file),
+          ": dependency ", dependency,
+          " is not loadable in a clean Rscript subprocess."
+        )
+        next
+      }
+    }
+
     result <- system2(
       "Rscript",
       c(

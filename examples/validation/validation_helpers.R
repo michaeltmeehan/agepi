@@ -2,10 +2,6 @@ load_local_agepi <- function() {
   if ("package:agepi" %in% search()) {
     return(invisible(TRUE))
   }
-  if (dir.exists("R") && requireNamespace("pkgload", quietly = TRUE)) {
-    pkgload::load_all(".", quiet = TRUE)
-    return(invisible(TRUE))
-  }
   if (dir.exists("R")) {
     invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
     return(invisible(TRUE))

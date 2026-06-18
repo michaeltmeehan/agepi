@@ -22,11 +22,9 @@
 # Phase 1: package loading and required function checks ---------------------
 
 if ("package:agepi" %in% search()) {
-  # Already loaded by devtools::load_all() or library(agepi).
+  # Already loaded by library(agepi) or a development loader.
 } else if (dir.exists("R")) {
   invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
-} else if (requireNamespace("pkgload", quietly = TRUE)) {
-  pkgload::load_all(".", quiet = TRUE)
 } else if (requireNamespace("agepi", quietly = TRUE)) {
   library(agepi)
 } else {
