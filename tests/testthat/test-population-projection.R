@@ -181,3 +181,65 @@ test_that("projection_population_vector supports exact step and linear policies"
     "time is not available"
   )
 })
+
+test_that("projection populations can seed epidemic inputs without becoming mechanistic demography", {
+  fixture <- synthetic_wpp_projection()
+  projection <- population_trajectory_from_wpp(
+    fixture$data,
+    age_structure = fixture$ages,
+    location = "Kiribati",
+    years = 2020:2021,
+    location_col = "location",
+    population_col = "pop"
+  )
+  population <- projection_population_vector(projection, 2020, time_policy = "exact")
+  infected <- c(1, 2, 1, 1)
+  initial_state <- data.frame(
+    compartment = rep(c("S", "I", "R"), each = fixture$ages$n_age_groups),
+    age_group = rep(fixture$ages$age_groups, times = 3),
+    value = c(as.numeric(population) - infected, infected, rep(0, fixture$ages$n_age_groups)),
+    stringsAsFactors = FALSE
+  )
+
+  deterministic <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(2020, 2021),
+    model = SIRModel(gamma = 0),
+    age_structure = fixture$ages,
+    contact_matrix = matrix(0, nrow = fixture$ages$n_age_groups, ncol = fixture$ages$n_age_groups),
+    beta = 0,
+    method = "euler"
+  )
+  stochastic <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(2020, 2021),
+    model = SIRModel(gamma = 0),
+    age_structure = fixture$ages,
+    contact_matrix = matrix(0, nrow = fixture$ages$n_age_groups, ncol = fixture$ages$n_age_groups),
+    beta = 0,
+    population = population,
+    seed = 1
+  )
+
+  expect_equal(
+    aggregate(value ~ time + age_group, deterministic, sum)$value,
+    rep(as.numeric(population), each = 2)
+  )
+  expect_equal(
+    aggregate(value ~ time + age_group, stochastic, sum)$value,
+    rep(as.numeric(population), each = 2)
+  )
+  expect_error(
+    simulate_deterministic(
+      initial_state = initial_state,
+      times = c(2020, 2021),
+      model = SIRModel(gamma = 0),
+      age_structure = fixture$ages,
+      contact_matrix = matrix(0, nrow = fixture$ages$n_age_groups, ncol = fixture$ages$n_age_groups),
+      beta = 0,
+      method = "euler",
+      demographic_process = projection
+    ),
+    "must be an agepi_demographic_process object"
+  )
+})

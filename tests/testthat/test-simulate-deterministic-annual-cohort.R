@@ -87,6 +87,55 @@ test_that("annual cohort compartment step applies births to S and ageing/mortali
   )
 })
 
+test_that("annual cohort coupling accounts for births deaths ageing and susceptible migration", {
+  ages <- wpp_age_structure_1year(max_age = 2)
+  fertility <- FertilitySchedule(
+    data.frame(time = 0, age_group = "1", fertility_rate = 0.2),
+    ages
+  )
+  mortality <- MortalitySchedule(
+    data.frame(time = 0, age_group = ages$age_groups, mortality_rate = log(2)),
+    ages
+  )
+  migration <- MigrationSchedule(
+    data.frame(time = 0, age_group = ages$age_groups, migration_count = c(2, -1, 3)),
+    ages
+  )
+  process <- annual_split_process(
+    ages,
+    fertility = fertility,
+    mortality = mortality,
+    migration = migration
+  )
+  initial <- annual_split_state(
+    ages,
+    S = c(10, 20, 30),
+    I = c(1, 2, 3),
+    R = c(4, 5, 6)
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial,
+    times = c(0, 1),
+    model = SIRModel(gamma = 0),
+    age_structure = ages,
+    contact_matrix = annual_split_zero_contacts(ages),
+    beta = 0,
+    method = "euler",
+    demographic_process = process,
+    ageing_policy = "annual_cohort",
+    time_policy = "step"
+  )
+
+  final <- output[output$time == 1, ]
+  expect_equal(
+    final$value,
+    c(7.4, 4, 28, 0, 0.5, 2.5, 0, 2, 5.5)
+  )
+  expect_equal(sum(final$value), sum(initial$value) + 5.4 - 40.5 + 4)
+  expect_true(all(final$value >= 0))
+})
+
 test_that("annual cohort zero-epidemic births-only coupling matches simulate_demography", {
   ages <- annual_split_ages()
   fertility <- FertilitySchedule(
@@ -147,6 +196,55 @@ test_that("annual cohort zero-epidemic ageing-only coupling matches simulate_dem
   )
 
   expect_equal(annual_split_totals(coupled)$value, demography$population)
+})
+
+test_that("annual cohort coupling applies WPP-style age-specific migration after ageing", {
+  ages <- annual_split_ages()
+  migration_like <- data.frame(
+    year = rep(0, ages$n_age_groups),
+    age = ages$age_groups,
+    net_migration = c(2, 3, -1, 4),
+    stringsAsFactors = FALSE
+  )
+  migration <- standardise_wpp_migration(
+    migration_like,
+    age_structure = ages,
+    time_col = "year",
+    age_col = "age",
+    migration_col = "net_migration",
+    migration_type = "count"
+  )
+  process <- annual_split_process(ages, migration = migration)
+  initial <- annual_split_state(
+    ages,
+    S = c(100, 80, 60, 40),
+    I = c(10, 8, 6, 4),
+    R = c(5, 4, 3, 2)
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial,
+    times = c(0, 1),
+    model = SIRModel(gamma = 0),
+    age_structure = ages,
+    contact_matrix = annual_split_zero_contacts(ages),
+    beta = 0,
+    method = "euler",
+    demographic_process = process,
+    ageing_policy = "annual_cohort",
+    time_policy = "step"
+  )
+  final <- output[output$time == 1, ]
+  final_by_compartment <- split(final$value, final$compartment)
+  initial_total <- sum(initial$value)
+  final_total <- sum(final$value)
+
+  expect_equal(final_total - initial_total, sum(migration_like$net_migration))
+  expect_equal(final_by_compartment$S, c(2, 103, 79, 104))
+  expect_equal(final_by_compartment$I, c(0, 10, 8, 10))
+  expect_equal(final_by_compartment$R, c(0, 5, 4, 5))
+  expect_identical(final$age_group, rep(ages$age_groups, times = 3))
+  expect_true(all(final$value >= 0))
 })
 
 test_that("annual cohort zero-epidemic fertility and mortality coupling matches simulate_demography", {
