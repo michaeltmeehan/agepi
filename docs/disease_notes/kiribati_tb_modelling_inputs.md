@@ -60,6 +60,18 @@ Recommended public-data-only product:
 - MDR/RR-TB handled as a reporting outcome or scenario modifier unless enough
   DST data are obtained.
 
+The current `examples/kiribati_tb_realistic_demography.R` implementation is a
+calibration-ready scaffold, not a calibrated Kiribati estimate. It uses annual
+WPP 2024 population, fertility, mortality, and net migration schedules directly
+and evaluates them as stepwise annual inputs under subannual deterministic ODE
+integration. It does not linearly interpolate WPP schedules. Its current contact
+matrix is a published POLYMOD United Kingdom social-contact proxy generated
+through `socialmixr`, expanded to the WPP single-year model grid by holding the
+source age-band matrix constant within each source band. This is not
+Kiribati-specific and should be replaced or sensitivity-tested with Prem/conmat,
+Pacific, Kiribati household/crowding, or collaborator-provided contact inputs
+before policy interpretation.
+
 ## 3. Collaborator-enhanced modelling pathway
 
 Collaborator data would allow the model to move from a national scaffold to a
@@ -172,6 +184,11 @@ Purpose:
 - quantify which conclusions are sensitive to missing latent infection,
   contact, and subnational data.
 
+Outputs from the current public example are suitable as calibration plumbing
+checks only. They should not be reported as Kiribati policy estimates until
+formal calibration, posterior uncertainty, and contact-matrix sensitivity
+analysis are implemented.
+
 Recommended structure:
 
 | Component | Minimum viable choice | Rationale |
@@ -266,4 +283,3 @@ Policy outputs:
 - A policy-facing model requires governance decisions about whether individual
   de-identified data can be shared, or whether aggregate tables are the
   acceptable unit of collaboration.
-

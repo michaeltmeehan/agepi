@@ -68,6 +68,35 @@ integrate_state_trajectory_desolve <- function(initial_state,
     stop(desolve_error, call. = FALSE)
   }
 
+  critical_times <- desolve_tcrit(times, tcrit)
+  solved <- if (length(critical_times) == 0) {
+    integrate_state_trajectory_desolve_interval(
+      initial_state = initial_state,
+      times = times,
+      derivative = derivative
+    )
+  } else {
+    integrate_state_trajectory_desolve_segmented(
+      initial_state = initial_state,
+      times = times,
+      derivative = derivative,
+      critical_times = critical_times
+    )
+  }
+
+  values <- vector("list", length(times))
+  state_columns <- seq_len(length(initial_state)) + 1
+  for (i in seq_along(times)) {
+    values[[i]] <- output(as.numeric(solved[i, state_columns]), solved[i, "time"])
+  }
+
+  bind_integrated_outputs(values)
+}
+
+integrate_state_trajectory_desolve_interval <- function(initial_state,
+                                                        times,
+                                                        derivative,
+                                                        tcrit = NULL) {
   ode_args <- list(
     y = as.numeric(initial_state),
     times = times,
@@ -77,18 +106,47 @@ integrate_state_trajectory_desolve <- function(initial_state,
     parms = NULL
   )
   if (!is.null(tcrit)) {
-    ode_args$tcrit <- desolve_tcrit(times, tcrit)
+    ode_args$tcrit <- tcrit
   }
 
-  solved <- do.call(deSolve::ode, ode_args)
+  do.call(deSolve::ode, ode_args)
+}
 
-  values <- vector("list", length(times))
-  state_columns <- seq_len(length(initial_state)) + 1
-  for (i in seq_along(times)) {
-    values[[i]] <- output(as.numeric(solved[i, state_columns]), solved[i, "time"])
+integrate_state_trajectory_desolve_segmented <- function(initial_state,
+                                                         times,
+                                                         derivative,
+                                                         critical_times) {
+  segment_breaks <- unique(c(min(times), critical_times))
+  segment_breaks <- sort(segment_breaks)
+  current_state <- as.numeric(initial_state)
+  solved_segments <- list()
+
+  for (segment_index in seq_len(length(segment_breaks) - 1)) {
+    segment_start <- segment_breaks[segment_index]
+    segment_end <- segment_breaks[segment_index + 1]
+    segment_times <- times[times >= segment_start & times <= segment_end]
+    segment_times <- sort(unique(c(segment_start, segment_times, segment_end)))
+
+    solved <- integrate_state_trajectory_desolve_interval(
+      initial_state = current_state,
+      times = segment_times,
+      derivative = derivative,
+      tcrit = segment_end
+    )
+
+    if (segment_index > 1) {
+      solved <- solved[solved[, "time"] != segment_start, , drop = FALSE]
+    }
+    solved_segments[[segment_index]] <- solved
+    current_state <- as.numeric(solved[nrow(solved), -1])
   }
 
-  bind_integrated_outputs(values)
+  solved <- do.call(rbind, solved_segments)
+  requested_rows <- match(times, solved[, "time"])
+  if (anyNA(requested_rows)) {
+    stop("deSolve segmented integration did not return all requested output times.", call. = FALSE)
+  }
+  solved[requested_rows, , drop = FALSE]
 }
 
 bind_integrated_outputs <- function(values) {
