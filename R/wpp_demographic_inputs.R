@@ -486,6 +486,193 @@ collapse_wpp_open_age_rates <- function(data,
   )
 }
 
+#' Build an agepi demographic process from WPP 2024 inputs
+#'
+#' Loads WPP 2024 national population, percent-ASFR fertility, total fertility,
+#' mortality, and optionally migration inputs for one country. Annual WPP inputs
+#' are used directly as stepwise schedules; no interpolation is introduced.
+#'
+#' @param country Single country/location name in WPP's `name` column.
+#' @param years Numeric vector of annual years to use.
+#' @param age_structure Target age structure.
+#' @param migration Whether to include WPP net migration counts.
+#' @param fertility_exposure_fraction Female exposure fraction passed to
+#'   [build_demographic_process()].
+#'
+#' @return A list containing `population`, `demographic_process`, schedules,
+#'   selected input tables, and metadata.
+#' @examples
+#' if (requireNamespace("wpp2024", quietly = TRUE)) {
+#'   ages <- wpp_age_structure_1year(max_age = 95)
+#'   wpp_inputs <- demographic_process_from_wpp(
+#'     country = "Kiribati",
+#'     years = 2025:2026,
+#'     age_structure = ages
+#'   )
+#'   demography_population_vector(wpp_inputs$population, time = 2025)
+#' }
+#' @export
+demographic_process_from_wpp <- function(country,
+                                         years,
+                                         age_structure,
+                                         migration = TRUE,
+                                         fertility_exposure_fraction = 0.5) {
+  validate_age_structure(age_structure)
+  validate_wpp_workflow_arguments(country, years, migration, fertility_exposure_fraction)
+
+  open_age <- wpp_workflow_open_age(age_structure)
+
+  population_data <- wpp_dataset("popprojAge1dt")
+  fertility_weight_data <- wpp_dataset("percentASFR1dt")
+  tfr_data <- wpp_dataset("tfrproj1dt")
+  mortality_data <- wpp_dataset("mx1dt")
+
+  population_input <- wpp_location_rows(
+    population_data,
+    location = country,
+    columns = c("name", "year", "age", "pop")
+  )
+  population_input$year <- as.numeric(population_input$year)
+  population_input <- population_input[population_input$year %in% years, ]
+  population_input$pop <- 1000 * as.numeric(population_input$pop)
+  population_input <- collapse_wpp_open_age_counts(
+    population_input,
+    "pop",
+    open_age = open_age
+  )
+
+  population <- population_from_wpp(
+    data = population_input,
+    age_structure = age_structure,
+    time_col = "year",
+    age_group_col = "age",
+    population_col = "pop",
+    location = country,
+    location_col = "name"
+  )
+
+  fertility_weights <- wpp_location_rows(
+    fertility_weight_data,
+    location = country,
+    columns = c("year", "age", "pasfr")
+  )
+  fertility_weights$year <- as.numeric(fertility_weights$year)
+  fertility_weights <- fertility_weights[fertility_weights$year %in% years, ]
+
+  tfr_source <- wpp_location_rows(
+    tfr_data,
+    location = country,
+    columns = c("year", "tfr")
+  )
+  tfr_source$year <- as.numeric(tfr_source$year)
+  tfr_source$tfr <- as.numeric(tfr_source$tfr)
+  tfr_years <- sort(unique(fertility_weights$year))
+  tfr_input <- tfr_source[tfr_source$year %in% tfr_years, , drop = FALSE]
+  missing_tfr_years <- setdiff(tfr_years, tfr_input$year)
+  if (length(missing_tfr_years) > 0) {
+    stop(
+      "Annual WPP TFR input is missing year(s): ",
+      paste(missing_tfr_years, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  fertility_schedule <- fertility_from_wpp_percent_asfr(
+    data = fertility_weights,
+    age_structure = age_structure,
+    time_col = "year",
+    age_col = "age",
+    weight_col = "pasfr",
+    tfr_data = tfr_input,
+    tfr_time_col = "year",
+    tfr_col = "tfr",
+    weight_type = "percent",
+    maternal_age_groups = wpp_workflow_maternal_age_groups(age_structure),
+    tolerance = 1e-5
+  )
+
+  mortality_input <- wpp_location_rows(
+    mortality_data,
+    location = country,
+    columns = c("year", "age", "mxB")
+  )
+  mortality_input$year <- as.numeric(mortality_input$year)
+  mortality_input <- mortality_input[mortality_input$year %in% years, ]
+  mortality_input <- collapse_wpp_open_age_rates(
+    mortality_input,
+    "mxB",
+    open_age = open_age
+  )
+
+  mortality_schedule <- mortality_from_wpp(
+    data = mortality_input,
+    age_structure = age_structure,
+    time_col = "year",
+    age_col = "age",
+    mortality_col = "mxB",
+    quantity = "mx"
+  )
+
+  migration_schedule <- NULL
+  migration_input <- NULL
+  process_mode <- "closed"
+  if (isTRUE(migration)) {
+    migration_data <- wpp_dataset("migprojAge1dt")
+    migration_input <- wpp_location_rows(
+      migration_data,
+      location = country,
+      columns = c("year", "age", "mig")
+    )
+    migration_input$year <- as.numeric(migration_input$year)
+    migration_input <- migration_input[migration_input$year %in% years, ]
+    migration_input$mig <- 1000 * as.numeric(migration_input$mig)
+    migration_input <- collapse_wpp_open_age_counts(
+      migration_input,
+      "mig",
+      open_age = open_age
+    )
+
+    migration_schedule <- standardise_wpp_migration(
+      data = migration_input,
+      age_structure = age_structure,
+      time_col = "year",
+      age_col = "age",
+      migration_col = "mig",
+      migration_type = "count"
+    )
+    process_mode <- "migration"
+  }
+
+  demographic_process <- build_demographic_process(
+    age_structure = age_structure,
+    fertility_schedule = fertility_schedule,
+    fertility_exposure_fraction = fertility_exposure_fraction,
+    mortality_schedule = mortality_schedule,
+    migration_schedule = migration_schedule,
+    mode = process_mode
+  )
+
+  result <- list(
+    country = country,
+    years = years,
+    age_structure = age_structure,
+    population = population,
+    demographic_process = demographic_process,
+    fertility_schedule = fertility_schedule,
+    mortality_schedule = mortality_schedule,
+    migration_schedule = migration_schedule,
+    inputs = list(
+      population = population_input,
+      fertility_weights = fertility_weights,
+      tfr = tfr_input,
+      mortality = mortality_input,
+      migration = migration_input
+    )
+  )
+  class(result) <- c("agepi_wpp_demographic_process_inputs", "list")
+  result
+}
+
 validate_wpp_standardisation_inputs <- function(data, age_structure, required_columns) {
   validate_age_structure(age_structure)
 
@@ -767,4 +954,45 @@ collapse_wpp_open_age_values <- function(data, value_col, age_col, open_age, mod
   names(collapsed) <- c(group_cols, value_col)
   row.names(collapsed) <- NULL
   collapsed
+}
+
+validate_wpp_workflow_arguments <- function(country, years, migration, fertility_exposure_fraction) {
+  if (!is.character(country) || length(country) != 1 || is.na(country) || !nzchar(country)) {
+    stop("country must be a single non-empty string.", call. = FALSE)
+  }
+
+  if (!is.numeric(years) || length(years) == 0 || anyNA(years) || any(!is.finite(years))) {
+    stop("years must be a non-empty numeric vector of finite non-missing values.", call. = FALSE)
+  }
+
+  if (any(duplicated(years))) {
+    stop("years cannot contain duplicate values.", call. = FALSE)
+  }
+
+  if (!is.logical(migration) || length(migration) != 1 || anyNA(migration)) {
+    stop("migration must be TRUE or FALSE.", call. = FALSE)
+  }
+
+  if (!is.numeric(fertility_exposure_fraction) || length(fertility_exposure_fraction) != 1 ||
+      anyNA(fertility_exposure_fraction) || !is.finite(fertility_exposure_fraction) ||
+      fertility_exposure_fraction < 0 || fertility_exposure_fraction > 1) {
+    stop("fertility_exposure_fraction must be a finite numeric scalar between 0 and 1.", call. = FALSE)
+  }
+
+  invisible(NULL)
+}
+
+wpp_workflow_open_age <- function(age_structure) {
+  open_ages <- age_structure$lower_bounds[is.infinite(age_structure$upper_bounds)]
+  if (length(open_ages) != 1) {
+    stop("age_structure must contain exactly one open-ended terminal age group.", call. = FALSE)
+  }
+  open_ages
+}
+
+wpp_workflow_maternal_age_groups <- function(age_structure) {
+  age_structure$age_groups[
+    age_structure$lower_bounds >= 10 &
+      age_structure$lower_bounds <= 54
+  ]
 }
