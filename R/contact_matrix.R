@@ -128,6 +128,33 @@ contact_matrix_from_socialmixr <- function(
   )
 }
 
+#' Build a published proxy contact matrix for a target age structure
+#'
+#' Currently supports a POLYMOD United Kingdom proxy through the optional
+#' `socialmixr` package. The source matrix is built on a six-band age grid and
+#' expanded to the target age structure by assigning each target age group to
+#' the source band containing its lower bound. No reciprocity correction,
+#' population balancing, or Kiribati-specific calibration is applied.
+#'
+#' @param age_structure Target valid age structure.
+#' @param source Contact source. Currently only `"polymod_uk"` is supported.
+#'
+#' @return A numeric contact matrix in agepi recipient-source orientation. A
+#'   metadata list is attached as attribute `"contact_source"`.
+#' @export
+contact_matrix_for_age_structure <- function(
+  age_structure,
+  source = c("polymod_uk")
+) {
+  source <- match.arg(source)
+  validate_age_structure(age_structure)
+
+  switch(
+    source,
+    polymod_uk = polymod_uk_contact_matrix_for_age_structure(age_structure)
+  )
+}
+
 #' Convert conmat-style output to an agepi contact matrix
 #'
 #' Optional, dependency-free adapter for conmat-style long tables. The `conmat`
@@ -503,4 +530,87 @@ validate_contact_schedule_time <- function(time, available_times) {
   }
 
   invisible(time)
+}
+
+polymod_uk_contact_matrix_for_age_structure <- function(age_structure) {
+  if (!requireNamespace("socialmixr", quietly = TRUE)) {
+    stop(
+      "Package socialmixr is required for source = 'polymod_uk'.",
+      call. = FALSE
+    )
+  }
+
+  source_age_structure <- AgeStructure(
+    age_groups = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
+    lower_bounds = c(0, 5, 15, 25, 45, 65),
+    upper_bounds = c(4, 14, 24, 44, 64, Inf)
+  )
+
+  data_environment <- new.env(parent = emptyenv())
+  utils::data("polymod", package = "socialmixr", envir = data_environment)
+  polymod <- get("polymod", envir = data_environment, inherits = FALSE)
+  socialmixr_matrix <- suppressWarnings(socialmixr::contact_matrix(
+    polymod,
+    countries = "United Kingdom",
+    age_limits = source_age_structure$lower_bounds,
+    symmetric = FALSE
+  ))
+
+  source_matrix <- socialmixr_matrix$matrix
+  dimnames(source_matrix) <- list(
+    source_age_structure$age_groups,
+    source_age_structure$age_groups
+  )
+  source_matrix <- contact_matrix_from_socialmixr(
+    source_matrix,
+    age_structure = source_age_structure
+  )
+
+  age_band <- target_age_groups_to_source_bands(age_structure, source_age_structure)
+  contact_matrix <- source_matrix[age_band, age_band]
+  dimnames(contact_matrix) <- list(age_structure$age_groups, age_structure$age_groups)
+  validate_contact_matrix(contact_matrix, age_structure)
+
+  attr(contact_matrix, "contact_source") <- list(
+    source_label = paste(
+      "POLYMOD United Kingdom empirical social-contact survey matrix from",
+      "socialmixr::contact_matrix(); used as a published proxy, not a",
+      "Kiribati-specific matrix"
+    ),
+    source_reference = paste(
+      "Mossong et al. 2008 / POLYMOD, distributed through socialmixr's",
+      "bundled polymod dataset"
+    ),
+    source_age_grid = paste(source_age_structure$age_groups, collapse = ", "),
+    model_age_grid = paste(age_structure$age_groups, collapse = ", "),
+    expansion_note = paste(
+      "The validated six-age-band source matrix is expanded to the target",
+      "model grid by assigning each target age group to its source age band",
+      "and using constant contacts within each source band."
+    ),
+    limitation = paste(
+      "This proxy is European and pre-pandemic; it is not calibrated to",
+      "Kiribati household structure, crowding, school attendance, or",
+      "TB-relevant prolonged indoor exposure."
+    )
+  )
+
+  contact_matrix
+}
+
+target_age_groups_to_source_bands <- function(target_age_structure, source_age_structure) {
+  vapply(
+    target_age_structure$lower_bounds,
+    function(lower_bound) {
+      source_index <- which(
+        source_age_structure$lower_bounds <= lower_bound &
+          source_age_structure$upper_bounds >= lower_bound
+      )
+      if (length(source_index) != 1) {
+        stop("target age group lower bounds must map to exactly one source contact age band.", call. = FALSE)
+      }
+      source_age_structure$age_groups[source_index]
+    },
+    character(1)
+  )
 }

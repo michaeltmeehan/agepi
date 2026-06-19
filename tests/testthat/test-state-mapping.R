@@ -165,3 +165,41 @@ test_that("state vector names are ignored when converting to long format", {
   expect_identical(state_long$compartment, c("S", "S", "I", "I"))
   expect_equal(state_long$value, c(100, 120, 2, 3))
 })
+
+test_that("initialise_compartments_from_proportions allocates residual population", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  population <- c(100, 200)
+  proportions <- list(
+    I = c(0.1, 0.2),
+    R = c(0.3, 0.1)
+  )
+
+  state <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = proportions,
+    residual_compartment = "S",
+    compartments = c("S", "I", "R"),
+    age_structure = ages
+  )
+
+  expect_identical(state$compartment, c("S", "S", "I", "I", "R", "R"))
+  expect_identical(state$age_group, rep(ages$age_groups, times = 3))
+  expect_equal(state$value, c(60, 140, 10, 40, 30, 20))
+})
+
+test_that("initialise_compartments_from_proportions rejects over-allocation", {
+  population <- c(a = 100, b = 200)
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(I = c(0.8, 0.2), R = c(0.3, 0.1)),
+      residual_compartment = "S"
+    ),
+    "allocate more than the population"
+  )
+})

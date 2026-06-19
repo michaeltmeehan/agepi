@@ -373,6 +373,119 @@ standardise_wpp_migration <- function(data,
   MigrationSchedule(migration, age_structure)
 }
 
+#' Load a dataset from the optional wpp2024 package
+#'
+#' @param dataset Single dataset name to load from `wpp2024`.
+#'
+#' @return A data frame.
+#' @export
+wpp_dataset <- function(dataset) {
+  if (!is.character(dataset) || length(dataset) != 1 || is.na(dataset) || !nzchar(dataset)) {
+    stop("dataset must be a single non-empty string.", call. = FALSE)
+  }
+
+  if (!requireNamespace("wpp2024", quietly = TRUE)) {
+    stop(
+      "Package wpp2024 is required to load dataset '",
+      dataset,
+      "'. Install wpp2024 or supply data directly.",
+      call. = FALSE
+    )
+  }
+
+  dataset_environment <- new.env(parent = baseenv())
+  utils::data(list = dataset, package = "wpp2024", envir = dataset_environment)
+  if (!exists(dataset, envir = dataset_environment, inherits = FALSE)) {
+    stop("Dataset not found in wpp2024: ", dataset, call. = FALSE)
+  }
+
+  as.data.frame(get(dataset, envir = dataset_environment, inherits = FALSE))
+}
+
+#' Select one location from WPP-like data
+#'
+#' @param data Data frame containing WPP-like rows.
+#' @param location Single location value to select.
+#' @param location_col Column containing location names. Defaults to `"name"`.
+#' @param columns Optional columns to retain after filtering.
+#'
+#' @return A filtered data frame.
+#' @export
+wpp_location_rows <- function(data,
+                              location,
+                              location_col = "name",
+                              columns = names(data)) {
+  if (!is.data.frame(data)) {
+    stop("data must be a data frame.", call. = FALSE)
+  }
+
+  if (length(location) != 1 || anyNA(location)) {
+    stop("location must be a single non-missing value.", call. = FALSE)
+  }
+
+  if (!is.character(location_col) || length(location_col) != 1 || is.na(location_col) || !nzchar(location_col)) {
+    stop("location_col must be a single non-empty string.", call. = FALSE)
+  }
+
+  missing_columns <- setdiff(c(location_col, columns), names(data))
+  if (length(missing_columns) > 0) {
+    stop(
+      "data is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  data[data[[location_col]] == location, columns, drop = FALSE]
+}
+
+#' Collapse WPP-style age-specific counts into an open-ended age group
+#'
+#' Sums all rows with age lower bound greater than or equal to `open_age` into
+#' a single `open_age+` row within each non-age grouping.
+#'
+#' @param data Data frame containing WPP-like age-specific counts.
+#' @param value_col Column containing count values.
+#' @param age_col Column containing WPP-style age labels. Defaults to `"age"`.
+#' @param open_age Lower bound of the open-ended terminal age group.
+#'
+#' @return A data frame with collapsed count rows.
+#' @export
+collapse_wpp_open_age_counts <- function(data,
+                                         value_col,
+                                         age_col = "age",
+                                         open_age) {
+  collapse_wpp_open_age_values(
+    data = data,
+    value_col = value_col,
+    age_col = age_col,
+    open_age = open_age,
+    mode = "count"
+  )
+}
+
+#' Collapse WPP-style age-specific rates into an open-ended age group
+#'
+#' Keeps ages up to `open_age`, relabels the row whose lower bound is
+#' `open_age` as `open_age+`, and drops finer ages above `open_age`.
+#'
+#' @inheritParams collapse_wpp_open_age_counts
+#'
+#' @return A data frame with one terminal open-ended rate row.
+#' @export
+collapse_wpp_open_age_rates <- function(data,
+                                        value_col,
+                                        age_col = "age",
+                                        open_age) {
+  collapse_wpp_open_age_values(
+    data = data,
+    value_col = value_col,
+    age_col = age_col,
+    open_age = open_age,
+    mode = "rate"
+  )
+}
+
 validate_wpp_standardisation_inputs <- function(data, age_structure, required_columns) {
   validate_age_structure(age_structure)
 
@@ -585,4 +698,73 @@ parse_wpp_age_lower_bound <- function(label) {
   }
 
   NA_real_
+}
+
+collapse_wpp_open_age_values <- function(data, value_col, age_col, open_age, mode) {
+  if (!is.data.frame(data)) {
+    stop("data must be a data frame.", call. = FALSE)
+  }
+
+  if (!is.character(value_col) || length(value_col) != 1 || is.na(value_col) || !nzchar(value_col)) {
+    stop("value_col must be a single non-empty string.", call. = FALSE)
+  }
+
+  if (!is.character(age_col) || length(age_col) != 1 || is.na(age_col) || !nzchar(age_col)) {
+    stop("age_col must be a single non-empty string.", call. = FALSE)
+  }
+
+  if (!is.numeric(open_age) || length(open_age) != 1 || anyNA(open_age) || !is.finite(open_age)) {
+    stop("open_age must be a single finite numeric value.", call. = FALSE)
+  }
+
+  missing_columns <- setdiff(c(age_col, value_col), names(data))
+  if (length(missing_columns) > 0) {
+    stop(
+      "data is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  data[[value_col]] <- suppressWarnings(as.numeric(data[[value_col]]))
+  if (anyNA(data[[value_col]]) || any(!is.finite(data[[value_col]]))) {
+    stop("value_col must contain finite numeric values.", call. = FALSE)
+  }
+
+  age_lower <- vapply(
+    as.character(data[[age_col]]),
+    parse_wpp_age_lower_bound,
+    numeric(1)
+  )
+  if (anyNA(age_lower)) {
+    stop("Unsupported WPP age label in ", age_col, ".", call. = FALSE)
+  }
+
+  data$.agepi_age_lower <- age_lower
+
+  if (identical(mode, "rate")) {
+    data <- data[data$.agepi_age_lower <= open_age, , drop = FALSE]
+  }
+
+  data[[age_col]] <- ifelse(
+    data$.agepi_age_lower >= open_age,
+    paste0(open_age, "+"),
+    as.character(data$.agepi_age_lower)
+  )
+
+  if (identical(mode, "rate")) {
+    data$.agepi_age_lower <- NULL
+    row.names(data) <- NULL
+    return(data)
+  }
+
+  group_cols <- setdiff(names(data), c(value_col, ".agepi_age_lower"))
+  collapsed <- stats::aggregate(
+    data[[value_col]],
+    data[group_cols],
+    sum
+  )
+  names(collapsed) <- c(group_cols, value_col)
+  row.names(collapsed) <- NULL
+  collapsed
 }

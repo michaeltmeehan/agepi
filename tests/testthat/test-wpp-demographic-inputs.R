@@ -831,3 +831,48 @@ test_that("wpp2024 remains optional for demographic input standardisation", {
   testthat::skip_if_not_installed("wpp2024")
   expect_true(requireNamespace("wpp2024", quietly = TRUE))
 })
+
+test_that("wpp_location_rows filters one location and keeps requested columns", {
+  data <- data.frame(
+    name = c("A", "B", "A"),
+    year = c(2020, 2020, 2021),
+    age = c("0", "0", "1"),
+    value = 1:3,
+    stringsAsFactors = FALSE
+  )
+
+  rows <- wpp_location_rows(data, "A", columns = c("name", "year", "value"))
+
+  expect_identical(rows$name, c("A", "A"))
+  expect_identical(names(rows), c("name", "year", "value"))
+})
+
+test_that("collapse_wpp_open_age_counts sums terminal open ages by grouping columns", {
+  data <- data.frame(
+    name = "Exampleland",
+    year = c(2020, 2020, 2020, 2021, 2021, 2021),
+    age = c("94", "95", "96", "94", "95", "96"),
+    pop = c(10, 2, 3, 20, 4, 5),
+    stringsAsFactors = FALSE
+  )
+
+  collapsed <- collapse_wpp_open_age_counts(data, "pop", open_age = 95)
+
+  expect_equal(collapsed$pop[collapsed$year == 2020 & collapsed$age == "95+"], 5)
+  expect_equal(collapsed$pop[collapsed$year == 2021 & collapsed$age == "95+"], 9)
+  expect_true(any(collapsed$age == "94"))
+})
+
+test_that("collapse_wpp_open_age_rates keeps the terminal open-age rate row", {
+  data <- data.frame(
+    year = 2020,
+    age = c("94", "95", "96"),
+    mx = c(0.1, 0.2, 0.3),
+    stringsAsFactors = FALSE
+  )
+
+  collapsed <- collapse_wpp_open_age_rates(data, "mx", open_age = 95)
+
+  expect_identical(collapsed$age, c("94", "95+"))
+  expect_equal(collapsed$mx, c(0.1, 0.2))
+})

@@ -113,3 +113,47 @@ test_that("summary helpers work with simulate_deterministic output", {
   expect_equal(by_age$value[by_age$age_group == "5-9"], rep(200, 4))
   expect_equal(total$value, rep(300, 4))
 })
+
+summary_test_cumulative_flows <- function() {
+  data.frame(
+    time = rep(c(0, 1, 2), each = 4),
+    cumulative_name = rep(c("infections", "recoveries"), each = 2, times = 3),
+    transition_id = rep(c("S->I", "I->R"), each = 2, times = 3),
+    from = rep(c("S", "I"), each = 2, times = 3),
+    to = rep(c("I", "R"), each = 2, times = 3),
+    age_group = rep(c("0-4", "5-9"), times = 6),
+    value = c(1, 2, 0, 1, 4, 5, 2, 4, 8, 9, 5, 8),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("cumulative flow totals sum across age groups and transitions", {
+  totals <- cumulative_flow_totals(summary_test_cumulative_flows())
+
+  expect_identical(names(totals), c("time", "cumulative_name", "value"))
+  expect_equal(
+    totals$value[totals$cumulative_name == "infections"],
+    c(3, 9, 17)
+  )
+})
+
+test_that("cumulative flow totals can be reshaped wide", {
+  wide <- cumulative_flow_totals_wide(summary_test_cumulative_flows())
+
+  expect_identical(names(wide), c("time", "cumulative_infections", "cumulative_recoveries"))
+  expect_equal(wide$cumulative_recoveries, c(1, 6, 13))
+})
+
+test_that("cumulative flow increments calculate differences within each flow", {
+  increments <- cumulative_flow_increments(
+    summary_test_cumulative_flows(),
+    times = c(1, 2),
+    value_col = "annual_value"
+  )
+
+  expect_identical(names(increments), c("time", "cumulative_name", "value", "annual_value"))
+  expect_equal(
+    increments$annual_value[increments$cumulative_name == "infections"],
+    c(9, 8)
+  )
+})

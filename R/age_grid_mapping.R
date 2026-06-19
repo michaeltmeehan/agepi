@@ -1,3 +1,11 @@
+#' Build an exact age-grid mapping
+#'
+#' @param from_age_groups Source age structure.
+#' @param to_age_groups Target age structure.
+#' @param open_ended How to handle open-ended age groups.
+#'
+#' @return An `AgeGridMapping` object.
+#' @export
 AgeGridMapping <- function(from_age_groups, to_age_groups, open_ended = c("include", "error")) {
   open_ended <- match.arg(open_ended)
 
@@ -57,6 +65,15 @@ AgeGridMapping <- function(from_age_groups, to_age_groups, open_ended = c("inclu
   mapping
 }
 
+#' Aggregate age-specific counts across an age-grid mapping
+#'
+#' @param x Data frame containing `age_group` and count values.
+#' @param mapping An `AgeGridMapping` object.
+#' @param value_col Count column name.
+#' @param allow_negative Whether negative count values are allowed.
+#'
+#' @return Aggregated count table.
+#' @export
 aggregate_age_counts <- function(x, mapping, value_col = "value", allow_negative = FALSE) {
   validate_age_grid_mapping(mapping)
   if (!isTRUE(mapping$can_aggregate)) {
@@ -70,6 +87,13 @@ aggregate_age_counts <- function(x, mapping, value_col = "value", allow_negative
   sum_age_count_table(x, value_col)
 }
 
+#' Aggregate a demography trajectory to a reporting age grid
+#'
+#' @param x Data frame with `time`, `age_group`, and `population`.
+#' @param mapping An `AgeGridMapping` object.
+#'
+#' @return Aggregated demography trajectory.
+#' @export
 aggregate_demography_trajectory_age_grid <- function(x, mapping) {
   aggregate_output_age_grid(
     x = x,
@@ -80,6 +104,13 @@ aggregate_demography_trajectory_age_grid <- function(x, mapping) {
   )
 }
 
+#' Aggregate an epidemic trajectory to a reporting age grid
+#'
+#' @param x Data frame with `time`, `compartment`, `age_group`, and `value`.
+#' @param mapping An `AgeGridMapping` object.
+#'
+#' @return Aggregated epidemic trajectory.
+#' @export
 aggregate_epidemic_trajectory_age_grid <- function(x, mapping) {
   aggregate_output_age_grid(
     x = x,
@@ -90,6 +121,13 @@ aggregate_epidemic_trajectory_age_grid <- function(x, mapping) {
   )
 }
 
+#' Aggregate an age-group population summary to a reporting age grid
+#'
+#' @param x Data frame with `time`, `age_group`, and `value`.
+#' @param mapping An `AgeGridMapping` object.
+#'
+#' @return Aggregated population summary.
+#' @export
 aggregate_population_summary_age_grid <- function(x, mapping) {
   aggregate_output_age_grid(
     x = x,
@@ -100,6 +138,13 @@ aggregate_population_summary_age_grid <- function(x, mapping) {
   )
 }
 
+#' Aggregate cumulative-flow output to a reporting age grid
+#'
+#' @param x Cumulative-flow data frame.
+#' @param mapping An `AgeGridMapping` object.
+#'
+#' @return Aggregated cumulative-flow data frame.
+#' @export
 aggregate_cumulative_flows_age_grid <- function(x, mapping) {
   aggregate_output_age_grid(
     x = x,

@@ -39,150 +39,6 @@ if (!requireNamespace("wpp2024", quietly = TRUE) ||
   )
 } else {
 
-load_wpp_dataset <- function(name) {
-  dataset_environment <- new.env(parent = baseenv())
-  utils::data(list = name, package = "wpp2024", envir = dataset_environment)
-  as.data.frame(get(name, envir = dataset_environment, inherits = FALSE))
-}
-
-kiribati_rows <- function(data, columns = names(data)) {
-  data[data$name == "Kiribati", columns, drop = FALSE]
-}
-
-broad_age_band <- function(age_group) {
-  lower_age <- as.integer(sub("[+].*$", "", sub("-.*$", "", age_group)))
-  cut(
-    lower_age,
-    breaks = c(-Inf, 4, 14, 24, 44, 64, Inf),
-    labels = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
-    right = TRUE
-  )
-}
-
-polymod_proxy_age_band <- function(age_group) {
-  lower_age <- as.integer(sub("[+].*$", "", sub("-.*$", "", age_group)))
-  cut(
-    lower_age,
-    breaks = c(-Inf, 4, 14, 24, 44, 64, Inf),
-    labels = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
-    right = TRUE
-  )
-}
-
-build_polymod_proxy_contact_matrix <- function(age_structure) {
-  source_age_structure <- AgeStructure(
-    age_groups = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
-    lower_bounds = c(0, 5, 15, 25, 45, 65),
-    upper_bounds = c(4, 14, 24, 44, 64, Inf)
-  )
-
-  data_environment <- new.env(parent = emptyenv())
-  utils::data("polymod", package = "socialmixr", envir = data_environment)
-  polymod <- get("polymod", envir = data_environment, inherits = FALSE)
-  socialmixr_matrix <- suppressWarnings(socialmixr::contact_matrix(
-    polymod,
-    countries = "United Kingdom",
-    age_limits = source_age_structure$lower_bounds,
-    symmetric = FALSE
-  ))
-  source_matrix <- socialmixr_matrix$matrix
-  dimnames(source_matrix) <- list(
-    source_age_structure$age_groups,
-    source_age_structure$age_groups
-  )
-  source_matrix <- contact_matrix_from_socialmixr(
-    source_matrix,
-    age_structure = source_age_structure
-  )
-
-  age_band <- as.character(polymod_proxy_age_band(age_structure$age_groups))
-  contact_matrix <- source_matrix[age_band, age_band]
-  dimnames(contact_matrix) <- list(age_structure$age_groups, age_structure$age_groups)
-  validate_contact_matrix(contact_matrix, age_structure)
-
-  list(
-    matrix = contact_matrix,
-    source_matrix = source_matrix,
-    source_age_structure = source_age_structure,
-    source_label = paste(
-      "POLYMOD United Kingdom empirical social-contact survey matrix from",
-      "socialmixr::contact_matrix(); used as a published proxy, not a",
-      "Kiribati-specific matrix"
-    ),
-    source_reference = paste(
-      "Mossong et al. 2008 / POLYMOD, distributed through socialmixr's",
-      "bundled polymod dataset"
-    ),
-    expansion_note = paste(
-      "The validated six-age-band source matrix is expanded to the WPP",
-      "single-year model grid by assigning each one-year age to its source",
-      "age band and using constant contacts within each source band."
-    ),
-    limitation = paste(
-      "This proxy is European and pre-pandemic; it is not calibrated to",
-      "Kiribati household structure, crowding, school attendance, or",
-      "TB-relevant prolonged indoor exposure."
-    )
-  )
-}
-
-collapse_open_age_count <- function(data, value_col, open_age = 95) {
-  data$age_lower <- as.integer(sub("[+].*$", "", sub("-.*$", "", as.character(data$age))))
-  data$age <- ifelse(data$age_lower >= open_age, paste0(open_age, "+"), as.character(data$age_lower))
-  data[[value_col]] <- as.numeric(data[[value_col]])
-  group_cols <- c(setdiff(names(data), c(value_col, "age_lower", "age")), "age")
-  stats::aggregate(
-    data[[value_col]],
-    data[group_cols],
-    sum
-  ) |>
-    stats::setNames(c(group_cols, value_col))
-}
-
-collapse_abridged_age_count <- function(data, value_col, open_age = 95) {
-  data$age_lower <- as.integer(sub("[+].*$", "", sub("-.*$", "", as.character(data$age))))
-  data$age <- ifelse(
-    data$age_lower >= open_age,
-    paste0(open_age, "+"),
-    ifelse(data$age_lower == 0, "0",
-      ifelse(data$age_lower < 5, "1", as.character(5 * floor(data$age_lower / 5)))
-    )
-  )
-  data[[value_col]] <- as.numeric(data[[value_col]])
-  group_cols <- c(setdiff(names(data), c(value_col, "age_lower", "age")), "age")
-  stats::aggregate(
-    data[[value_col]],
-    data[group_cols],
-    sum
-  ) |>
-    stats::setNames(c(group_cols, value_col))
-}
-
-collapse_open_age_rate <- function(data, value_col, open_age = 95) {
-  data$age_lower <- as.integer(sub("[+].*$", "", sub("-.*$", "", as.character(data$age))))
-  data <- data[data$age_lower <= open_age, ]
-  data$age <- ifelse(data$age_lower == open_age, paste0(open_age, "+"), as.character(data$age_lower))
-  data[[value_col]] <- as.numeric(data[[value_col]])
-  data[, setdiff(names(data), "age_lower"), drop = FALSE]
-}
-
-aggregate_by_broad_age <- function(data, value_col = "value") {
-  data$reporting_age_group <- broad_age_band(data$age_group)
-  group_cols <- c(setdiff(names(data), c("age_group", value_col, "reporting_age_group")), "reporting_age_group")
-  stats::aggregate(
-    data[[value_col]],
-    data[group_cols],
-    sum
-  ) |>
-    stats::setNames(c(group_cols, value_col))
-}
-
-latest_cumulative <- function(cumulative, name) {
-  rows <- cumulative[cumulative$cumulative_name == name, , drop = FALSE]
-  latest <- rows[rows$time == max(rows$time), , drop = FALSE]
-  stats::aggregate(value ~ cumulative_name + age_group, latest, sum)
-}
-
 simulation_years <- 2025:2030
 simulation_times <- seq(2025, 2030, length.out = (2030 - 2025) * 4 + 1)
 process_years <- 2025:2030
@@ -192,23 +48,34 @@ output_timestep_years <- 1 / 4
 country <- "Kiribati"
 
 age_structure <- wpp_age_structure_1year(max_age = 95)
+reporting_age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
+  lower_bounds = c(0, 5, 15, 25, 45, 65),
+  upper_bounds = c(4, 14, 24, 44, 64, Inf)
+)
+reporting_age_mapping <- AgeGridMapping(
+  from_age_groups = age_structure,
+  to_age_groups = reporting_age_structure,
+  open_ended = "include"
+)
 age_groups <- age_structure$age_groups
 age_lower <- age_structure$lower_bounds
 
-population_data <- load_wpp_dataset("popprojAge1dt")
-fertility_weight_data <- load_wpp_dataset("percentASFR1dt")
-tfr_data <- load_wpp_dataset("tfrproj1dt")
-mortality_data <- load_wpp_dataset("mx1dt")
-migration_data <- load_wpp_dataset("migprojAge1dt")
+population_data <- wpp_dataset("popprojAge1dt")
+fertility_weight_data <- wpp_dataset("percentASFR1dt")
+tfr_data <- wpp_dataset("tfrproj1dt")
+mortality_data <- wpp_dataset("mx1dt")
+migration_data <- wpp_dataset("migprojAge1dt")
 
-population_input <- kiribati_rows(
+population_input <- wpp_location_rows(
   population_data,
-  c("name", "year", "age", "pop")
+  location = country,
+  columns = c("name", "year", "age", "pop")
 )
 population_input$year <- as.numeric(population_input$year)
 population_input <- population_input[population_input$year %in% simulation_years, ]
 population_input$pop <- 1000 * as.numeric(population_input$pop)
-population_input <- collapse_open_age_count(population_input, "pop", open_age = 95)
+population_input <- collapse_wpp_open_age_counts(population_input, "pop", open_age = 95)
 
 wpp_population <- population_from_wpp(
   data = population_input,
@@ -220,14 +87,15 @@ wpp_population <- population_from_wpp(
   location_col = "name"
 )
 
-fertility_weights <- kiribati_rows(
+fertility_weights <- wpp_location_rows(
   fertility_weight_data,
-  c("year", "age", "pasfr")
+  location = country,
+  columns = c("year", "age", "pasfr")
 )
 fertility_weights$year <- as.numeric(fertility_weights$year)
 fertility_weights <- fertility_weights[fertility_weights$year %in% process_years, ]
 
-tfr_source <- kiribati_rows(tfr_data, c("year", "tfr"))
+tfr_source <- wpp_location_rows(tfr_data, location = country, columns = c("year", "tfr"))
 tfr_source$year <- as.numeric(tfr_source$year)
 tfr_source$tfr <- as.numeric(tfr_source$tfr)
 tfr_years <- sort(unique(fertility_weights$year))
@@ -255,13 +123,14 @@ fertility_schedule <- fertility_from_wpp_percent_asfr(
   tolerance = 1e-5
 )
 
-mortality_input <- kiribati_rows(
+mortality_input <- wpp_location_rows(
   mortality_data,
-  c("year", "age", "mxB")
+  location = country,
+  columns = c("year", "age", "mxB")
 )
 mortality_input$year <- as.numeric(mortality_input$year)
 mortality_input <- mortality_input[mortality_input$year %in% process_years, ]
-mortality_input <- collapse_open_age_rate(mortality_input, "mxB", open_age = 95)
+mortality_input <- collapse_wpp_open_age_rates(mortality_input, "mxB", open_age = 95)
 
 mortality_schedule <- mortality_from_wpp(
   data = mortality_input,
@@ -272,14 +141,15 @@ mortality_schedule <- mortality_from_wpp(
   quantity = "mx"
 )
 
-migration_input <- kiribati_rows(
+migration_input <- wpp_location_rows(
   migration_data,
-  c("year", "age", "mig")
+  location = country,
+  columns = c("year", "age", "mig")
 )
 migration_input$year <- as.numeric(migration_input$year)
 migration_input <- migration_input[migration_input$year %in% process_years, ]
 migration_input$mig <- 1000 * as.numeric(migration_input$mig)
-migration_input <- collapse_open_age_count(migration_input, "mig", open_age = 95)
+migration_input <- collapse_wpp_open_age_counts(migration_input, "mig", open_age = 95)
 
 migration_schedule <- standardise_wpp_migration(
   data = migration_input,
@@ -303,15 +173,15 @@ demographic_process <- build_demographic_process(
 # bundled here, so this scaffold uses POLYMOD United Kingdom contacts through
 # socialmixr as a transparent proxy. This should be replaced by Prem/conmat or
 # Kiribati/Pacific-specific contacts when available.
-contact_matrix_input <- build_polymod_proxy_contact_matrix(age_structure)
-contact_matrix <- contact_matrix_input$matrix
+contact_matrix <- contact_matrix_for_age_structure(age_structure, source = "polymod_uk")
+contact_matrix_metadata <- attr(contact_matrix, "contact_source")
 contact_matrix_source <- data.frame(
-  source_label = contact_matrix_input$source_label,
-  source_reference = contact_matrix_input$source_reference,
-  source_age_grid = paste(contact_matrix_input$source_age_structure$age_groups, collapse = ", "),
-  model_age_grid = paste(age_structure$age_groups, collapse = ", "),
-  expansion_note = contact_matrix_input$expansion_note,
-  limitation = contact_matrix_input$limitation,
+  source_label = contact_matrix_metadata$source_label,
+  source_reference = contact_matrix_metadata$source_reference,
+  source_age_grid = contact_matrix_metadata$source_age_grid,
+  model_age_grid = contact_matrix_metadata$model_age_grid,
+  expansion_note = contact_matrix_metadata$expansion_note,
+  limitation = contact_matrix_metadata$limitation,
   stringsAsFactors = FALSE
 )
 
@@ -404,27 +274,18 @@ recovered_prev <- ifelse(age_lower < 15, 0.005,
   )
 )
 
-initial_l_recent <- population_2025 * recent_latent_prev
-initial_l_remote <- population_2025 * remote_latent_prev
-initial_active <- population_2025 * active_prev
-initial_treatment <- population_2025 * treatment_prev
-initial_recovered <- population_2025 * recovered_prev
-initial_susceptible <- population_2025 -
-  initial_l_recent - initial_l_remote - initial_active -
-  initial_treatment - initial_recovered
-
-initial_state <- data.frame(
-  compartment = rep(tb_model$compartments, each = age_structure$n_age_groups),
-  age_group = rep(age_groups, times = length(tb_model$compartments)),
-  value = c(
-    initial_susceptible,
-    initial_l_recent,
-    initial_l_remote,
-    initial_active,
-    initial_treatment,
-    initial_recovered
+initial_state <- initialise_compartments_from_proportions(
+  population = population_2025,
+  proportions = list(
+    Lr = recent_latent_prev,
+    Ld = remote_latent_prev,
+    I = active_prev,
+    T = treatment_prev,
+    R = recovered_prev
   ),
-  stringsAsFactors = FALSE
+  residual_compartment = "S",
+  compartments = tb_model$compartments,
+  age_structure = age_structure
 )
 
 tb_output <- simulate_deterministic(
@@ -475,29 +336,12 @@ tb_burden_summary$active_tb_prevalence_per_100k <-
   1e5 * tb_burden_summary$active_tb_prevalence_count /
     tb_burden_summary$population
 
-cumulative_flow_summary <- stats::aggregate(
-  value ~ time + cumulative_name,
+cumulative_flow_summary <- cumulative_flow_totals(cumulative_flows)
+cumulative_flow_wide <- cumulative_flow_totals_wide(cumulative_flows)
+annual_flow_summary <- cumulative_flow_increments(
   cumulative_flows,
-  sum
-)
-cumulative_flow_wide <- stats::reshape(
-  cumulative_flow_summary,
-  idvar = "time",
-  timevar = "cumulative_name",
-  direction = "wide"
-)
-names(cumulative_flow_wide) <- sub("^value[.]", "cumulative_", names(cumulative_flow_wide))
-
-annual_flow_summary <- cumulative_flow_summary
-annual_flow_summary <- annual_flow_summary[annual_flow_summary$time %in% simulation_years, ]
-annual_flow_summary <- annual_flow_summary[order(
-  annual_flow_summary$cumulative_name,
-  annual_flow_summary$time
-), ]
-annual_flow_summary$annual_value <- ave(
-  annual_flow_summary$value,
-  annual_flow_summary$cumulative_name,
-  FUN = function(x) c(x[1], diff(x))
+  times = simulation_years,
+  value_col = "annual_value"
 )
 
 public_data_target_summary <- data.frame(
@@ -525,9 +369,18 @@ public_data_target_summary <- data.frame(
   stringsAsFactors = FALSE
 )
 
-age_group_summary_broad <- aggregate_by_broad_age(age_group_summary)
-trajectory_broad <- aggregate_by_broad_age(trajectory)
-cumulative_flows_broad <- aggregate_by_broad_age(cumulative_flows)
+age_group_summary_broad <- aggregate_population_summary_age_grid(
+  age_group_summary,
+  reporting_age_mapping
+)
+trajectory_broad <- aggregate_epidemic_trajectory_age_grid(
+  trajectory,
+  reporting_age_mapping
+)
+cumulative_flows_broad <- aggregate_cumulative_flows_age_grid(
+  cumulative_flows,
+  reporting_age_mapping
+)
 
 cat("\nKiribati TB public-data demography scaffold\n")
 cat("Country:", country, "\n")

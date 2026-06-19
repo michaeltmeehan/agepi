@@ -242,6 +242,26 @@ test_that("contact_matrix_from_socialmixr accepts a small socialmixr result", {
   expect_false(anyNA(contact_matrix))
 })
 
+test_that("contact_matrix_for_age_structure builds POLYMOD proxy with metadata", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
+  testthat::skip_if_not("polymod" %in% socialmixr_datasets)
+
+  ages <- wpp_age_structure_1year(max_age = 6)
+  contact_matrix <- contact_matrix_for_age_structure(ages, source = "polymod_uk")
+  metadata <- attr(contact_matrix, "contact_source")
+
+  expect_true(is.matrix(contact_matrix))
+  expect_identical(dim(contact_matrix), c(ages$n_age_groups, ages$n_age_groups))
+  expect_identical(rownames(contact_matrix), ages$age_groups)
+  expect_identical(colnames(contact_matrix), ages$age_groups)
+  expect_true(all(is.finite(contact_matrix)))
+  expect_true(all(contact_matrix >= 0))
+  expect_match(metadata$source_label, "POLYMOD")
+  expect_match(metadata$expansion_note, "constant contacts within each source band")
+})
+
 test_that("conmat-style long table is converted correctly", {
   conmat_long <- data.frame(
     age_group_from = c("0-4", "5-9", "0-4", "5-9"),
