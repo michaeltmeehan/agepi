@@ -499,8 +499,8 @@ collapse_wpp_open_age_rates <- function(data,
 #' @param fertility_exposure_fraction Female exposure fraction passed to
 #'   [build_demographic_process()].
 #'
-#' @return A list containing `population`, `demographic_process`, schedules,
-#'   selected input tables, and metadata.
+#' @return A list with one top-level `age_structure`, `population`,
+#'   `demographic_process`, `schedules`, selected `inputs`, and metadata.
 #' @examples
 #' if (requireNamespace("wpp2024", quietly = TRUE)) {
 #'   ages <- wpp_age_structure_1year(max_age = 95)
@@ -658,9 +658,11 @@ demographic_process_from_wpp <- function(country,
     age_structure = age_structure,
     population = population,
     demographic_process = demographic_process,
-    fertility_schedule = fertility_schedule,
-    mortality_schedule = mortality_schedule,
-    migration_schedule = migration_schedule,
+    schedules = list(
+      fertility = fertility_schedule,
+      mortality = mortality_schedule,
+      migration = migration_schedule
+    ),
     inputs = list(
       population = population_input,
       fertility_weights = fertility_weights,

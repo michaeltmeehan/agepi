@@ -149,6 +149,15 @@ The adapter should preserve the matrix supplied by socialmixr. It should not add
 or redo reciprocity correction, population balancing, age weighting, symmetry,
 or per-capita transformations inside agepi.
 
+Published or bundled source matrices should be loaded separately from any model
+age-grid adaptation. `load_contact_matrix_source()` returns a source matrix, its
+native `AgeStructure()`, and metadata. `adapt_contact_matrix_to_age_structure()`
+then performs explicit exact adaptation: fine-to-coarse aggregation delegates to
+`transform_contact_matrix()` and requires source-grid population weights, while
+coarse-to-fine expansion copies source-band contacts to nested target ages. The
+deprecated `contact_matrix_for_age_structure()` wrapper remains only for
+compatibility with older examples.
+
 ### conmat Contact Adapter
 
 A conmat adapter should convert generated or predicted contact matrices into

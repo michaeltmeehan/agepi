@@ -128,13 +128,103 @@ contact_matrix_from_socialmixr <- function(
   )
 }
 
+#' Load a published contact matrix source
+#'
+#' Loads a raw contact matrix with source metadata and its native age grid.
+#' Currently supports a POLYMOD United Kingdom matrix through the optional
+#' `socialmixr` package. The returned matrix is not adapted to a model age grid.
+#'
+#' @param source Contact source. Currently only `"polymod_uk"` is supported.
+#'
+#' @return An `agepi_contact_matrix_source` list with `matrix`,
+#'   `age_structure`, and `metadata` components.
+#' @export
+load_contact_matrix_source <- function(
+  source = c("polymod_uk")
+) {
+  source <- match.arg(source)
+
+  switch(
+    source,
+    polymod_uk = load_polymod_uk_contact_matrix_source()
+  )
+}
+
+#' Adapt a contact matrix source to a target age structure
+#'
+#' Adapts a loaded source contact matrix to a requested age grid. Exact
+#' fine-to-coarse aggregation uses [transform_contact_matrix()] and therefore
+#' requires a source-grid population vector. Coarse-to-fine expansion assigns
+#' each target age group to the source age band that fully contains it and uses
+#' constant contacts within the source band.
+#'
+#' @param source_contact_matrix An `agepi_contact_matrix_source` object returned
+#'   by [load_contact_matrix_source()].
+#' @param age_structure Target valid age structure.
+#' @param population Optional source-grid population vector required for
+#'   fine-to-coarse aggregation.
+#'
+#' @return A numeric contact matrix in agepi recipient-source orientation. A
+#'   metadata list is attached as attribute `"contact_source"`.
+#' @export
+adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
+                                                  age_structure,
+                                                  population = NULL) {
+  validate_contact_matrix_source(source_contact_matrix)
+  validate_age_structure(age_structure)
+
+  source_age_structure <- source_contact_matrix$age_structure
+  source_matrix <- validate_contact_matrix(source_contact_matrix$matrix, source_age_structure)
+  metadata <- source_contact_matrix$metadata
+
+  if (identical(source_age_structure$age_groups, age_structure$age_groups) &&
+      identical(source_age_structure$lower_bounds, age_structure$lower_bounds) &&
+      identical(source_age_structure$upper_bounds, age_structure$upper_bounds)) {
+    contact_matrix <- as_agepi_contact_matrix(source_matrix, age_structure = age_structure)
+    metadata$adaptation_note <- "Source contact matrix already matches the target age grid."
+    attr(contact_matrix, "contact_source") <- metadata
+    return(contact_matrix)
+  }
+
+  mapping <- AgeGridMapping(source_age_structure, age_structure, open_ended = "include")
+  if (isTRUE(mapping$can_aggregate)) {
+    if (is.null(population)) {
+      stop("population is required when aggregating a source contact matrix to a coarser age grid.", call. = FALSE)
+    }
+    contact_matrix <- transform_contact_matrix(
+      source_matrix,
+      from_age_structure = source_age_structure,
+      to_age_structure = age_structure,
+      population = population
+    )
+    metadata$adaptation_note <- paste(
+      "The source matrix was aggregated to the target age grid using",
+      "recipient-population weighting."
+    )
+  } else if (isTRUE(mapping$can_expand)) {
+    source_index <- mapping$target_to_source_index
+    contact_matrix <- source_matrix[source_index, source_index, drop = FALSE]
+    dimnames(contact_matrix) <- list(age_structure$age_groups, age_structure$age_groups)
+    contact_matrix <- validate_contact_matrix(contact_matrix, age_structure)
+    metadata$adaptation_note <- paste(
+      "The source matrix was expanded to the target age grid by assigning",
+      "each target age group to its containing source age band and using",
+      "constant contacts within each source band."
+    )
+  } else {
+    stop("source and target age grids are not compatible for exact contact-matrix adaptation.", call. = FALSE)
+  }
+
+  metadata$model_age_grid <- paste(age_structure$age_groups, collapse = ", ")
+  attr(contact_matrix, "contact_source") <- metadata
+  contact_matrix
+}
+
 #' Build a published proxy contact matrix for a target age structure
 #'
-#' Currently supports a POLYMOD United Kingdom proxy through the optional
-#' `socialmixr` package. The source matrix is built on a six-band age grid and
-#' expanded to the target age structure by assigning each target age group to
-#' the source band containing its lower bound. No reciprocity correction,
-#' population balancing, or Kiribati-specific calibration is applied.
+#' Deprecated compatibility wrapper. Prefer [load_contact_matrix_source()]
+#' followed by [adapt_contact_matrix_to_age_structure()] so source loading and
+#' age-grid adaptation are explicit.
 #'
 #' @param age_structure Target valid age structure.
 #' @param source Contact source. Currently only `"polymod_uk"` is supported.
@@ -146,13 +236,9 @@ contact_matrix_for_age_structure <- function(
   age_structure,
   source = c("polymod_uk")
 ) {
-  source <- match.arg(source)
-  validate_age_structure(age_structure)
-
-  switch(
-    source,
-    polymod_uk = polymod_uk_contact_matrix_for_age_structure(age_structure)
-  )
+  .Deprecated("adapt_contact_matrix_to_age_structure")
+  source_contact_matrix <- load_contact_matrix_source(source = source)
+  adapt_contact_matrix_to_age_structure(source_contact_matrix, age_structure)
 }
 
 #' Convert conmat-style output to an agepi contact matrix
@@ -532,7 +618,7 @@ validate_contact_schedule_time <- function(time, available_times) {
   invisible(time)
 }
 
-polymod_uk_contact_matrix_for_age_structure <- function(age_structure) {
+load_polymod_uk_contact_matrix_source <- function() {
   if (!requireNamespace("socialmixr", quietly = TRUE)) {
     stop(
       "Package socialmixr is required for source = 'polymod_uk'.",
@@ -566,12 +652,7 @@ polymod_uk_contact_matrix_for_age_structure <- function(age_structure) {
     age_structure = source_age_structure
   )
 
-  age_band <- target_age_groups_to_source_bands(age_structure, source_age_structure)
-  contact_matrix <- source_matrix[age_band, age_band]
-  dimnames(contact_matrix) <- list(age_structure$age_groups, age_structure$age_groups)
-  validate_contact_matrix(contact_matrix, age_structure)
-
-  attr(contact_matrix, "contact_source") <- list(
+  metadata <- list(
     source_label = paste(
       "POLYMOD United Kingdom empirical social-contact survey matrix from",
       "socialmixr::contact_matrix(); used as a published proxy, not a",
@@ -582,12 +663,6 @@ polymod_uk_contact_matrix_for_age_structure <- function(age_structure) {
       "bundled polymod dataset"
     ),
     source_age_grid = paste(source_age_structure$age_groups, collapse = ", "),
-    model_age_grid = paste(age_structure$age_groups, collapse = ", "),
-    expansion_note = paste(
-      "The validated six-age-band source matrix is expanded to the target",
-      "model grid by assigning each target age group to its source age band",
-      "and using constant contacts within each source band."
-    ),
     limitation = paste(
       "This proxy is European and pre-pandemic; it is not calibrated to",
       "Kiribati household structure, crowding, school attendance, or",
@@ -595,22 +670,31 @@ polymod_uk_contact_matrix_for_age_structure <- function(age_structure) {
     )
   )
 
-  contact_matrix
+  result <- list(
+    matrix = source_matrix,
+    age_structure = source_age_structure,
+    metadata = metadata
+  )
+  class(result) <- c("agepi_contact_matrix_source", "list")
+  result
 }
 
-target_age_groups_to_source_bands <- function(target_age_structure, source_age_structure) {
-  vapply(
-    target_age_structure$lower_bounds,
-    function(lower_bound) {
-      source_index <- which(
-        source_age_structure$lower_bounds <= lower_bound &
-          source_age_structure$upper_bounds >= lower_bound
-      )
-      if (length(source_index) != 1) {
-        stop("target age group lower bounds must map to exactly one source contact age band.", call. = FALSE)
-      }
-      source_age_structure$age_groups[source_index]
-    },
-    character(1)
-  )
+validate_contact_matrix_source <- function(source_contact_matrix) {
+  if (!inherits(source_contact_matrix, "agepi_contact_matrix_source")) {
+    stop("source_contact_matrix must be an agepi_contact_matrix_source object.", call. = FALSE)
+  }
+
+  required_fields <- c("matrix", "age_structure", "metadata")
+  missing_fields <- setdiff(required_fields, names(source_contact_matrix))
+  if (length(missing_fields) > 0) {
+    stop(
+      "source_contact_matrix is missing required field(s): ",
+      paste(missing_fields, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  validate_age_structure(source_contact_matrix$age_structure)
+  validate_contact_matrix(source_contact_matrix$matrix, source_contact_matrix$age_structure)
+  invisible(source_contact_matrix)
 }

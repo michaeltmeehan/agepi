@@ -16,9 +16,9 @@ A numeric contact matrix in agepi recipient-source orientation. A
 metadata list is attached as attribute \code{"contact_source"}.
 }
 \description{
-Currently supports a POLYMOD United Kingdom proxy through the optional
-\code{socialmixr} package. The source matrix is built on a six-band age grid and
-expanded to the target age structure by assigning each target age group to
-the source band containing its lower bound. No reciprocity correction,
-population balancing, or Kiribati-specific calibration is applied.
+Deprecated compatibility wrapper. Prefer
+\code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}} followed
+by
+\code{\link[=adapt_contact_matrix_to_age_structure]{adapt_contact_matrix_to_age_structure()}}
+so source loading and age-grid adaptation are explicit.
 }

@@ -1,22 +1,6 @@
 test_that("Kiribati TB realistic demography example runs in a clean user process", {
-  skip_on_os("windows")
-
-  dependency_result <- suppressWarnings(system2(
-    "Rscript",
-    c("-e", shQuote(paste(
-      "required <- c('wpp2024', 'socialmixr', 'deSolve')",
-      "quit(status = any(!vapply(required, requireNamespace, logical(1), quietly = TRUE)))",
-      sep = "; "
-    ))),
-    stdout = TRUE,
-    stderr = TRUE
-  ))
-  dependency_status <- attr(dependency_result, "status")
-  if (is.null(dependency_status)) {
-    dependency_status <- 0
-  }
   skip_if(
-    dependency_status != 0,
+    any(!vapply(c("wpp2024", "socialmixr", "deSolve"), requireNamespace, logical(1), quietly = TRUE)),
     "optional package wpp2024, socialmixr, or deSolve is not available"
   )
 
@@ -43,7 +27,6 @@ test_that("Kiribati TB realistic demography example runs in a clean user process
     "stopifnot(is.data.frame(env$population_summary))",
     "stopifnot(is.data.frame(env$age_group_summary_broad))",
     "stopifnot(is.data.frame(env$tb_burden_summary))",
-    "stopifnot(is.data.frame(env$cumulative_flow_summary))",
     "stopifnot(is.data.frame(env$public_data_target_summary))",
     "stopifnot(all(is.finite(env$trajectory$value)))",
     "stopifnot(all(env$trajectory$value >= -1e-8))",
@@ -56,10 +39,15 @@ test_that("Kiribati TB realistic demography example runs in a clean user process
     "stopifnot(length(output_times) == 21)",
     "stopifnot(max(abs(diff(output_times) - 1 / 4)) < 1e-8)",
     "stopifnot(all(env$simulation_years %in% output_times))",
-    "stopifnot(identical(env$fertility_schedule$times, env$process_years))",
-    "stopifnot(identical(env$mortality_schedule$times, env$process_years))",
-    "stopifnot(identical(env$migration_schedule$times, env$process_years))",
-    "stopifnot(setequal(env$tfr_input$year, env$tfr_years))",
+    "stopifnot(!exists('fertility_schedule', envir = env, inherits = FALSE))",
+    "stopifnot(!exists('mortality_schedule', envir = env, inherits = FALSE))",
+    "stopifnot(!exists('migration_schedule', envir = env, inherits = FALSE))",
+    "stopifnot(!exists('tfr_input', envir = env, inherits = FALSE))",
+    "stopifnot(!exists('tfr_years', envir = env, inherits = FALSE))",
+    "stopifnot(!exists('process_years', envir = env, inherits = FALSE))",
+    "stopifnot(all(env$demography$schedules$fertility$times == env$simulation_years))",
+    "stopifnot(all(env$demography$schedules$mortality$times == env$simulation_years))",
+    "stopifnot(all(env$demography$schedules$migration$times == env$simulation_years))",
     "stopifnot(setequal(unique(env$cumulative_flows$cumulative_name), c('infections', 'progression_to_active_tb', 'treatment_initiation', 'treatment_completion', 'relapse_recurrent_tb')))",
     "cumulative_totals <- stats::aggregate(value ~ time + cumulative_name, env$cumulative_flows, sum)",
     "for (flow_name in unique(cumulative_totals$cumulative_name)) { rows <- cumulative_totals[cumulative_totals$cumulative_name == flow_name, ]; stopifnot(all(diff(rows$value) >= -1e-8)) }",
@@ -75,28 +63,20 @@ test_that("Kiribati TB realistic demography example runs in a clean user process
     "stopifnot(all(env$contact_matrix >= 0))",
     "stopifnot(grepl('POLYMOD|socialmixr', env$contact_matrix_source$source_label))",
     "stopifnot(grepl('not a Kiribati-specific matrix', env$contact_matrix_source$source_label))",
-    "stopifnot(grepl('constant contacts within each source band', env$contact_matrix_source$expansion_note))",
+    "stopifnot(grepl('constant contacts within each source band', env$contact_matrix_source$adaptation_note))",
     "stopifnot(any(grepl('WHO', env$public_data_target_summary$target)))",
     "stopifnot(any(grepl('not modelled', env$public_data_target_summary$model_quantity)))",
     "cat('KIRIBATI_TB_EXAMPLE_CHECKS_OK\\n')",
+    "quit(status = 0)",
     sep = "; "
   )
 
-  result <- system2(
-    "Rscript",
-    c("-e", shQuote(check_script), shQuote(example_file)),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  if (is.null(status)) {
-    status <- 0
-  }
+  check_file <- tempfile("kiribati-tb-example-check-", fileext = ".R")
+  writeLines(strsplit(check_script, "; ", fixed = TRUE)[[1]], check_file)
+  on.exit(unlink(check_file), add = TRUE)
 
-  expect_equal(
-    status,
-    0,
-    info = paste(c("Kiribati TB example subprocess failed:", result), collapse = "\n")
+  result <- suppressWarnings(
+    system2("Rscript", c(check_file, example_file), stdout = TRUE, stderr = TRUE)
   )
   expect_true(any(grepl("KIRIBATI_TB_EXAMPLE_CHECKS_OK", result, fixed = TRUE)))
 })

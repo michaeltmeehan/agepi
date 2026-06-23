@@ -242,16 +242,137 @@ test_that("contact_matrix_from_socialmixr accepts a small socialmixr result", {
   expect_false(anyNA(contact_matrix))
 })
 
-test_that("contact_matrix_for_age_structure builds POLYMOD proxy with metadata", {
+test_that("adapt_contact_matrix_to_age_structure expands nested source grids", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-9", "10+"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, Inf)
+  )
+  target_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10-14", "15+"),
+    lower_bounds = c(0, 5, 10, 15),
+    upper_bounds = c(4, 9, 14, Inf)
+  )
+  source_matrix <- matrix(
+    c(2, 1, 3, 4),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(source_ages$age_groups, source_ages$age_groups)
+  )
+  source <- structure(
+    list(
+      matrix = source_matrix,
+      age_structure = source_ages,
+      metadata = list(source_label = "test source")
+    ),
+    class = c("agepi_contact_matrix_source", "list")
+  )
+
+  contact_matrix <- adapt_contact_matrix_to_age_structure(source, target_ages)
+  metadata <- attr(contact_matrix, "contact_source")
+
+  expect_equal(
+    contact_matrix,
+    matrix(
+      c(
+        2, 2, 1, 1,
+        2, 2, 1, 1,
+        3, 3, 4, 4,
+        3, 3, 4, 4
+      ),
+      nrow = 4,
+      byrow = TRUE,
+      dimnames = list(target_ages$age_groups, target_ages$age_groups)
+    ),
+    ignore_attr = TRUE
+  )
+  expect_match(metadata$adaptation_note, "expanded")
+  expect_match(metadata$adaptation_note, "constant contacts within each source band")
+})
+
+test_that("adapt_contact_matrix_to_age_structure aggregates using transform_contact_matrix", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10-14", "15-19"),
+    lower_bounds = c(0, 5, 10, 15),
+    upper_bounds = c(4, 9, 14, 19)
+  )
+  target_ages <- AgeStructure(
+    age_groups = c("0-9", "10-19"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, 19)
+  )
+  source_matrix <- matrix(
+    c(
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+      13, 14, 15, 16
+    ),
+    nrow = 4,
+    byrow = TRUE,
+    dimnames = list(source_ages$age_groups, source_ages$age_groups)
+  )
+  source <- structure(
+    list(
+      matrix = source_matrix,
+      age_structure = source_ages,
+      metadata = list(source_label = "test source")
+    ),
+    class = c("agepi_contact_matrix_source", "list")
+  )
+
+  contact_matrix <- adapt_contact_matrix_to_age_structure(
+    source,
+    target_ages,
+    population = c(10, 10, 10, 10)
+  )
+
+  expect_equal(
+    contact_matrix,
+    transform_contact_matrix(source_matrix, source_ages, target_ages, population = c(10, 10, 10, 10)),
+    ignore_attr = TRUE
+  )
+  expect_match(attr(contact_matrix, "contact_source")$adaptation_note, "aggregated")
+})
+
+test_that("contact matrix aggregation requires source-grid population", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  target_ages <- AgeStructure(
+    age_groups = "0-9",
+    lower_bounds = 0,
+    upper_bounds = 9
+  )
+  source <- structure(
+    list(
+      matrix = diag(2),
+      age_structure = source_ages,
+      metadata = list(source_label = "test source")
+    ),
+    class = c("agepi_contact_matrix_source", "list")
+  )
+
+  expect_error(
+    adapt_contact_matrix_to_age_structure(source, target_ages),
+    "population is required"
+  )
+})
+
+test_that("load_contact_matrix_source and adaptation build POLYMOD proxy with metadata", {
   testthat::skip_if_not_installed("socialmixr")
 
   socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
   testthat::skip_if_not("polymod" %in% socialmixr_datasets)
 
-  ages <- wpp_age_structure_1year(max_age = 6)
-  contact_matrix <- contact_matrix_for_age_structure(ages, source = "polymod_uk")
+  ages <- wpp_age_structure_1year(max_age = 65)
+  source <- load_contact_matrix_source("polymod_uk")
+  contact_matrix <- adapt_contact_matrix_to_age_structure(source, ages)
   metadata <- attr(contact_matrix, "contact_source")
 
+  expect_s3_class(source, "agepi_contact_matrix_source")
   expect_true(is.matrix(contact_matrix))
   expect_identical(dim(contact_matrix), c(ages$n_age_groups, ages$n_age_groups))
   expect_identical(rownames(contact_matrix), ages$age_groups)
@@ -259,7 +380,7 @@ test_that("contact_matrix_for_age_structure builds POLYMOD proxy with metadata",
   expect_true(all(is.finite(contact_matrix)))
   expect_true(all(contact_matrix >= 0))
   expect_match(metadata$source_label, "POLYMOD")
-  expect_match(metadata$expansion_note, "constant contacts within each source band")
+  expect_match(metadata$adaptation_note, "constant contacts within each source band")
 })
 
 test_that("conmat-style long table is converted correctly", {

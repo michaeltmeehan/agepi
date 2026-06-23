@@ -444,6 +444,9 @@ The package also includes dependency-free adapters for common external shapes:
 - `contact_matrix_from_socialmixr()` for socialmixr-like objects with a numeric
   `matrix` element;
 - `contact_matrix_from_conmat()` for conmat-style long data frames;
+- `load_contact_matrix_source()` plus
+  `adapt_contact_matrix_to_age_structure()` for explicitly separating contact
+  source loading from model age-grid adaptation;
 - `population_from_wpp()` and `demography_from_wpp()` for WPP-style population
   tables;
 - WPP-style fertility, mortality, and migration standardisers.
@@ -484,6 +487,10 @@ and print a message instead of failing when those packages are unavailable.
   demographic-only workflow with diagnostics.
 - [examples/wpp_demography_validation.R](examples/wpp_demography_validation.R):
   optional WPP-connected demography benchmark using `wpp2024`.
+- [examples/kiribati_tb_realistic_demography.R](examples/kiribati_tb_realistic_demography.R):
+  optional Kiribati TB public-data scaffold using WPP 2024 demography and a
+  POLYMOD UK proxy contact matrix. It is not calibrated and is not a policy
+  model.
 - [examples/demography_plots.R](examples/demography_plots.R): synthetic
   exploratory demography plots using imported `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
