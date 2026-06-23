@@ -14,8 +14,32 @@ Invisibly returns \code{source_contact_matrix} when valid.
 }
 \description{
 Checks that a contact source object has the common agepi source-layer
-structure: \code{matrix}, \code{age_structure}, \code{source}, optional
-\code{country}, optional \code{setting}, orientation/convention metadata,
-\code{source_reference}, notes or limitations, source-specific \code{metadata},
-and class \code{agepi_contact_matrix_source}.
+structure: \code{matrix}, \code{age_structure}, \code{source}, optional \code{country}, optional
+\code{setting}, orientation/convention metadata, \code{source_reference}, notes or
+limitations, source-specific \code{metadata}, and class
+\code{agepi_contact_matrix_source}.
+}
+\examples{
+source_ages <- AgeStructure(
+  age_groups = c("0-4", "5+"),
+  lower_bounds = c(0, 5),
+  upper_bounds = c(4, Inf)
+)
+source_contacts <- structure(
+  list(
+    matrix = diag(2),
+    age_structure = source_ages,
+    source = "example",
+    country = NULL,
+    setting = "all",
+    orientation = "recipient_source",
+    convention = "rows are recipients/contact-makers; columns are sources/contacts",
+    source_reference = "example source",
+    notes = "Example source object for documentation.",
+    limitations = NULL,
+    metadata = list()
+  ),
+  class = c("agepi_contact_matrix_source", "list")
+)
+validate_contact_matrix_source(source_contacts)
 }

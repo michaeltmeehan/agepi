@@ -46,8 +46,8 @@ The prototype should prioritise clean abstractions and testable model components
 | Component | Reason deferred |
 |---|---|
 | WPP projection matching, population interpolation, and automatic residual forcing | Schedule-level step and linear rate lookup exist, but population interpolation and projection matching remain out of scope |
-| `socialmixr` or `conmat` package dependencies | Current contact support is dependency-free coercion and exact aggregation |
-| Contact-matrix splitting or general rebinning | Current `transform_contact_matrix()` supports exact aggregation only |
+| Mandatory `socialmixr`, `contactdata`, or `conmat` package dependencies | Core contact coercion remains dependency-free; source loaders use optional packages only when requested |
+| Contact-matrix splitting or general rebinning | `transform_contact_matrix()` remains an exact aggregation helper; source objects can be adapted with the source-band workflow |
 | Other compartment structures | Current SIR and SEIR support use fixed compartment definitions |
 | Additional adaptive or external ODE solver features | Optional deSolve support exists for the documented narrow combinations |
 | Stochastic simulation | Design for it, but do not implement yet |
@@ -225,9 +225,17 @@ frames, socialmixr-like lists with a numeric `matrix` element, and conmat-style
 long data frames with `age_group_from`, `age_group_to`, and `contacts` columns.
 It does not add `socialmixr` or `conmat` dependencies.
 
-`transform_contact_matrix()` currently supports exact fine-to-coarse
-aggregation only, where every target age bin is an exact union of complete
-source age bins. Source-bin splitting and general rebinning remain future work.
+`transform_contact_matrix()` remains a narrow exact fine-to-coarse aggregation
+helper, where every target age bin is an exact union of complete source age
+bins. Source-bin splitting and general rebinning remain future work.
+
+For published or generated source matrices, the current workflow separates
+source loading from age-grid adaptation: `load_contact_matrix_source()` loads a
+native/source matrix with provenance, and
+`adapt_contact_matrix_to_age_structure()` adapts it to a target
+`AgeStructure()`. The preferred adaptation method is `method = "source_band"`;
+the older `method = "exact"` spelling is deprecated and retained only as an
+alias for the same source-band assumption.
 
 Later versions may allow:
 
@@ -698,6 +706,9 @@ Implemented:
 - `validate_contact_matrix()`;
 - `as_agepi_contact_matrix()` for dependency-free coercion of supported inputs;
 - `transform_contact_matrix()` for exact fine-to-coarse aggregation;
+- `load_contact_matrix_source()` and
+  `adapt_contact_matrix_to_age_structure(method = "source_band")` for
+  separating source loading from model age-grid adaptation;
 - compatibility with externally prepared age-aligned contact matrices.
 
 Acceptance criteria:
@@ -708,7 +719,6 @@ Acceptance criteria:
 Still future work:
 
 - `MixingModel`;
-- socialmixr/conmat package-specific adapters or dependencies;
 - contact-matrix splitting and general rebinning;
 - reciprocity correction and population balancing.
 

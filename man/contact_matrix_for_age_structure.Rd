@@ -16,9 +16,17 @@ A numeric contact matrix in agepi recipient-source orientation. A
 metadata list is attached as attribute \code{"contact_source"}.
 }
 \description{
-Deprecated compatibility wrapper. Prefer
-\code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}} followed
-by
-\code{\link[=adapt_contact_matrix_to_age_structure]{adapt_contact_matrix_to_age_structure()}}
-so source loading and age-grid adaptation are explicit.
+Deprecated compatibility wrapper. This function is retained only for older
+code and should not be used in new examples. Prefer \code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}}
+followed by \code{\link[=adapt_contact_matrix_to_age_structure]{adapt_contact_matrix_to_age_structure()}} so source loading and
+age-grid adaptation are explicit:
+}
+\details{
+\if{html}{\out{<div class="sourceCode">}}\preformatted{source_contacts <- load_contact_matrix_source(...)
+contact_matrix <- adapt_contact_matrix_to_age_structure(
+  source_contacts,
+  age_structure,
+  population = ...
+)
+}\if{html}{\out{</div>}}
 }

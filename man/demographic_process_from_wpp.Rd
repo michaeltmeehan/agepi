@@ -25,8 +25,11 @@ demographic_process_from_wpp(
 \code{\link[=build_demographic_process]{build_demographic_process()}}.}
 }
 \value{
-A list with one top-level \code{age_structure}, \code{population},
-\code{demographic_process}, \code{schedules}, selected \code{inputs}, and metadata.
+A list with top-level fields \code{country}, \code{years}, \code{age_structure},
+\code{population}, \code{demographic_process}, \code{schedules}, and \code{inputs}.
+\code{schedules} contains the WPP-derived fertility, mortality, and optional
+migration schedules. \code{inputs} contains the selected and standardised WPP
+source tables used to build those objects.
 }
 \description{
 Loads WPP 2024 national population, percent-ASFR fertility, total fertility,

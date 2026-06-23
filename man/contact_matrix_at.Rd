@@ -16,5 +16,6 @@ Numeric contact matrix ordered by \code{contact_schedule$age_groups}.
 }
 \description{
 Retrieves an externally supplied contact matrix at one exact available time
-point. No interpolation or nearest-time lookup is applied.
+point. No interpolation or nearest-time lookup is applied. Contact schedules
+are not yet consumed directly by \code{\link[=simulate_deterministic]{simulate_deterministic()}}.
 }

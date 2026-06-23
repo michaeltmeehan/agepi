@@ -78,6 +78,8 @@ population_2025 <- demography_population_vector(wpp_population, time = min(simul
 
 # Contact Matrix --------------------------------------------------------------
 
+# Prefer a Prem/contactdata Kiribati matrix when the installed dataset includes
+# that country. Otherwise use POLYMOD UK as a documented proxy only.
 if (requireNamespace("contactdata", quietly = TRUE) &&
     country %in% contactdata::list_countries()) {
   source_contacts <- load_contact_matrix_source(

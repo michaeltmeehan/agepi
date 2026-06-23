@@ -23,11 +23,11 @@ load_contact_matrix_source(
 \item{country}{Country/location name, when applicable.}
 
 \item{setting}{Contact setting. For \code{"prem"} and \code{"conmat"}, one of
-\code{"all"}, \code{"home"}, \code{"school"}, \code{"work"}, or \code{"other"}. For
-\code{"polymod"}, \code{"all"} applies no contact filter; \code{"home"},
-\code{"school"}, and \code{"work"} filter the POLYMOD contact records when the
-setting variables are available. POLYMOD \code{"other"} spans multiple columns
-and requires an explicit \code{filter}.}
+\code{"all"}, \code{"home"}, \code{"school"}, \code{"work"}, or \code{"other"}. For \code{"polymod"},
+\code{"all"} applies no contact filter; \code{"home"}, \code{"school"}, and \code{"work"}
+filter the POLYMOD contact records when the setting variables are
+available. POLYMOD \code{"other"} spans multiple columns and requires an
+explicit \code{filter}.}
 
 \item{age_limits}{Lower age limits for source bins. Defaults to six broad
 reporting bands for POLYMOD and five-year bins for Prem/conmat.}
@@ -35,8 +35,7 @@ reporting bands for POLYMOD and five-year bins for Prem/conmat.}
 \item{geographic_setting}{Prem/contactdata geographic setting: \code{"all"},
 \code{"rural"}, or \code{"urban"}.}
 
-\item{data_source}{Prem/contactdata source vintage: \code{"2020"} or
-\code{"2017"}.}
+\item{data_source}{Prem/contactdata source vintage: \code{"2020"} or \code{"2017"}.}
 
 \item{filter}{Optional socialmixr filter list for POLYMOD. If supplied, this
 overrides \code{setting}.}
@@ -49,21 +48,43 @@ overrides \code{setting}.}
 }
 \value{
 An \code{agepi_contact_matrix_source} list with \code{matrix},
-\code{age_structure}, \code{source}, optional \code{country}, optional
-\code{setting}, \code{orientation}, \code{convention},
-\code{source_reference}, \code{notes}, \code{limitations}, and source-specific
-\code{metadata}.
+\code{age_structure}, \code{source}, optional \code{country}, optional \code{setting},
+\code{orientation}, \code{convention}, \code{source_reference}, \code{notes}, \code{limitations},
+and source-specific \code{metadata}.
 }
 \description{
-Loads a contact matrix with source metadata on its native/source age grid. The
-returned matrix is not adapted to a model age grid; use
-\code{\link[=adapt_contact_matrix_to_age_structure]{adapt_contact_matrix_to_age_structure()}}
-for age-grid adaptation.
+Loads a contact matrix with source metadata on its native/source age grid.
+The returned matrix is not adapted to a model age grid; use
+\code{\link[=adapt_contact_matrix_to_age_structure]{adapt_contact_matrix_to_age_structure()}} for age-grid adaptation.
 }
 \details{
-Supported sources are \code{"polymod"} through optional \code{socialmixr},
-\code{"polymod_uk"} as a compatibility alias, \code{"prem"} through optional
-\code{contactdata}, and \code{"conmat"} through optional \code{conmat} with
-caller-supplied population data. Optional source packages are loaded only when
-their source is requested and fail with an install/use message when unavailable.
+Supported sources are:
+\itemize{
+\item \code{"polymod"}: empirical POLYMOD matrices through optional \code{socialmixr};
+\item \code{"polymod_uk"}: compatibility alias for \code{source = "polymod"} and
+\code{country = "United Kingdom"};
+\item \code{"prem"}: Prem et al. synthetic country matrices through optional
+\code{contactdata};
+\item \code{"conmat"}: conmat-generated matrices from caller-supplied population data
+through optional \code{conmat}.
+}
+
+Optional source packages are loaded only when their source is requested and
+fail with an install/use message when unavailable.
+}
+\examples{
+if (requireNamespace("contactdata", quietly = TRUE) &&
+    "Fiji" \%in\% contactdata::list_countries()) {
+  source_contacts <- load_contact_matrix_source(
+    source = "prem",
+    country = "Fiji",
+    setting = "all"
+  )
+  target_ages <- wpp_age_structure_5year(max_age = 75)
+  contact_matrix <- adapt_contact_matrix_to_age_structure(
+    source_contacts,
+    target_ages,
+    method = "source_band"
+  )
+}
 }

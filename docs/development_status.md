@@ -82,8 +82,13 @@ Important limitations to keep in mind:
   compartment-specific demographic rates;
 - no event handling or additional solver backends beyond Euler and optional
   `deSolve`;
-- contact-matrix transformation supports exact aggregation only, not general
-  rebinning or source-bin splitting.
+- `transform_contact_matrix()` remains a narrow exact fine-to-coarse
+  aggregation helper and does not perform general rebinning. The newer
+  contact-matrix source workflow separates `load_contact_matrix_source()`,
+  which loads native/source matrices, from
+  `adapt_contact_matrix_to_age_structure()`, which adapts a loaded source to a
+  target `AgeStructure()` with `method = "source_band"`. The older
+  `method = "exact"` spelling is deprecated and retained only as an alias.
 
 ## Generic CompartmentModel Limitations
 

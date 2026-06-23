@@ -21,7 +21,8 @@ An \code{agepi_contact_schedule} list.
 Stores externally supplied contact matrices indexed by time. Matrices use the
 agepi force-of-infection convention: rows are recipient age groups and
 columns are source age groups. No interpolation, reciprocity correction, or
-population balancing is applied.
+population balancing is applied. Contact schedules are storage/accessor
+objects; they are not yet consumed directly by \code{\link[=simulate_deterministic]{simulate_deterministic()}}.
 }
 \examples{
 age_structure <- AgeStructure(

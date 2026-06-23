@@ -12,8 +12,8 @@ adapt_contact_matrix_to_age_structure(
 )
 }
 \arguments{
-\item{source_contact_matrix}{An \code{agepi_contact_matrix_source} object
-returned by \code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}}.}
+\item{source_contact_matrix}{An \code{agepi_contact_matrix_source} object returned
+by \code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}}.}
 
 \item{age_structure}{Target valid age structure.}
 
@@ -28,15 +28,48 @@ coarse-to-fine expansion. \code{"exact"} is accepted as a deprecated alias for
 constant assumption.}
 }
 \value{
-A numeric contact matrix in agepi recipient-source orientation. A metadata list
-is attached as attribute \code{"contact_source"}.
+A numeric contact matrix in agepi recipient-source orientation. A
+metadata list is attached as attribute \code{"contact_source"}.
 }
 \description{
 Adapts a loaded source contact matrix to a requested age grid using
 source-band assumptions. Fine-to-coarse aggregation uses
-\code{\link[=transform_contact_matrix]{transform_contact_matrix()}} with
-recipient-population weighting and therefore requires a source-grid population
-vector. Coarse-to-fine expansion assigns each target age group to the source
-age band that fully contains it and uses constant contacts within the source
-band.
+\code{\link[=transform_contact_matrix]{transform_contact_matrix()}} with recipient-population weighting and
+therefore requires a source-grid population vector. Coarse-to-fine expansion
+assigns each target age group to the source age band that fully contains it
+and uses constant contacts within the source band.
+}
+\examples{
+source_ages <- AgeStructure(
+  age_groups = c("0-4", "5-9"),
+  lower_bounds = c(0, 5),
+  upper_bounds = c(4, 9)
+)
+target_ages <- AgeStructure(
+  age_groups = "0-9",
+  lower_bounds = 0,
+  upper_bounds = 9
+)
+source_contacts <- structure(
+  list(
+    matrix = matrix(c(2, 1, 3, 4), nrow = 2, byrow = TRUE),
+    age_structure = source_ages,
+    source = "example",
+    country = NULL,
+    setting = "all",
+    orientation = "recipient_source",
+    convention = "rows are recipients/contact-makers; columns are sources/contacts",
+    source_reference = "example source",
+    notes = "Example source object for documentation.",
+    limitations = NULL,
+    metadata = list(source_label = "example")
+  ),
+  class = c("agepi_contact_matrix_source", "list")
+)
+adapt_contact_matrix_to_age_structure(
+  source_contacts,
+  target_ages,
+  population = c(100, 200),
+  method = "source_band"
+)
 }

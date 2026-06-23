@@ -402,7 +402,9 @@ simulate_demography(
 
 See [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R)
 and [docs/demographic_residuals.md](docs/demographic_residuals.md) for a fuller
-demographic workflow and diagnostics.
+demographic workflow and diagnostics. For a conceptual guide to choosing
+between the demography workflows, see
+[docs/demography_workflows.md](docs/demography_workflows.md).
 
 Demographic-only and deterministic epidemic-demography simulations support two
 ageing policies:
@@ -458,28 +460,39 @@ These adapters reshape and validate supplied data; they do not attempt to
 reproduce full external projection systems. See
 [docs/external_data_adapters.md](docs/external_data_adapters.md) and
 [docs/contact_matrix_integration_design.md](docs/contact_matrix_integration_design.md).
+For a user-facing explanation of contact-matrix workflows, see
+[docs/contact_matrix_workflows.md](docs/contact_matrix_workflows.md).
 
 The intended source workflow keeps provenance separate from adaptation:
 
 ```r
-source_contacts <- load_contact_matrix_source(
-  source = "prem",
-  country = "Kiribati",
-  setting = "all"
-)
+if (requireNamespace("contactdata", quietly = TRUE) &&
+    "Fiji" %in% contactdata::list_countries()) {
+  source_contacts <- load_contact_matrix_source(
+    source = "prem",
+    country = "Fiji",
+    setting = "all"
+  )
 
-contact_matrix <- adapt_contact_matrix_to_age_structure(
-  source_contacts,
-  age_structure,
-  population = source_grid_population,
-  method = "source_band"
-)
+  contact_matrix <- adapt_contact_matrix_to_age_structure(
+    source_contacts,
+    age_structure,
+    population = source_grid_population,
+    method = "source_band"
+  )
+}
 ```
 
 `population` is required when adapting a finer source matrix to coarser model
 age groups because aggregation is recipient-population weighted. Expanding a
 coarser source matrix to nested target ages uses constant contacts within each
 source age band.
+
+Prem/contactdata matrices are preferred when the requested country is available
+in the installed `contactdata` dataset. Kiribati may be absent from that
+dataset; nearby Pacific Prem matrices should only be used as explicit proxy
+assumptions. The Kiribati TB example falls back to POLYMOD UK only as a
+documented proxy, not as Kiribati-specific contact data.
 
 ## Examples
 
@@ -514,9 +527,9 @@ and print a message instead of failing when those packages are unavailable.
   optional WPP-connected demography benchmark using `wpp2024`.
 - [examples/kiribati_tb_realistic_demography.R](examples/kiribati_tb_realistic_demography.R):
   optional Kiribati TB public-data scaffold using WPP 2024 demography and a
-  public contact-matrix source. It prefers Prem/contactdata for Kiribati when
-  available and otherwise falls back to a POLYMOD UK proxy. It is not
-  calibrated and is not a policy model.
+  public contact-matrix source. It prefers Prem/contactdata when Kiribati is
+  available in the installed dataset; otherwise it falls back to a documented
+  POLYMOD UK proxy. It is not calibrated and is not a policy model.
 - [examples/demography_plots.R](examples/demography_plots.R): synthetic
   exploratory demography plots using imported `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
@@ -540,6 +553,10 @@ and print a message instead of failing when those packages are unavailable.
   age-structured transmission design notes.
 - [docs/external_data_adapters.md](docs/external_data_adapters.md): WPP-style
   demographic and contact-matrix adapter notes.
+- [docs/contact_matrix_workflows.md](docs/contact_matrix_workflows.md):
+  conceptual guide to choosing and adapting contact matrices.
+- [docs/demography_workflows.md](docs/demography_workflows.md): conceptual
+  guide to choosing between demographic workflows.
 - [docs/demographic_residuals.md](docs/demographic_residuals.md): demographic
   residual diagnostics.
 

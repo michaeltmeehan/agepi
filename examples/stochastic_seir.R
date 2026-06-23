@@ -12,6 +12,9 @@ if ("package:agepi" %in% search()) {
   )
 }
 
+# Purpose: run a small stochastic SEIR example and show both the realised
+# trajectory and the event log returned by `simulate_stochastic()`.
+
 age_structure <- AgeStructure(
   age_groups = c("0-4", "5-9"),
   lower_bounds = c(0, 5),
@@ -38,6 +41,8 @@ contact_matrix <- matrix(c(
   2, 5
 ), nrow = age_structure$n_age_groups, byrow = TRUE)
 
+# `return_events = TRUE` adds the realised Gillespie event log alongside the
+# time-indexed trajectory. The fixed seed keeps the example reproducible.
 stochastic <- simulate_stochastic(
   initial_state = initial_state,
   times = seq(0, 10, by = 1),

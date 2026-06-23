@@ -231,7 +231,7 @@ Matrix-like inputs default to agepi's recipient-source convention. Use
 `orientation = "source_recipient"` when rows are sources and columns are
 recipients. `transpose = TRUE` is an explicit final transposition escape hatch.
 
-Current contact-matrix aggregation is implemented as:
+The low-level exact aggregation helper is:
 
 ```r
 transform_contact_matrix(contact_matrix, from_age_structure, to_age_structure, population)
@@ -241,10 +241,18 @@ transform_contact_matrix(contact_matrix, from_age_structure, to_age_structure, p
 where every target age bin is an exact union of complete source age bins. It
 does not split source bins or perform general rebinning.
 
-## Possible Future Source-Specific Adapters
+The current source-layer workflow is broader but still explicit:
+`load_contact_matrix_source()` loads a native/source matrix with provenance, and
+`adapt_contact_matrix_to_age_structure()` adapts it to a target
+`AgeStructure()`. Use `method = "source_band"` for this adaptation. The older
+`method = "exact"` spelling is deprecated and retained only as an alias for the
+same source-band/piecewise-constant assumption.
 
-Source-specific helpers may still be useful later if agepi adds optional
-socialmixr or conmat integrations:
+## Source-Specific Adapters
+
+agepi now includes optional source loaders for POLYMOD/socialmixr,
+Prem/contactdata, and conmat-generated matrices. Additional S3 adapters may
+still be useful later for direct external object classes:
 
 ```r
 as_agepi_contact_matrix.socialmixr <- function(x, age_structure = NULL, transpose = FALSE) {

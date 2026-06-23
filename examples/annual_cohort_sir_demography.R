@@ -1,5 +1,9 @@
 library(agepi)
 
+# Purpose: demonstrate the annual-cohort demographic coupling path with
+# `simulate_deterministic()`. The example uses one-year ages, stepwise
+# demographic schedules, and a short one-year simulation interval.
+
 ages <- wpp_age_structure_1year(max_age = 5)
 
 population <- c(1000, 950, 900, 850, 800, 1200)
@@ -38,6 +42,8 @@ process <- build_demographic_process(
   mortality_schedule = mortality
 )
 
+# Static contact matrix and a simple annual-cohort run. `method` keeps the
+# example runnable whether or not deSolve is installed.
 contacts <- matrix(1, nrow = ages$n_age_groups, ncol = ages$n_age_groups)
 diag(contacts) <- 3
 
@@ -56,6 +62,8 @@ simulation <- simulate_deterministic(
   time_policy = "step"
 )
 
+# `compartment_totals()` and `total_population()` show the aggregate outputs
+# returned by the coupled run.
 head(simulation)
 compartment_totals(simulation)
 total_population(simulation)

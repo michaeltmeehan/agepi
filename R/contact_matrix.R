@@ -143,6 +143,9 @@ contact_matrix_from_socialmixr <- function(
 #' - `"conmat"`: conmat-generated matrices from caller-supplied population data
 #'   through optional `conmat`.
 #'
+#' Optional source packages are loaded only when their source is requested and
+#' fail with an install/use message when unavailable.
+#'
 #' @param source Contact source.
 #' @param country Country/location name, when applicable.
 #' @param setting Contact setting. For `"prem"` and `"conmat"`, one of
@@ -166,6 +169,21 @@ contact_matrix_from_socialmixr <- function(
 #'   `age_structure`, `source`, optional `country`, optional `setting`,
 #'   `orientation`, `convention`, `source_reference`, `notes`, `limitations`,
 #'   and source-specific `metadata`.
+#' @examples
+#' if (requireNamespace("contactdata", quietly = TRUE) &&
+#'     "Fiji" %in% contactdata::list_countries()) {
+#'   source_contacts <- load_contact_matrix_source(
+#'     source = "prem",
+#'     country = "Fiji",
+#'     setting = "all"
+#'   )
+#'   target_ages <- wpp_age_structure_5year(max_age = 75)
+#'   contact_matrix <- adapt_contact_matrix_to_age_structure(
+#'     source_contacts,
+#'     target_ages,
+#'     method = "source_band"
+#'   )
+#' }
 #' @export
 load_contact_matrix_source <- function(source = c("polymod_uk", "polymod", "prem", "conmat"),
                                        country = NULL,
@@ -236,6 +254,39 @@ load_contact_matrix_source <- function(source = c("polymod_uk", "polymod", "prem
 #'
 #' @return A numeric contact matrix in agepi recipient-source orientation. A
 #'   metadata list is attached as attribute `"contact_source"`.
+#' @examples
+#' source_ages <- AgeStructure(
+#'   age_groups = c("0-4", "5-9"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, 9)
+#' )
+#' target_ages <- AgeStructure(
+#'   age_groups = "0-9",
+#'   lower_bounds = 0,
+#'   upper_bounds = 9
+#' )
+#' source_contacts <- structure(
+#'   list(
+#'     matrix = matrix(c(2, 1, 3, 4), nrow = 2, byrow = TRUE),
+#'     age_structure = source_ages,
+#'     source = "example",
+#'     country = NULL,
+#'     setting = "all",
+#'     orientation = "recipient_source",
+#'     convention = "rows are recipients/contact-makers; columns are sources/contacts",
+#'     source_reference = "example source",
+#'     notes = "Example source object for documentation.",
+#'     limitations = NULL,
+#'     metadata = list(source_label = "example")
+#'   ),
+#'   class = c("agepi_contact_matrix_source", "list")
+#' )
+#' adapt_contact_matrix_to_age_structure(
+#'   source_contacts,
+#'   target_ages,
+#'   population = c(100, 200),
+#'   method = "source_band"
+#' )
 #' @export
 adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
                                                   age_structure,
@@ -304,9 +355,19 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
 
 #' Build a published proxy contact matrix for a target age structure
 #'
-#' Deprecated compatibility wrapper. Prefer [load_contact_matrix_source()]
+#' Deprecated compatibility wrapper. This function is retained only for older
+#' code and should not be used in new examples. Prefer [load_contact_matrix_source()]
 #' followed by [adapt_contact_matrix_to_age_structure()] so source loading and
-#' age-grid adaptation are explicit.
+#' age-grid adaptation are explicit:
+#'
+#' ```
+#' source_contacts <- load_contact_matrix_source(...)
+#' contact_matrix <- adapt_contact_matrix_to_age_structure(
+#'   source_contacts,
+#'   age_structure,
+#'   population = ...
+#' )
+#' ```
 #'
 #' @param age_structure Target valid age structure.
 #' @param source Contact source. Currently only `"polymod_uk"` is supported.
@@ -399,7 +460,8 @@ contact_matrix_from_conmat <- function(
 #' Stores externally supplied contact matrices indexed by time. Matrices use the
 #' agepi force-of-infection convention: rows are recipient age groups and
 #' columns are source age groups. No interpolation, reciprocity correction, or
-#' population balancing is applied.
+#' population balancing is applied. Contact schedules are storage/accessor
+#' objects; they are not yet consumed directly by [simulate_deterministic()].
 #'
 #' @param data Either a named list of contact matrices with names coercible to
 #'   numeric times, or a long data frame with columns `time`, `age_group_from`,
@@ -461,7 +523,8 @@ ContactSchedule <- function(data, age_structure) {
 #' Get a contact matrix at an exact time
 #'
 #' Retrieves an externally supplied contact matrix at one exact available time
-#' point. No interpolation or nearest-time lookup is applied.
+#' point. No interpolation or nearest-time lookup is applied. Contact schedules
+#' are not yet consumed directly by [simulate_deterministic()].
 #'
 #' @param contact_schedule An `agepi_contact_schedule` object.
 #' @param time Exact time point to retrieve.
@@ -1014,6 +1077,29 @@ ContactMatrixSource <- function(matrix,
 #' @param source_contact_matrix Object to validate.
 #'
 #' @return Invisibly returns `source_contact_matrix` when valid.
+#' @examples
+#' source_ages <- AgeStructure(
+#'   age_groups = c("0-4", "5+"),
+#'   lower_bounds = c(0, 5),
+#'   upper_bounds = c(4, Inf)
+#' )
+#' source_contacts <- structure(
+#'   list(
+#'     matrix = diag(2),
+#'     age_structure = source_ages,
+#'     source = "example",
+#'     country = NULL,
+#'     setting = "all",
+#'     orientation = "recipient_source",
+#'     convention = "rows are recipients/contact-makers; columns are sources/contacts",
+#'     source_reference = "example source",
+#'     notes = "Example source object for documentation.",
+#'     limitations = NULL,
+#'     metadata = list()
+#'   ),
+#'   class = c("agepi_contact_matrix_source", "list")
+#' )
+#' validate_contact_matrix_source(source_contacts)
 #' @export
 validate_contact_matrix_source <- function(source_contact_matrix) {
   if (!inherits(source_contact_matrix, "agepi_contact_matrix_source")) {

@@ -54,15 +54,25 @@ does not depend on `socialmixr` or `conmat`.
 
 `transform_contact_matrix()` aggregates contact matrices from a finer source
 age structure to a coarser target age structure when every target age bin is an
-exact union of source age bins. It currently supports exact aggregation only
+exact union of source age bins. It remains a narrow exact aggregation helper
 and rejects transformations that would require source-bin splitting or general
 rebinning.
+
+Published or generated contact sources use the newer source-layer workflow:
+`load_contact_matrix_source()` loads a matrix and provenance metadata on its
+native/source age grid, and `adapt_contact_matrix_to_age_structure()` adapts it
+to a target `AgeStructure()`. The preferred adaptation method is
+`method = "source_band"`: fine-to-coarse aggregation uses
+recipient-population weighting and coarse-to-fine expansion copies constant
+contacts within source bands. The older `method = "exact"` spelling is
+deprecated and retained only as an alias for this source-band assumption.
 
 `ContactSchedule()` stores externally supplied contact matrices by time, and
 `contact_matrix_at()` retrieves a matrix at an exact available time point. This
 prepares agepi for later time-varying simulation work without adding
 interpolation, reciprocity correction, population balancing, or simulator
-integration.
+integration. Contact schedules are not yet consumed directly by
+`simulate_deterministic()`.
 
 ## Age-Vector Transformations
 
