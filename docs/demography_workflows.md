@@ -303,7 +303,12 @@ The current boundaries are deliberate:
 ## 12. Worked Mini-Example
 
 The following example is intentionally small and dependency-free. It shows the
-mechanics of a demographic-only workflow on a simple three-group grid.
+mechanics of a demographic-only workflow on a simple three-group grid. Because
+the schedule values are meant to stay constant over the whole simulation
+window, the example repeats the same rates at the final time point and uses
+`time_policy = "step"` to carry them forward between listed schedule times.
+Exact-time lookup would otherwise require schedule values at every simulated
+time.
 
 ```r
 library(agepi)
@@ -316,9 +321,9 @@ ages <- AgeStructure(
 
 fertility <- FertilitySchedule(
   data.frame(
-    time = 0,
+    time = c(0, 2),
     age_group = "10+",
-    fertility_rate = 0.02,
+    fertility_rate = c(0.02, 0.02),
     stringsAsFactors = FALSE
   ),
   ages
@@ -326,9 +331,9 @@ fertility <- FertilitySchedule(
 
 mortality <- MortalitySchedule(
   data.frame(
-    time = 0,
-    age_group = ages$age_groups,
-    mortality_rate = c(0.01, 0.005, 0.02),
+    time = c(0, 0, 0, 2, 2, 2),
+    age_group = rep(ages$age_groups, times = 2),
+    mortality_rate = c(0.01, 0.005, 0.02, 0.01, 0.005, 0.02),
     stringsAsFactors = FALSE
   ),
   ages
@@ -344,7 +349,8 @@ initial_population <- c(500, 450, 800)
 simulated <- simulate_demography(
   process = process,
   initial_state = initial_population,
-  times = c(0, 1, 2)
+  times = c(0, 1, 2),
+  time_policy = "step"
 )
 
 total_population(simulated)

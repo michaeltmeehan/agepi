@@ -974,6 +974,16 @@ load_conmat_contact_matrix_source <- function(population,
   }
   source_age_structure <- contact_source_age_structure_from_limits(age_limits)
 
+  if (!exists("polymod_setting_models", envir = asNamespace("conmat"), inherits = FALSE)) {
+    stop(
+      "Installed conmat version ",
+      as.character(utils::packageVersion("conmat")),
+      " is missing internal object 'polymod_setting_models', which conmat::extrapolate_polymod() requires. ",
+      "Reinstall or upgrade conmat, or use another contact-matrix source.",
+      call. = FALSE
+    )
+  }
+
   conmat_result <- tryCatch(
     conmat::extrapolate_polymod(
       population = population,
