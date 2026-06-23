@@ -591,10 +591,39 @@ The cumulative-flow workflow is useful when you care about incidence-like
 counts rather than only the compartment trajectory.
 
 ```r
+library(agepi)
+
+ages <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10-14"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, 14)
+)
+
+initial_state <- data.frame(
+  compartment = rep(c("S", "I", "R"), each = ages$n_age_groups),
+  age_group = rep(ages$age_groups, times = 3),
+  value = c(
+    c(197, 248, 179),
+    c(3, 2, 1),
+    c(0, 0, 0)
+  ),
+  stringsAsFactors = FALSE
+)
+
+contact_matrix <- matrix(
+  c(4, 2, 1,
+    2, 5, 2,
+    1, 2, 4),
+  nrow = ages$n_age_groups,
+  byrow = TRUE
+)
+
+sir <- SIRModel(gamma = 0.25)
+
 output <- simulate_deterministic(
   initial_state = initial_state,
   times = seq(0, 10, by = 1),
-  model = SIRModel(gamma = 0.25),
+  model = sir,
   age_structure = ages,
   contact_matrix = contact_matrix,
   beta = 0.08,
