@@ -546,6 +546,8 @@ and print a message instead of failing when those packages are unavailable.
   limitations, solver notes, adapter boundaries, and roadmap notes.
 - [docs/generic_compartment_models.md](docs/generic_compartment_models.md):
   custom compartment models.
+- [docs/epidemic_model_workflows.md](docs/epidemic_model_workflows.md):
+  conceptual guide to epidemic and compartmental model workflows.
 - [docs/cumulative_flow_states_design.md](docs/cumulative_flow_states_design.md):
   deterministic auxiliary cumulative states and stochastic event-log-derived
   cumulative outputs.
