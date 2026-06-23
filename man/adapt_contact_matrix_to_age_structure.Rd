@@ -7,7 +7,8 @@
 adapt_contact_matrix_to_age_structure(
   source_contact_matrix,
   age_structure,
-  population = NULL
+  population = NULL,
+  method = c("source_band", "exact")
 )
 }
 \arguments{
@@ -18,16 +19,24 @@ returned by \code{\link[=load_contact_matrix_source]{load_contact_matrix_source(
 
 \item{population}{Optional source-grid population vector required for
 fine-to-coarse aggregation.}
+
+\item{method}{Adaptation method. Currently only \code{"source_band"} is
+supported. It uses recipient-population weighting for fine-to-coarse
+aggregation and constant contacts within each source age band for
+coarse-to-fine expansion. \code{"exact"} is accepted as a deprecated alias for
+\code{"source_band"}; it is exact only under the same source-band/piecewise
+constant assumption.}
 }
 \value{
 A numeric contact matrix in agepi recipient-source orientation. A metadata list
 is attached as attribute \code{"contact_source"}.
 }
 \description{
-Adapts a loaded source contact matrix to a requested age grid. Exact
-fine-to-coarse aggregation uses
-\code{\link[=transform_contact_matrix]{transform_contact_matrix()}} and
-therefore requires a source-grid population vector. Coarse-to-fine expansion
-assigns each target age group to the source age band that fully contains it and
-uses constant contacts within the source band.
+Adapts a loaded source contact matrix to a requested age grid using
+source-band assumptions. Fine-to-coarse aggregation uses
+\code{\link[=transform_contact_matrix]{transform_contact_matrix()}} with
+recipient-population weighting and therefore requires a source-grid population
+vector. Coarse-to-fine expansion assigns each target age group to the source
+age band that fully contains it and uses constant contacts within the source
+band.
 }

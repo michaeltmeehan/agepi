@@ -259,13 +259,11 @@ test_that("adapt_contact_matrix_to_age_structure expands nested source grids", {
     byrow = TRUE,
     dimnames = list(source_ages$age_groups, source_ages$age_groups)
   )
-  source <- structure(
-    list(
-      matrix = source_matrix,
-      age_structure = source_ages,
-      metadata = list(source_label = "test source")
-    ),
-    class = c("agepi_contact_matrix_source", "list")
+  source <- ContactMatrixSource(
+    matrix = source_matrix,
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source"
   )
 
   contact_matrix <- adapt_contact_matrix_to_age_structure(source, target_ages)
@@ -288,6 +286,7 @@ test_that("adapt_contact_matrix_to_age_structure expands nested source grids", {
   )
   expect_match(metadata$adaptation_note, "expanded")
   expect_match(metadata$adaptation_note, "constant contacts within each source band")
+  expect_identical(metadata$adaptation_method, "source_band")
 })
 
 test_that("adapt_contact_matrix_to_age_structure aggregates using transform_contact_matrix", {
@@ -312,13 +311,11 @@ test_that("adapt_contact_matrix_to_age_structure aggregates using transform_cont
     byrow = TRUE,
     dimnames = list(source_ages$age_groups, source_ages$age_groups)
   )
-  source <- structure(
-    list(
-      matrix = source_matrix,
-      age_structure = source_ages,
-      metadata = list(source_label = "test source")
-    ),
-    class = c("agepi_contact_matrix_source", "list")
+  source <- ContactMatrixSource(
+    matrix = source_matrix,
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source"
   )
 
   contact_matrix <- adapt_contact_matrix_to_age_structure(
@@ -333,6 +330,7 @@ test_that("adapt_contact_matrix_to_age_structure aggregates using transform_cont
     ignore_attr = TRUE
   )
   expect_match(attr(contact_matrix, "contact_source")$adaptation_note, "aggregated")
+  expect_identical(attr(contact_matrix, "contact_source")$adaptation_method, "source_band")
 })
 
 test_that("contact matrix aggregation requires source-grid population", {
@@ -346,13 +344,11 @@ test_that("contact matrix aggregation requires source-grid population", {
     lower_bounds = 0,
     upper_bounds = 9
   )
-  source <- structure(
-    list(
-      matrix = diag(2),
-      age_structure = source_ages,
-      metadata = list(source_label = "test source")
-    ),
-    class = c("agepi_contact_matrix_source", "list")
+  source <- ContactMatrixSource(
+    matrix = diag(2),
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source"
   )
 
   expect_error(
@@ -361,7 +357,85 @@ test_that("contact matrix aggregation requires source-grid population", {
   )
 })
 
-test_that("load_contact_matrix_source and adaptation build POLYMOD proxy with metadata", {
+test_that("contact matrix source object structure is validated", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5+"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, Inf)
+  )
+  source <- ContactMatrixSource(
+    matrix = diag(2),
+    age_structure = source_ages,
+    source = "unit_test",
+    country = "Exampleland",
+    setting = "all",
+    source_reference = "test reference",
+    notes = "test notes",
+    limitations = "test limitations"
+  )
+
+  expect_s3_class(source, "agepi_contact_matrix_source")
+  expect_identical(source$source, "unit_test")
+  expect_identical(source$country, "Exampleland")
+  expect_identical(source$setting, "all")
+  expect_identical(source$orientation, "recipient_source")
+  expect_true(all(c(
+    "matrix", "age_structure", "source", "country", "setting",
+    "orientation", "convention", "source_reference", "notes",
+    "limitations", "metadata"
+  ) %in% names(source)))
+  expect_silent(validate_contact_matrix_source(source))
+
+  source$source <- NULL
+  expect_error(validate_contact_matrix_source(source), "missing required")
+})
+
+test_that("deprecated exact adaptation method is an alias for source_band", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-9", "10+"),
+    lower_bounds = c(0, 10),
+    upper_bounds = c(9, Inf)
+  )
+  target_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9", "10+"),
+    lower_bounds = c(0, 5, 10),
+    upper_bounds = c(4, 9, Inf)
+  )
+  source <- ContactMatrixSource(
+    matrix = matrix(c(2, 1, 3, 4), nrow = 2, byrow = TRUE),
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source",
+    notes = "test notes"
+  )
+
+  expect_warning(
+    contact_matrix <- adapt_contact_matrix_to_age_structure(source, target_ages, method = "exact"),
+    "deprecated"
+  )
+  expect_identical(attr(contact_matrix, "contact_source")$adaptation_method, "source_band")
+})
+
+test_that("source validation rejects absent notes and limitations", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5+"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, Inf)
+  )
+  source <- ContactMatrixSource(
+    matrix = diag(2),
+    age_structure = source_ages,
+    source = "unit_test",
+    source_reference = "test reference",
+    notes = "test notes"
+  )
+  source$notes <- NULL
+  source$limitations <- NULL
+
+  expect_error(validate_contact_matrix_source(source), "missing required")
+})
+
+test_that("POLYMOD source loader supports UK compatibility alias", {
   testthat::skip_if_not_installed("socialmixr")
 
   socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
@@ -373,6 +447,8 @@ test_that("load_contact_matrix_source and adaptation build POLYMOD proxy with me
   metadata <- attr(contact_matrix, "contact_source")
 
   expect_s3_class(source, "agepi_contact_matrix_source")
+  expect_identical(source$source, "polymod_uk")
+  expect_identical(source$country, "United Kingdom")
   expect_true(is.matrix(contact_matrix))
   expect_identical(dim(contact_matrix), c(ages$n_age_groups, ages$n_age_groups))
   expect_identical(rownames(contact_matrix), ages$age_groups)
@@ -381,6 +457,131 @@ test_that("load_contact_matrix_source and adaptation build POLYMOD proxy with me
   expect_true(all(contact_matrix >= 0))
   expect_match(metadata$source_label, "POLYMOD")
   expect_match(metadata$adaptation_note, "constant contacts within each source band")
+})
+
+test_that("POLYMOD source loader supports another available country", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
+  testthat::skip_if_not("polymod" %in% socialmixr_datasets)
+
+  source <- load_contact_matrix_source("polymod", country = "Germany")
+
+  expect_s3_class(source, "agepi_contact_matrix_source")
+  expect_identical(source$source, "polymod")
+  expect_identical(source$country, "Germany")
+  expect_identical(source$setting, "all")
+  expect_true(is.matrix(source$matrix))
+  expect_identical(dim(source$matrix), c(source$age_structure$n_age_groups, source$age_structure$n_age_groups))
+  expect_silent(validate_contact_matrix_source(source))
+})
+
+test_that("POLYMOD source loader handles setting filters conservatively", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
+  testthat::skip_if_not("polymod" %in% socialmixr_datasets)
+
+  home_source <- load_contact_matrix_source("polymod", country = "Germany", setting = "home")
+  expect_identical(home_source$setting, "home")
+  expect_s3_class(home_source, "agepi_contact_matrix_source")
+
+  expect_error(
+    load_contact_matrix_source("polymod", country = "Germany", setting = "other"),
+    "explicit socialmixr filter"
+  )
+})
+
+test_that("POLYMOD source loader fails clearly without socialmixr", {
+  skip_if(requireNamespace("socialmixr", quietly = TRUE))
+
+  expect_error(
+    load_contact_matrix_source("polymod_uk"),
+    "Package socialmixr is required"
+  )
+})
+
+test_that("Prem source loader fails clearly without contactdata", {
+  skip_if(requireNamespace("contactdata", quietly = TRUE))
+
+  expect_error(
+    load_contact_matrix_source("prem", country = "Kiribati"),
+    "Package contactdata is required"
+  )
+})
+
+test_that("Prem source loader returns a validated source object", {
+  testthat::skip_if_not_installed("contactdata")
+
+  countries <- contactdata::list_countries()
+  country <- if ("Kiribati" %in% countries) "Kiribati" else countries[[1]]
+  source <- load_contact_matrix_source("prem", country = country, setting = "home")
+
+  expect_s3_class(source, "agepi_contact_matrix_source")
+  expect_identical(source$source, "prem")
+  expect_identical(source$country, country)
+  expect_identical(source$setting, "home")
+  expect_equal(dim(source$matrix), c(16L, 16L))
+  expect_silent(validate_contact_matrix_source(source))
+})
+
+test_that("conmat source loader requires population input", {
+  testthat::skip_if_not_installed("conmat")
+
+  expect_error(
+    load_contact_matrix_source("conmat"),
+    "population is required"
+  )
+})
+
+test_that("conmat source loader fails clearly without conmat", {
+  skip_if(requireNamespace("conmat", quietly = TRUE))
+
+  expect_error(
+    load_contact_matrix_source("conmat", population = data.frame()),
+    "Package conmat is required"
+  )
+})
+
+test_that("conmat source loader accepts generated matrices when conmat dependencies are available", {
+  testthat::skip_if_not_installed("conmat")
+
+  population <- data.frame(
+    lower.age.limit = seq(0, 75, by = 5),
+    population = rep(1000, 16)
+  )
+  source <- tryCatch(
+    load_contact_matrix_source(
+      "conmat",
+      population = population,
+      age_limits = c(seq(0, 75, by = 5), Inf)
+    ),
+    error = function(e) {
+      testthat::skip(paste("conmat source generation unavailable:", conditionMessage(e)))
+    }
+  )
+
+  expect_s3_class(source, "agepi_contact_matrix_source")
+  expect_identical(source$source, "conmat")
+  expect_identical(source$setting, "all")
+  expect_silent(validate_contact_matrix_source(source))
+})
+
+test_that("deprecated contact_matrix_for_age_structure delegates to source workflow", {
+  testthat::skip_if_not_installed("socialmixr")
+
+  socialmixr_datasets <- utils::data(package = "socialmixr")$results[, "Item"]
+  testthat::skip_if_not("polymod" %in% socialmixr_datasets)
+
+  ages <- wpp_age_structure_1year(max_age = 65)
+
+  expect_warning(
+    contact_matrix <- contact_matrix_for_age_structure(ages),
+    "deprecated"
+  )
+  expect_true(is.matrix(contact_matrix))
+  expect_identical(dim(contact_matrix), c(ages$n_age_groups, ages$n_age_groups))
+  expect_match(attr(contact_matrix, "contact_source")$source, "polymod_uk")
 })
 
 test_that("conmat-style long table is converted correctly", {

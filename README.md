@@ -446,7 +446,10 @@ The package also includes dependency-free adapters for common external shapes:
 - `contact_matrix_from_conmat()` for conmat-style long data frames;
 - `load_contact_matrix_source()` plus
   `adapt_contact_matrix_to_age_structure()` for explicitly separating contact
-  source loading from model age-grid adaptation;
+  source loading from model age-grid adaptation. Current source loaders cover
+  POLYMOD via optional `socialmixr`, Prem et al. matrices via optional
+  `contactdata`, and conmat-generated matrices from caller-supplied population
+  data via optional `conmat`;
 - `population_from_wpp()` and `demography_from_wpp()` for WPP-style population
   tables;
 - WPP-style fertility, mortality, and migration standardisers.
@@ -455,6 +458,28 @@ These adapters reshape and validate supplied data; they do not attempt to
 reproduce full external projection systems. See
 [docs/external_data_adapters.md](docs/external_data_adapters.md) and
 [docs/contact_matrix_integration_design.md](docs/contact_matrix_integration_design.md).
+
+The intended source workflow keeps provenance separate from adaptation:
+
+```r
+source_contacts <- load_contact_matrix_source(
+  source = "prem",
+  country = "Kiribati",
+  setting = "all"
+)
+
+contact_matrix <- adapt_contact_matrix_to_age_structure(
+  source_contacts,
+  age_structure,
+  population = source_grid_population,
+  method = "source_band"
+)
+```
+
+`population` is required when adapting a finer source matrix to coarser model
+age groups because aggregation is recipient-population weighted. Expanding a
+coarser source matrix to nested target ages uses constant contacts within each
+source age band.
 
 ## Examples
 
@@ -489,8 +514,9 @@ and print a message instead of failing when those packages are unavailable.
   optional WPP-connected demography benchmark using `wpp2024`.
 - [examples/kiribati_tb_realistic_demography.R](examples/kiribati_tb_realistic_demography.R):
   optional Kiribati TB public-data scaffold using WPP 2024 demography and a
-  POLYMOD UK proxy contact matrix. It is not calibrated and is not a policy
-  model.
+  public contact-matrix source. It prefers Prem/contactdata for Kiribati when
+  available and otherwise falls back to a POLYMOD UK proxy. It is not
+  calibrated and is not a policy model.
 - [examples/demography_plots.R](examples/demography_plots.R): synthetic
   exploratory demography plots using imported `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):

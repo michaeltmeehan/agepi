@@ -64,13 +64,15 @@ The current `examples/kiribati_tb_realistic_demography.R` implementation is a
 calibration-ready scaffold, not a calibrated Kiribati estimate. It uses annual
 WPP 2024 population, fertility, mortality, and net migration schedules directly
 and evaluates them as stepwise annual inputs under subannual deterministic ODE
-integration. It does not linearly interpolate WPP schedules. Its current contact
-matrix is a published POLYMOD United Kingdom social-contact proxy generated
-through `socialmixr`, expanded to the WPP single-year model grid by holding the
-source age-band matrix constant within each source band. This is not
-Kiribati-specific and should be replaced or sensitivity-tested with Prem/conmat,
-Pacific, Kiribati household/crowding, or collaborator-provided contact inputs
-before policy interpretation.
+integration. It does not linearly interpolate WPP schedules. Its contact matrix
+is loaded through `load_contact_matrix_source()` and then adapted to the WPP
+single-year model grid with `adapt_contact_matrix_to_age_structure()`. When the
+optional `contactdata` package is installed and includes Kiribati, the example
+uses a Prem et al. synthetic Kiribati matrix. Otherwise it falls back to a
+published POLYMOD United Kingdom social-contact proxy generated through
+`socialmixr`. Both are public-data scaffolds and should be replaced or
+sensitivity-tested with Pacific, Kiribati household/crowding, or
+collaborator-provided contact inputs before policy interpretation.
 
 ## 3. Collaborator-enhanced modelling pathway
 

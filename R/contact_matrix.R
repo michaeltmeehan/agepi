@@ -128,48 +128,128 @@ contact_matrix_from_socialmixr <- function(
   )
 }
 
-#' Load a published contact matrix source
+#' Load a contact matrix source
 #'
-#' Loads a raw contact matrix with source metadata and its native age grid.
-#' Currently supports a POLYMOD United Kingdom matrix through the optional
-#' `socialmixr` package. The returned matrix is not adapted to a model age grid.
+#' Loads a contact matrix with source metadata on its native/source age grid.
+#' The returned matrix is not adapted to a model age grid; use
+#' [adapt_contact_matrix_to_age_structure()] for age-grid adaptation.
 #'
-#' @param source Contact source. Currently only `"polymod_uk"` is supported.
+#' Supported sources are:
+#' - `"polymod"`: empirical POLYMOD matrices through optional `socialmixr`;
+#' - `"polymod_uk"`: compatibility alias for `source = "polymod"` and
+#'   `country = "United Kingdom"`;
+#' - `"prem"`: Prem et al. synthetic country matrices through optional
+#'   `contactdata`;
+#' - `"conmat"`: conmat-generated matrices from caller-supplied population data
+#'   through optional `conmat`.
+#'
+#' @param source Contact source.
+#' @param country Country/location name, when applicable.
+#' @param setting Contact setting. For `"prem"` and `"conmat"`, one of
+#'   `"all"`, `"home"`, `"school"`, `"work"`, or `"other"`. For `"polymod"`,
+#'   `"all"` applies no contact filter; `"home"`, `"school"`, and `"work"`
+#'   filter the POLYMOD contact records when the setting variables are
+#'   available. POLYMOD `"other"` spans multiple columns and requires an
+#'   explicit `filter`.
+#' @param age_limits Lower age limits for source bins. Defaults to six broad
+#'   reporting bands for POLYMOD and five-year bins for Prem/conmat.
+#' @param geographic_setting Prem/contactdata geographic setting: `"all"`,
+#'   `"rural"`, or `"urban"`.
+#' @param data_source Prem/contactdata source vintage: `"2020"` or `"2017"`.
+#' @param filter Optional socialmixr filter list for POLYMOD. If supplied, this
+#'   overrides `setting`.
+#' @param symmetric Whether to request a symmetric socialmixr POLYMOD matrix.
+#' @param population Population input required for `source = "conmat"`.
+#' @param per_capita_household_size Optional conmat household-size adjustment.
 #'
 #' @return An `agepi_contact_matrix_source` list with `matrix`,
-#'   `age_structure`, and `metadata` components.
+#'   `age_structure`, `source`, optional `country`, optional `setting`,
+#'   `orientation`, `convention`, `source_reference`, `notes`, `limitations`,
+#'   and source-specific `metadata`.
 #' @export
-load_contact_matrix_source <- function(
-  source = c("polymod_uk")
-) {
+load_contact_matrix_source <- function(source = c("polymod_uk", "polymod", "prem", "conmat"),
+                                       country = NULL,
+                                       setting = "all",
+                                       age_limits = NULL,
+                                       geographic_setting = "all",
+                                       data_source = "2020",
+                                       filter = NULL,
+                                       symmetric = FALSE,
+                                       population = NULL,
+                                       per_capita_household_size = NULL) {
   source <- match.arg(source)
 
   switch(
     source,
-    polymod_uk = load_polymod_uk_contact_matrix_source()
+    polymod_uk = load_polymod_contact_matrix_source(
+      country = "United Kingdom",
+      setting = setting,
+      age_limits = age_limits,
+      filter = filter,
+      symmetric = symmetric,
+      alias = "polymod_uk"
+    ),
+    polymod = load_polymod_contact_matrix_source(
+      country = country,
+      setting = setting,
+      age_limits = age_limits,
+      filter = filter,
+      symmetric = symmetric,
+      alias = NULL
+    ),
+    prem = load_prem_contact_matrix_source(
+      country = country,
+      setting = setting,
+      age_limits = age_limits,
+      geographic_setting = geographic_setting,
+      data_source = data_source
+    ),
+    conmat = load_conmat_contact_matrix_source(
+      population = population,
+      setting = setting,
+      age_limits = age_limits,
+      per_capita_household_size = per_capita_household_size
+    )
   )
 }
 
 #' Adapt a contact matrix source to a target age structure
 #'
-#' Adapts a loaded source contact matrix to a requested age grid. Exact
-#' fine-to-coarse aggregation uses [transform_contact_matrix()] and therefore
-#' requires a source-grid population vector. Coarse-to-fine expansion assigns
-#' each target age group to the source age band that fully contains it and uses
-#' constant contacts within the source band.
+#' Adapts a loaded source contact matrix to a requested age grid using
+#' source-band assumptions. Fine-to-coarse aggregation uses
+#' [transform_contact_matrix()] with recipient-population weighting and
+#' therefore requires a source-grid population vector. Coarse-to-fine expansion
+#' assigns each target age group to the source age band that fully contains it
+#' and uses constant contacts within the source band.
 #'
 #' @param source_contact_matrix An `agepi_contact_matrix_source` object returned
 #'   by [load_contact_matrix_source()].
 #' @param age_structure Target valid age structure.
 #' @param population Optional source-grid population vector required for
 #'   fine-to-coarse aggregation.
+#' @param method Adaptation method. Currently only `"source_band"` is
+#'   supported. It uses recipient-population weighting for fine-to-coarse
+#'   aggregation and constant contacts within each source age band for
+#'   coarse-to-fine expansion. `"exact"` is accepted as a deprecated alias for
+#'   `"source_band"`; it is exact only under the same source-band/piecewise
+#'   constant assumption.
 #'
 #' @return A numeric contact matrix in agepi recipient-source orientation. A
 #'   metadata list is attached as attribute `"contact_source"`.
 #' @export
 adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
                                                   age_structure,
-                                                  population = NULL) {
+                                                  population = NULL,
+                                                  method = c("source_band", "exact")) {
+  method <- match.arg(method)
+  if (identical(method, "exact")) {
+    warning(
+      "method = 'exact' is deprecated; use method = 'source_band'. ",
+      "'exact' meant exact only under the source-band/piecewise-constant assumption.",
+      call. = FALSE
+    )
+    method <- "source_band"
+  }
   validate_contact_matrix_source(source_contact_matrix)
   validate_age_structure(age_structure)
 
@@ -181,8 +261,9 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
       identical(source_age_structure$lower_bounds, age_structure$lower_bounds) &&
       identical(source_age_structure$upper_bounds, age_structure$upper_bounds)) {
     contact_matrix <- as_agepi_contact_matrix(source_matrix, age_structure = age_structure)
+    metadata$adaptation_method <- method
     metadata$adaptation_note <- "Source contact matrix already matches the target age grid."
-    attr(contact_matrix, "contact_source") <- metadata
+    attr(contact_matrix, "contact_source") <- contact_source_metadata(source_contact_matrix, metadata)
     return(contact_matrix)
   }
 
@@ -212,11 +293,12 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
       "constant contacts within each source band."
     )
   } else {
-    stop("source and target age grids are not compatible for exact contact-matrix adaptation.", call. = FALSE)
+    stop("source and target age grids are not compatible for source-band contact-matrix adaptation.", call. = FALSE)
   }
 
+  metadata$adaptation_method <- method
   metadata$model_age_grid <- paste(age_structure$age_groups, collapse = ", ")
-  attr(contact_matrix, "contact_source") <- metadata
+  attr(contact_matrix, "contact_source") <- contact_source_metadata(source_contact_matrix, metadata)
   contact_matrix
 }
 
@@ -618,73 +700,339 @@ validate_contact_schedule_time <- function(time, available_times) {
   invisible(time)
 }
 
-load_polymod_uk_contact_matrix_source <- function() {
+load_polymod_contact_matrix_source <- function(country,
+                                               setting,
+                                               age_limits,
+                                               filter,
+                                               symmetric,
+                                               alias) {
   if (!requireNamespace("socialmixr", quietly = TRUE)) {
     stop(
-      "Package socialmixr is required for source = 'polymod_uk'.",
+      "Package socialmixr is required for source = 'polymod'. Install socialmixr or choose another source.",
       call. = FALSE
     )
   }
 
-  source_age_structure <- AgeStructure(
-    age_groups = c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
-    lower_bounds = c(0, 5, 15, 25, 45, 65),
-    upper_bounds = c(4, 14, 24, 44, 64, Inf)
-  )
+  if (is.null(country)) {
+    country <- "United Kingdom"
+  }
+  country <- validate_contact_source_scalar(country, "country")
+  setting <- validate_contact_source_scalar(setting, "setting")
+  if (!setting %in% c("all", "home", "school", "work", "other")) {
+    stop("setting must be one of: all, home, school, work, other.", call. = FALSE)
+  }
+  if (!is.logical(symmetric) || length(symmetric) != 1 || anyNA(symmetric)) {
+    stop("symmetric must be TRUE or FALSE.", call. = FALSE)
+  }
 
   data_environment <- new.env(parent = emptyenv())
   utils::data("polymod", package = "socialmixr", envir = data_environment)
   polymod <- get("polymod", envir = data_environment, inherits = FALSE)
+
+  available_countries <- sort(unique(as.character(polymod$participants$country)))
+  if (!country %in% available_countries) {
+    stop(
+      "POLYMOD country is not available: ",
+      country,
+      ". Available countries: ",
+      paste(available_countries, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (is.null(age_limits)) {
+    age_limits <- c(0, 5, 15, 25, 45, 65)
+  }
+  source_age_structure <- contact_source_age_structure_from_limits(age_limits)
+
+  socialmixr_filter <- filter
+  setting_note <- NULL
+  if (is.null(socialmixr_filter) && !identical(setting, "all")) {
+    if (all(c("cnt_home", "cnt_school", "cnt_work", "cnt_transport", "cnt_leisure", "cnt_otherplace") %in% names(polymod$contacts))) {
+      if (identical(setting, "other")) {
+        stop(
+          "POLYMOD setting = 'other' spans multiple contact-location columns; ",
+          "supply an explicit socialmixr filter instead.",
+          call. = FALSE
+        )
+      }
+      setting_columns <- switch(
+        setting,
+        home = "cnt_home",
+        school = "cnt_school",
+        work = "cnt_work"
+      )
+      socialmixr_filter <- stats::setNames(as.list(rep(1, length(setting_columns))), setting_columns)
+      setting_note <- paste("POLYMOD contacts were filtered using column(s):", paste(setting_columns, collapse = ", "))
+    } else {
+      stop("POLYMOD setting filters are not available in this socialmixr dataset.", call. = FALSE)
+    }
+  }
+
   socialmixr_matrix <- suppressWarnings(socialmixr::contact_matrix(
     polymod,
-    countries = "United Kingdom",
+    countries = country,
     age_limits = source_age_structure$lower_bounds,
-    symmetric = FALSE
+    filter = socialmixr_filter,
+    symmetric = symmetric
   ))
 
   source_matrix <- socialmixr_matrix$matrix
-  dimnames(source_matrix) <- list(
-    source_age_structure$age_groups,
-    source_age_structure$age_groups
-  )
-  source_matrix <- contact_matrix_from_socialmixr(
-    source_matrix,
-    age_structure = source_age_structure
+  source_matrix <- contact_source_matrix_on_age_structure(source_matrix, source_age_structure)
+
+  notes <- c(
+    paste(
+      "POLYMOD empirical social-contact survey matrix from",
+      "socialmixr::contact_matrix()."
+    ),
+    if (!is.null(setting_note)) setting_note else NULL,
+    "No reciprocity correction or age-grid adaptation is applied by the source loader."
   )
 
-  metadata <- list(
-    source_label = paste(
-      "POLYMOD United Kingdom empirical social-contact survey matrix from",
-      "socialmixr::contact_matrix(); used as a published proxy, not a",
-      "Kiribati-specific matrix"
-    ),
+  ContactMatrixSource(
+    matrix = source_matrix,
+    age_structure = source_age_structure,
+    source = if (is.null(alias)) "polymod" else alias,
+    country = country,
+    setting = setting,
+    orientation = "recipient_source",
     source_reference = paste(
       "Mossong et al. 2008 / POLYMOD, distributed through socialmixr's",
       "bundled polymod dataset"
     ),
-    source_age_grid = paste(source_age_structure$age_groups, collapse = ", "),
-    limitation = paste(
-      "This proxy is European and pre-pandemic; it is not calibrated to",
-      "Kiribati household structure, crowding, school attendance, or",
-      "TB-relevant prolonged indoor exposure."
+    notes = notes,
+    limitations = paste(
+      "POLYMOD countries are European and pre-pandemic; matrices are not",
+      "calibrated to non-survey populations unless the caller makes an",
+      "explicit proxy assumption."
+    ),
+    metadata = list(
+      source_label = paste(
+        "POLYMOD",
+        country,
+        "empirical social-contact survey matrix from socialmixr::contact_matrix()"
+      ),
+      symmetric = symmetric,
+      filter = socialmixr_filter
     )
   )
+}
 
-  result <- list(
+load_prem_contact_matrix_source <- function(country,
+                                            setting,
+                                            age_limits,
+                                            geographic_setting,
+                                            data_source) {
+  if (!requireNamespace("contactdata", quietly = TRUE)) {
+    stop(
+      "Package contactdata is required for source = 'prem'. Install contactdata or choose another source.",
+      call. = FALSE
+    )
+  }
+
+  country <- validate_contact_source_scalar(country, "country")
+  setting <- match.arg(setting, c("all", "home", "school", "work", "other"))
+  geographic_setting <- match.arg(geographic_setting, c("all", "rural", "urban"))
+  data_source <- match.arg(as.character(data_source), c("2020", "2017"))
+
+  available_countries <- contactdata::list_countries(
+    geographic_setting = geographic_setting,
+    data_source = data_source
+  )
+  if (!country %in% available_countries) {
+    stop(
+      "Prem/contactdata country is not available: ",
+      country,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  source_matrix <- contactdata::contact_matrix(
+    country = country,
+    location = setting,
+    geographic_setting = geographic_setting,
+    data_source = data_source
+  )
+
+  if (is.null(age_limits)) {
+    age_limits <- seq(0, 75, by = 5)
+  }
+  source_age_structure <- contact_source_age_structure_from_limits(age_limits)
+  source_matrix <- as_agepi_contact_matrix(
+    contact_source_matrix_on_age_structure(source_matrix, source_age_structure),
+    age_structure = source_age_structure
+  )
+
+  ContactMatrixSource(
     matrix = source_matrix,
     age_structure = source_age_structure,
+    source = "prem",
+    country = country,
+    setting = setting,
+    orientation = "recipient_source",
+    source_reference = paste(
+      "Prem et al. 2017 and Prem et al. 2021 synthetic contact matrices,",
+      "accessed through the optional contactdata package."
+    ),
+    notes = paste(
+      "Prem/contactdata matrix loaded on its native five-year age grid;",
+      "no age-grid adaptation, reciprocity correction, or calibration is",
+      "applied by agepi."
+    ),
+    limitations = paste(
+      "Prem matrices are synthetic country-level projections and may not",
+      "represent subnational, temporal, or disease-specific contact structure."
+    ),
+    metadata = list(
+      source_label = paste("Prem/contactdata", country, setting, "contact matrix"),
+      geographic_setting = geographic_setting,
+      data_source = data_source
+    )
+  )
+}
+
+load_conmat_contact_matrix_source <- function(population,
+                                              setting,
+                                              age_limits,
+                                              per_capita_household_size) {
+  if (!requireNamespace("conmat", quietly = TRUE)) {
+    stop(
+      "Package conmat is required for source = 'conmat'. Install conmat or choose another source.",
+      call. = FALSE
+    )
+  }
+  if (is.null(population)) {
+    stop("population is required for source = 'conmat'.", call. = FALSE)
+  }
+  setting <- match.arg(setting, c("all", "home", "school", "work", "other"))
+  if (is.null(age_limits)) {
+    age_limits <- c(seq(0, 75, by = 5), Inf)
+  }
+  source_age_structure <- contact_source_age_structure_from_limits(age_limits)
+
+  conmat_result <- tryCatch(
+    conmat::extrapolate_polymod(
+      population = population,
+      age_breaks = age_limits,
+      per_capita_household_size = per_capita_household_size
+    ),
+    error = function(e) {
+      stop("conmat::extrapolate_polymod() failed: ", conditionMessage(e), call. = FALSE)
+    }
+  )
+
+  source_matrix <- extract_conmat_source_matrix(conmat_result, setting, source_age_structure)
+
+  ContactMatrixSource(
+    matrix = source_matrix,
+    age_structure = source_age_structure,
+    source = "conmat",
+    country = NULL,
+    setting = setting,
+    orientation = "recipient_source",
+    source_reference = paste(
+      "conmat::extrapolate_polymod(), based on the conmat POLYMOD-fitted",
+      "setting models and caller-supplied population data."
+    ),
+    notes = paste(
+      "conmat source generation requires caller-supplied population data;",
+      "agepi only validates and stores the generated matrix."
+    ),
+    limitations = paste(
+      "conmat outputs depend on the supplied population, model defaults,",
+      "and optional household-size adjustment. agepi does not refit models",
+      "or apply additional reciprocity correction."
+    ),
+    metadata = list(
+      source_label = paste("conmat POLYMOD-extrapolated", setting, "contact matrix"),
+      per_capita_household_size = per_capita_household_size
+    )
+  )
+}
+
+ContactMatrixSource <- function(matrix,
+                                age_structure,
+                                source,
+                                country = NULL,
+                                setting = NULL,
+                                orientation = "recipient_source",
+                                source_reference,
+                                notes = NULL,
+                                limitations = NULL,
+                                metadata = list()) {
+  validate_age_structure(age_structure)
+  matrix <- validate_contact_matrix(matrix, age_structure)
+  source <- validate_contact_source_scalar(source, "source")
+  orientation <- validate_contact_source_scalar(orientation, "orientation")
+  source_reference <- validate_contact_source_scalar(source_reference, "source_reference")
+
+  if (!is.null(country)) {
+    country <- validate_contact_source_scalar(country, "country")
+  }
+  if (!is.null(setting)) {
+    setting <- validate_contact_source_scalar(setting, "setting")
+  }
+  if (is.null(notes) && is.null(limitations)) {
+    notes <- "No source notes supplied."
+  }
+  if (!is.null(notes)) {
+    notes <- as.character(notes)
+  }
+  if (!is.null(limitations)) {
+    limitations <- as.character(limitations)
+  }
+  if (!is.list(metadata) || is.data.frame(metadata)) {
+    stop("metadata must be a list.", call. = FALSE)
+  }
+
+  result <- list(
+    matrix = matrix,
+    age_structure = age_structure,
+    source = source,
+    country = country,
+    setting = setting,
+    orientation = orientation,
+    convention = "rows are recipients/contact-makers; columns are sources/contacts",
+    source_reference = source_reference,
+    notes = notes,
+    limitations = limitations,
     metadata = metadata
   )
   class(result) <- c("agepi_contact_matrix_source", "list")
-  result
+  validate_contact_matrix_source(result)
 }
 
+#' Validate a contact matrix source object
+#'
+#' Checks that a contact source object has the common agepi source-layer
+#' structure: `matrix`, `age_structure`, `source`, optional `country`, optional
+#' `setting`, orientation/convention metadata, `source_reference`, notes or
+#' limitations, source-specific `metadata`, and class
+#' `agepi_contact_matrix_source`.
+#'
+#' @param source_contact_matrix Object to validate.
+#'
+#' @return Invisibly returns `source_contact_matrix` when valid.
+#' @export
 validate_contact_matrix_source <- function(source_contact_matrix) {
   if (!inherits(source_contact_matrix, "agepi_contact_matrix_source")) {
     stop("source_contact_matrix must be an agepi_contact_matrix_source object.", call. = FALSE)
   }
 
-  required_fields <- c("matrix", "age_structure", "metadata")
+  required_fields <- c(
+    "matrix",
+    "age_structure",
+    "source",
+    "country",
+    "setting",
+    "orientation",
+    "convention",
+    "source_reference",
+    "notes",
+    "limitations",
+    "metadata"
+  )
   missing_fields <- setdiff(required_fields, names(source_contact_matrix))
   if (length(missing_fields) > 0) {
     stop(
@@ -696,5 +1044,131 @@ validate_contact_matrix_source <- function(source_contact_matrix) {
 
   validate_age_structure(source_contact_matrix$age_structure)
   validate_contact_matrix(source_contact_matrix$matrix, source_contact_matrix$age_structure)
+  validate_contact_source_scalar(source_contact_matrix$source, "source")
+  validate_contact_source_scalar(source_contact_matrix$orientation, "orientation")
+  if (!source_contact_matrix$orientation %in% c("recipient_source", "source_recipient")) {
+    stop("source_contact_matrix$orientation must be 'recipient_source' or 'source_recipient'.", call. = FALSE)
+  }
+  validate_contact_source_scalar(source_contact_matrix$convention, "convention")
+  validate_contact_source_scalar(source_contact_matrix$source_reference, "source_reference")
+  if (!is.null(source_contact_matrix$country)) {
+    validate_contact_source_scalar(source_contact_matrix$country, "country")
+  }
+  if (!is.null(source_contact_matrix$setting)) {
+    validate_contact_source_scalar(source_contact_matrix$setting, "setting")
+  }
+  if (!is.null(source_contact_matrix$notes) && !is.character(source_contact_matrix$notes)) {
+    stop("source_contact_matrix$notes must be NULL or character.", call. = FALSE)
+  }
+  if (!is.null(source_contact_matrix$limitations) && !is.character(source_contact_matrix$limitations)) {
+    stop("source_contact_matrix$limitations must be NULL or character.", call. = FALSE)
+  }
+  if (is.null(source_contact_matrix$notes) && is.null(source_contact_matrix$limitations)) {
+    stop("source_contact_matrix must include notes or limitations.", call. = FALSE)
+  }
+  if (!is.list(source_contact_matrix$metadata) || is.data.frame(source_contact_matrix$metadata)) {
+    stop("source_contact_matrix$metadata must be a list.", call. = FALSE)
+  }
   invisible(source_contact_matrix)
+}
+
+contact_source_metadata <- function(source_contact_matrix, adaptation_metadata = list()) {
+  metadata <- c(
+    list(
+      source = source_contact_matrix$source,
+      country = source_contact_matrix$country,
+      setting = source_contact_matrix$setting,
+      orientation = source_contact_matrix$orientation,
+      convention = source_contact_matrix$convention,
+      source_reference = source_contact_matrix$source_reference,
+      source_age_grid = paste(source_contact_matrix$age_structure$age_groups, collapse = ", "),
+      notes = paste(source_contact_matrix$notes, collapse = " "),
+      limitations = paste(source_contact_matrix$limitations, collapse = " ")
+    ),
+    source_contact_matrix$metadata,
+    adaptation_metadata
+  )
+
+  metadata[!vapply(metadata, is.null, logical(1))]
+}
+
+contact_source_age_structure_from_limits <- function(age_limits) {
+  if (!is.numeric(age_limits) || length(age_limits) < 2 || anyNA(age_limits)) {
+    stop("age_limits must be a numeric vector of at least two lower age limits.", call. = FALSE)
+  }
+  if (any(!is.finite(age_limits[-length(age_limits)]))) {
+    stop("Only the final age limit can be Inf.", call. = FALSE)
+  }
+  if (is.unsorted(age_limits, strictly = TRUE) || any(duplicated(age_limits))) {
+    stop("age_limits must be strictly increasing.", call. = FALSE)
+  }
+
+  if (is.infinite(age_limits[length(age_limits)])) {
+    lower_bounds <- age_limits[-length(age_limits)]
+    upper_bounds <- c(age_limits[-c(1, length(age_limits))] - 1, Inf)
+  } else {
+    lower_bounds <- age_limits
+    upper_bounds <- c(age_limits[-1] - 1, Inf)
+  }
+
+  age_groups <- ifelse(
+    is.infinite(upper_bounds),
+    paste0(lower_bounds, "+"),
+    ifelse(lower_bounds == upper_bounds, as.character(lower_bounds), paste0(lower_bounds, "-", upper_bounds))
+  )
+
+  AgeStructure(age_groups, lower_bounds, upper_bounds)
+}
+
+validate_contact_source_scalar <- function(x, name) {
+  if (!is.character(x) || length(x) != 1 || is.na(x) || !nzchar(x)) {
+    stop(name, " must be a single non-empty string.", call. = FALSE)
+  }
+  x
+}
+
+extract_conmat_source_matrix <- function(conmat_result, setting, age_structure) {
+  matrix_candidate <- conmat_result
+  if (is.list(conmat_result) && !is.data.frame(conmat_result) && !is.matrix(conmat_result)) {
+    if (setting %in% names(conmat_result)) {
+      matrix_candidate <- conmat_result[[setting]]
+    } else if (setting == "all" && "all" %in% names(conmat_result)) {
+      matrix_candidate <- conmat_result$all
+    } else if (setting == "all" && "contact_matrix" %in% names(conmat_result)) {
+      matrix_candidate <- conmat_result$contact_matrix
+    } else {
+      stop(
+        "conmat result does not contain requested setting '",
+        setting,
+        "'. Available component(s): ",
+        paste(names(conmat_result), collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+
+  if (is.data.frame(matrix_candidate)) {
+    return(contact_matrix_from_conmat(matrix_candidate, age_structure = age_structure))
+  }
+
+  as_agepi_contact_matrix(
+    contact_source_matrix_on_age_structure(matrix_candidate, age_structure),
+    age_structure = age_structure
+  )
+}
+
+contact_source_matrix_on_age_structure <- function(contact_matrix, age_structure) {
+  if (!is.matrix(contact_matrix) || !is.numeric(contact_matrix)) {
+    stop("source contact matrix must be a numeric matrix.", call. = FALSE)
+  }
+  if (!identical(dim(contact_matrix), c(age_structure$n_age_groups, age_structure$n_age_groups))) {
+    stop("source contact matrix dimensions must match source age_structure.", call. = FALSE)
+  }
+  contact_matrix <- matrix(
+    as.numeric(contact_matrix),
+    nrow = age_structure$n_age_groups,
+    ncol = age_structure$n_age_groups,
+    dimnames = list(age_structure$age_groups, age_structure$age_groups)
+  )
+  validate_contact_matrix(contact_matrix, age_structure)
 }

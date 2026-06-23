@@ -28,7 +28,7 @@ if ("package:agepi" %in% search()) {
 
 # Optional Packages -----------------------------------------------------------
 
-optional_packages <- c("wpp2024", "socialmixr", "deSolve")
+optional_packages <- c("wpp2024", "deSolve")
 missing_optional_packages <- optional_packages[
   !vapply(optional_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -37,8 +37,8 @@ if (length(missing_optional_packages) > 0) {
   message(
     "Skipping Kiribati TB realistic demography example: optional package(s) ",
     paste(missing_optional_packages, collapse = ", "),
-    " are not installed. Install wpp2024, socialmixr, and deSolve to use ",
-    "public WPP inputs, published contact data, and the deSolve backend."
+    " are not installed. Install wpp2024 and deSolve to use public WPP ",
+    "inputs and the deSolve backend."
   )
 } else {
 
@@ -78,8 +78,39 @@ population_2025 <- demography_population_vector(wpp_population, time = min(simul
 
 # Contact Matrix --------------------------------------------------------------
 
-raw_contact_matrix <- load_contact_matrix_source("polymod_uk")
-contact_matrix <- adapt_contact_matrix_to_age_structure(raw_contact_matrix, age_structure)
+if (requireNamespace("contactdata", quietly = TRUE) &&
+    country %in% contactdata::list_countries()) {
+  source_contacts <- load_contact_matrix_source(
+    source = "prem",
+    country = country,
+    setting = "all"
+  )
+  message("Using Prem/contactdata Kiribati synthetic contact matrix.")
+} else {
+  if (!requireNamespace("socialmixr", quietly = TRUE)) {
+    stop(
+      "Kiribati is not available through contactdata, and socialmixr is not ",
+      "installed for the POLYMOD UK fallback. Install contactdata with ",
+      "Kiribati support or install socialmixr to use the documented fallback.",
+      call. = FALSE
+    )
+  }
+  message(
+    "Prem/contactdata Kiribati contact matrix is unavailable; falling back to ",
+    "POLYMOD UK as a European proxy. This is a limitation and should not be ",
+    "interpreted as Kiribati-specific contact evidence."
+  )
+  source_contacts <- load_contact_matrix_source("polymod_uk")
+  source_contacts$limitations <- c(
+    source_contacts$limitations,
+    "Used only because Prem/contactdata Kiribati was unavailable in this R environment."
+  )
+}
+contact_matrix <- adapt_contact_matrix_to_age_structure(
+  source_contacts,
+  age_structure,
+  method = "source_band"
+)
 contact_matrix_source <- data.frame(
   as.list(attr(contact_matrix, "contact_source")),
   stringsAsFactors = FALSE
