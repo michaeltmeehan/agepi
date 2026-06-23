@@ -407,6 +407,10 @@ if (requireNamespace("contactdata", quietly = TRUE)) {
       setting = "all"
     )
 
+    # Minimal executable example only. Real analyses should use meaningful
+    # source-age population counts aligned to source_contacts$age_structure.
+    source_population <- rep(1, source_contacts$age_structure$n_age_groups)
+
     target_ages <- AgeStructure(
       age_groups = c("0-4", "5-9", "10+"),
       lower_bounds = c(0, 5, 10),
@@ -416,6 +420,7 @@ if (requireNamespace("contactdata", quietly = TRUE)) {
     contact_matrix <- adapt_contact_matrix_to_age_structure(
       source_contacts,
       target_ages,
+      population = source_population,
       method = "source_band"
     )
   }
@@ -424,7 +429,8 @@ if (requireNamespace("contactdata", quietly = TRUE)) {
 
 If the source age grid is finer than the target model grid, supply
 `population = ...` so the aggregation step can use recipient-population
-weighting.
+weighting. agepi does not silently fall back to equal weights, and the
+population vector must match the source matrix age grid.
 
 ### Example C: Time-Indexed Contacts
 
