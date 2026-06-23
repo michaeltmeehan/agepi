@@ -353,9 +353,14 @@ simulated <- simulate_demography(
   time_policy = "step"
 )
 
-total_population(simulated)
-age_group_totals(simulated)
+aggregate(population ~ time, simulated, sum)
+simulated
 ```
+
+`simulate_demography()` returns standalone demographic population output with
+`time`, `age_group`, and `population` columns. Helpers such as
+`total_population()` and `age_group_totals()` are for epidemic trajectory
+outputs that also carry `compartment` and `value` columns.
 
 If you want a reporting grid, add a matching `AgeGridMapping()` and aggregate
 the output:
