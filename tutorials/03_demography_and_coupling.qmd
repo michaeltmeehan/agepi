@@ -1,0 +1,214 @@
+---
+title: "Demography and Epidemic-Demography Coupling"
+format: html
+---
+
+Demography matters because age structure changes over time. Births, mortality,
+ageing, and migration all reshape the population seen by an epidemic model, so
+the same contact matrix can produce different trajectories as the age mix
+shifts.
+
+This tutorial keeps the mechanics visible in two stages:
+
+1. run a demographic-only workflow with `simulate_demography()`;
+2. use the same kind of demographic process inside `simulate_deterministic()`
+   for a coupled epidemic-demography run.
+
+For deeper background, see [docs/demography_workflows.md](../docs/demography_workflows.md),
+[docs/demographic_residuals.md](../docs/demographic_residuals.md),
+[docs/model_conventions.md](../docs/model_conventions.md),
+[examples/mock_demographic_workflow.R](../examples/mock_demographic_workflow.R),
+[examples/mock_seir_demography.R](../examples/mock_seir_demography.R), and
+[examples/annual_cohort_sir_demography.R](../examples/annual_cohort_sir_demography.R).
+
+```{r}
+if ("package:agepi" %in% search()) {
+  # Package already available.
+} else if (dir.exists("R")) {
+  invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
+} else if (requireNamespace("agepi", quietly = TRUE)) {
+  library(agepi)
+} else {
+  stop(
+    "Package agepi is not available. Run this tutorial from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+
+age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
+)
+
+fertility <- FertilitySchedule(
+  data.frame(
+    time = c(0, 1),
+    age_group = c("10+", "10+"),
+    fertility_rate = c(0.025, 0.024),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+mortality <- MortalitySchedule(
+  data.frame(
+    time = rep(c(0, 1), each = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, times = 2),
+    mortality_rate = c(0.004, 0.002, 0.015, 0.004, 0.002, 0.016),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+migration <- MigrationSchedule(
+  data.frame(
+    time = rep(c(0, 1), each = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, times = 2),
+    migration_count = c(2, -1, 1, 2, -1, 1),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+process <- build_demographic_process(
+  age_structure = age_structure,
+  fertility_schedule = fertility,
+  mortality_schedule = mortality,
+  migration_schedule = migration,
+  mode = "migration"
+)
+
+initial_population <- c(500, 600, 900)
+
+demography_only <- simulate_demography(
+  process = process,
+  initial_state = initial_population,
+  times = c(0, 1, 2),
+  time_policy = "step"
+)
+
+head(demography_only, 9)
+
+contact_matrix <- matrix(
+  c(
+    4, 2, 1,
+    2, 5, 2,
+    1, 2, 4
+  ),
+  nrow = age_structure$n_age_groups,
+  byrow = TRUE
+)
+
+epidemic_state <- data.frame(
+  compartment = rep(c("S", "E", "I", "R"), each = age_structure$n_age_groups),
+  age_group = rep(age_structure$age_groups, times = 4),
+  value = c(
+    c(497, 597, 897),
+    c(3, 2, 1),
+    c(2, 1, 1),
+    c(0, 0, 0)
+  ),
+  stringsAsFactors = FALSE
+)
+
+coupled <- simulate_deterministic(
+  initial_state = epidemic_state,
+  times = seq(0, 1, by = 0.25),
+  model = SEIRModel(sigma = 0.4, gamma = 0.25),
+  age_structure = age_structure,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  demographic_process = process,
+  time_policy = "step",
+  method = "euler"
+)
+
+head(coupled, 12)
+compartment_totals(coupled)
+total_population(coupled)
+```
+
+The first run is demographic-only: it returns a population table with `time`,
+`age_group`, and `population`. That is the right choice when you want to check
+fertility, mortality, migration, or ageing in isolation.
+
+The second run couples the same style of demographic process to an epidemic
+model. Here the demographic schedules change the population seen by the disease
+model, while the disease compartments still evolve through their own
+transitions.
+
+The annual-cohort pathway is an advanced option for one-year age grids. It is
+useful when you want cohort-style demographic stepping, but it is not the
+default learning path.
+
+```{r}
+if (requireNamespace("deSolve", quietly = TRUE)) {
+  ages_1yr <- wpp_age_structure_1year(max_age = 5)
+
+  fertility_1yr <- FertilitySchedule(
+    data.frame(
+      time = 2020,
+      age_group = "3",
+      fertility_rate = 0.08,
+      stringsAsFactors = FALSE
+    ),
+    ages_1yr
+  )
+
+  mortality_1yr <- MortalitySchedule(
+    data.frame(
+      time = 2020,
+      age_group = ages_1yr$age_groups,
+      mortality_rate = c(0.01, 0.002, 0.001, 0.001, 0.002, 0.03),
+      stringsAsFactors = FALSE
+    ),
+    ages_1yr
+  )
+
+  annual_process <- build_demographic_process(
+    age_structure = ages_1yr,
+    fertility_schedule = fertility_1yr,
+    mortality_schedule = mortality_1yr
+  )
+
+  annual_state <- data.frame(
+    compartment = rep(c("S", "I", "R"), each = ages_1yr$n_age_groups),
+    age_group = rep(ages_1yr$age_groups, times = 3),
+    value = c(
+      c(998, 947, 896, 846, 797, 1195),
+      c(2, 3, 4, 4, 3, 5),
+      c(0, 0, 0, 0, 0, 0)
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  annual_contacts <- matrix(1, nrow = ages_1yr$n_age_groups, ncol = ages_1yr$n_age_groups)
+  diag(annual_contacts) <- 3
+
+  simulate_deterministic(
+    initial_state = annual_state,
+    times = c(2020, 2021),
+    model = SIRModel(gamma = 0.25),
+    age_structure = ages_1yr,
+    contact_matrix = annual_contacts,
+    beta = 0.03,
+    demographic_process = annual_process,
+    ageing_policy = "annual_cohort",
+    time_policy = "step"
+  )
+} else {
+  message("Annual-cohort coupling is optional here and needs deSolve.")
+}
+```
+
+The key distinction is simple:
+
+- demographic-only workflows update population structure without disease;
+- coupled workflows let the epidemic model and the demographic process evolve
+  together.
+
+That separation keeps the model readable and makes it easier to decide when a
+population change belongs to the demographic layer and when it belongs to the
+disease layer.

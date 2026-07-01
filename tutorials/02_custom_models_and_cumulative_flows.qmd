@@ -1,0 +1,105 @@
+---
+title: "Custom Models and Cumulative Flows"
+format: html
+---
+
+`SIRModel()` and `SEIRModel()` are convenient starting constructors, but they
+are not the whole modelling framework. When your structure needs extra
+compartments or custom transitions, `CompartmentModel()` keeps the state and
+transition rules explicit.
+
+This tutorial also shows cumulative flows, which are useful when you want
+incidence-like event counts alongside the ordinary compartment trajectory.
+See [docs/generic_compartment_models.md](../docs/generic_compartment_models.md),
+[docs/cumulative_flow_states_design.md](../docs/cumulative_flow_states_design.md),
+[docs/epidemic_model_workflows.md](../docs/epidemic_model_workflows.md),
+[examples/generic_msir.R](../examples/generic_msir.R),
+[examples/deterministic_cumulative_flows.R](../examples/deterministic_cumulative_flows.R),
+and [examples/stochastic_cumulative_flows.R](../examples/stochastic_cumulative_flows.R).
+
+```{r}
+if ("package:agepi" %in% search()) {
+  # Package already available.
+} else if (dir.exists("R")) {
+  invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
+} else if (requireNamespace("agepi", quietly = TRUE)) {
+  library(agepi)
+} else {
+  stop(
+    "Package agepi is not available. Run this tutorial from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+
+age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
+)
+
+contact_matrix <- matrix(
+  c(
+    4, 2, 1,
+    2, 5, 2,
+    1, 2, 4
+  ),
+  nrow = age_structure$n_age_groups,
+  byrow = TRUE
+)
+
+initial_state <- data.frame(
+  compartment = rep(c("M", "S", "I", "R"), each = age_structure$n_age_groups),
+  age_group = rep(age_structure$age_groups, times = 4),
+  value = c(
+    c(100, 20, 0),
+    c(890, 1170, 898),
+    c(10, 10, 2),
+    c(0, 0, 0)
+  ),
+  stringsAsFactors = FALSE
+)
+
+model <- CompartmentModel(
+  compartments = c("M", "S", "I", "R"),
+  infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+  transitions = data.frame(
+    from = c("M", "I"),
+    to = c("S", "R"),
+    rate = c(0.15, 0.25),
+    stringsAsFactors = FALSE
+  ),
+  infectious_compartments = "I"
+)
+
+output <- simulate_deterministic(
+  initial_state = initial_state,
+  times = seq(0, 2, by = 0.1),
+  model = model,
+  age_structure = age_structure,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  method = "euler",
+  cumulative_flows = list(
+    infections = list(from = "S", to = "I"),
+    recoveries = list(from = "I", to = "R")
+  )
+)
+
+head(output$trajectory, 12)
+head(output$cumulative, 12)
+cumulative_flow_totals(output$cumulative)
+cumulative_flow_totals_wide(output$cumulative)
+```
+
+The cumulative output is not a new compartment. It is a separate count of
+selected transition events, so it reads like incidence or recovery activity
+over time rather than as a state that belongs inside the disease model.
+
+That distinction matters because it keeps the ordinary compartment totals and
+the event counts separate. If you want a quick comparison between the two,
+`cumulative_flow_totals()` and `cumulative_flow_totals_wide()` are the easiest
+inspection helpers.
+
+For the stochastic version of the same idea, see
+[examples/stochastic_cumulative_flows.R](../examples/stochastic_cumulative_flows.R).

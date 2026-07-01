@@ -85,15 +85,24 @@ The key pieces are the age structure, the initial compartment state, the contact
 
 If you need more control, `simulate_deterministic()` also supports age-specific susceptibility and infectiousness, demographic coupling, output aggregation, and cumulative flow tracking. Those features are documented in the workflow pages below rather than expanded here.
 
+## Learning path
+
+If you want a guided path through the package, start with the new tutorials in
+order:
+
+1. [tutorials/01_getting_started_age_structured_models.qmd](tutorials/01_getting_started_age_structured_models.qmd)
+2. [tutorials/02_custom_models_and_cumulative_flows.qmd](tutorials/02_custom_models_and_cumulative_flows.qmd)
+3. [tutorials/03_demography_and_coupling.qmd](tutorials/03_demography_and_coupling.qmd)
+
 ## Main workflows
 
 | Goal | Start here |
 | --- | --- |
-| Run a simple age-structured SIR or SEIR model | [examples/mock_sir_deterministic.R](examples/mock_sir_deterministic.R), [docs/epidemic_model_workflows.md](docs/epidemic_model_workflows.md) |
-| Define a custom compartment model | [docs/generic_compartment_models.md](docs/generic_compartment_models.md), [examples/generic_sir.R](examples/generic_sir.R), [examples/generic_seir.R](examples/generic_seir.R) |
-| Track cumulative infections, recoveries, deaths, or other flows | [docs/cumulative_flow_states_design.md](docs/cumulative_flow_states_design.md), [examples/deterministic_cumulative_flows.R](examples/deterministic_cumulative_flows.R), [examples/stochastic_cumulative_flows.R](examples/stochastic_cumulative_flows.R) |
-| Add demographic turnover | [docs/demography_workflows.md](docs/demography_workflows.md), [examples/mock_seir_demography.R](examples/mock_seir_demography.R) |
-| Try annual-cohort demographic coupling | [docs/coupled_epidemic_demography_operator_splitting_design.md](docs/coupled_epidemic_demography_operator_splitting_design.md), [examples/annual_cohort_sir_demography.R](examples/annual_cohort_sir_demography.R) |
+| Run a simple age-structured SIR or SEIR model | [tutorials/01_getting_started_age_structured_models.qmd](tutorials/01_getting_started_age_structured_models.qmd), [docs/epidemic_model_workflows.md](docs/epidemic_model_workflows.md) |
+| Define a custom compartment model | [tutorials/02_custom_models_and_cumulative_flows.qmd](tutorials/02_custom_models_and_cumulative_flows.qmd), [docs/generic_compartment_models.md](docs/generic_compartment_models.md) |
+| Track cumulative infections, recoveries, deaths, or other flows | [tutorials/02_custom_models_and_cumulative_flows.qmd](tutorials/02_custom_models_and_cumulative_flows.qmd), [docs/cumulative_flow_states_design.md](docs/cumulative_flow_states_design.md) |
+| Add demographic turnover | [tutorials/03_demography_and_coupling.qmd](tutorials/03_demography_and_coupling.qmd), [docs/demography_workflows.md](docs/demography_workflows.md) |
+| Try annual-cohort demographic coupling | [tutorials/03_demography_and_coupling.qmd](tutorials/03_demography_and_coupling.qmd), [docs/coupled_epidemic_demography_operator_splitting_design.md](docs/coupled_epidemic_demography_operator_splitting_design.md) |
 | Work with contact matrices | [docs/contact_matrix_workflows.md](docs/contact_matrix_workflows.md), [docs/external_data_adapters.md](docs/external_data_adapters.md) |
 | Use WPP-style demographic inputs | [examples/wpp_demography_validation.R](examples/wpp_demography_validation.R), [examples/wpp_projection_backed_demography.R](examples/wpp_projection_backed_demography.R) |
 | Explore stochastic simulation workflows | [docs/stochastic_simulation_design.md](docs/stochastic_simulation_design.md), [examples/stochastic_sir.R](examples/stochastic_sir.R), [examples/stochastic_seir.R](examples/stochastic_seir.R) |
