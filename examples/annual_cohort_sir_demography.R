@@ -42,12 +42,10 @@ process <- build_demographic_process(
   mortality_schedule = mortality
 )
 
-# Static contact matrix and a simple annual-cohort run. `method` keeps the
-# example runnable whether or not deSolve is installed.
+# Static contact matrix and a simple annual-cohort run using the core deSolve
+# solver backend.
 contacts <- matrix(1, nrow = ages$n_age_groups, ncol = ages$n_age_groups)
 diag(contacts) <- 3
-
-method <- if (requireNamespace("deSolve", quietly = TRUE)) "deSolve" else "euler"
 
 simulation <- simulate_deterministic(
   initial_state = initial_state,
@@ -56,7 +54,7 @@ simulation <- simulate_deterministic(
   age_structure = ages,
   contact_matrix = contacts,
   beta = 0.03,
-  method = method,
+  method = "deSolve",
   demographic_process = process,
   ageing_policy = "annual_cohort",
   time_policy = "step"

@@ -1,13 +1,13 @@
 #' Simulate a deterministic SIR or SEIR model
 #'
-#' Runs a simple deterministic prototype simulation. For infection-only runs,
-#' deSolve is used by default when the suggested `deSolve` package is
-#' installed; otherwise the simulation falls back to explicit Euler time steps.
-#' Coupled demographic runs with the default derivative ageing policy keep the
-#' existing Euler default because exact schedule lookup is the default
-#' demographic policy. Annual-cohort operator splitting follows the ordinary
-#' method default unless `method` is set explicitly. Set `method = "deSolve"` or
-#' `method = "euler"` explicitly to choose a backend.
+#' Runs a simple deterministic prototype simulation. The package uses the
+#' `deSolve` backend for ODE integration, with explicit Euler still available as
+#' an alternative solver choice. Coupled demographic runs with the default
+#' derivative ageing policy keep the existing Euler default because exact
+#' schedule lookup is the default demographic policy. Annual-cohort operator
+#' splitting follows the ordinary method default unless `method` is set
+#' explicitly. Set `method = "deSolve"` or `method = "euler"` explicitly to
+#' choose a backend.
 #'
 #' The initial state may be supplied either as long-form state data or as a
 #' numeric vector in the existing compartment-major, age-group-minor ordering.
@@ -66,11 +66,10 @@
 #'   group.
 #' @param infectiousness Optional non-negative numeric vector by source age
 #'   group.
-#' @param method Simulation method. `NULL` selects `"deSolve"` for
-#'   infection-only runs when available and `"euler"` otherwise; coupled
-#'   demographic runs with `ageing_policy = "exponential"` preserve the existing
-#'   Euler default. `"deSolve"` and `"ode"` request the optional `deSolve::ode()`
-#'   backend. `"euler"` requests explicit Euler time steps.
+#' @param method Simulation method. `NULL` selects `"deSolve"` for infection-
+#'   only runs and `"euler"` for coupled demographic runs with
+#'   `ageing_policy = "exponential"`. `"deSolve"` and `"ode"` request the
+#'   `deSolve::ode()` backend. `"euler"` requests explicit Euler time steps.
 #' @param demographic_process Optional [DemographicProcess()] object for
 #'   first-pass deterministic SIR/SEIR/generic-demography coupling. Defaults to
 #'   `NULL`, which preserves infection-only simulation.
@@ -337,7 +336,7 @@ deterministic_annual_interval_epidemic_step <- function(
     },
     non_negative = validate_non_negative_euler_state,
     desolve_error = paste(
-      "ageing_policy = \"annual_cohort\" requires the optional deSolve package",
+      "ageing_policy = \"annual_cohort\" requires the deSolve package",
       "for method = \"deSolve\". Install deSolve or use method = \"euler\"."
     )
   )
@@ -586,7 +585,7 @@ simulate_deterministic_integrated <- function(
     non_negative = validate_non_negative_euler_state,
     tcrit = if (is.null(demographic_process)) NULL else desolve_schedule_tcrit(demographic_process, times),
     desolve_error = paste(
-      "method = \"deSolve\" requires the optional deSolve package.",
+      "method = \"deSolve\" requires the deSolve package.",
       "Install deSolve or use method = \"euler\"."
     )
   )

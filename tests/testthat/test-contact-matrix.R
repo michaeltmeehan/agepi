@@ -561,7 +561,9 @@ test_that("POLYMOD source loader handles setting filters conservatively", {
 })
 
 test_that("POLYMOD source loader fails clearly without socialmixr", {
-  skip_if(requireNamespace("socialmixr", quietly = TRUE))
+  if (requireNamespace("socialmixr", quietly = TRUE)) {
+    skip("socialmixr is installed")
+  }
 
   expect_error(
     load_contact_matrix_source("polymod_uk"),
@@ -570,7 +572,9 @@ test_that("POLYMOD source loader fails clearly without socialmixr", {
 })
 
 test_that("Prem source loader fails clearly without contactdata", {
-  skip_if(requireNamespace("contactdata", quietly = TRUE))
+  if (requireNamespace("contactdata", quietly = TRUE)) {
+    skip("contactdata is installed")
+  }
 
   expect_error(
     load_contact_matrix_source("prem", country = "Kiribati"),
@@ -603,7 +607,9 @@ test_that("conmat source loader requires population input", {
 })
 
 test_that("conmat source loader fails clearly without conmat", {
-  skip_if(requireNamespace("conmat", quietly = TRUE))
+  if (requireNamespace("conmat", quietly = TRUE)) {
+    skip("conmat is installed")
+  }
 
   expect_error(
     load_contact_matrix_source("conmat", population = data.frame()),

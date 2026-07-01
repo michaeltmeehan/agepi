@@ -61,7 +61,7 @@ integrate_state_trajectory_desolve <- function(initial_state,
   if (!desolve_is_available()) {
     if (is.null(desolve_error)) {
       desolve_error <- paste(
-        "method = \"deSolve\" requires the optional deSolve package.",
+        "method = \"deSolve\" requires the deSolve package.",
         "Install deSolve or use method = \"euler\"."
       )
     }

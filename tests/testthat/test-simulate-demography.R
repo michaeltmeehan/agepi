@@ -633,6 +633,6 @@ test_that("method deSolve errors clearly when deSolve is unavailable", {
 
   expect_error(
     simulate_demography(process, initial_state = c(100, 50, 25), times = c(0, 1), method = "deSolve", time_policy = "step"),
-    "requires the optional deSolve package"
+    "requires the deSolve package"
   )
 })

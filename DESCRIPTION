@@ -11,14 +11,12 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Imports:
-    ggplot2
+    deSolve
 Suggests: 
-    conmat,
+    ggplot2,
     contactdata,
-    deSolve,
     epiparameter,
     linelist,
     socialmixr,
-    wpp2024,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

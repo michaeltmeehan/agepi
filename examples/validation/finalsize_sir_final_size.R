@@ -69,7 +69,7 @@ simulation <- simulate_deterministic(
   age_structure = age_structure,
   contact_matrix = contact_matrix,
   beta = beta,
-  method = if (requireNamespace("deSolve", quietly = TRUE)) "deSolve" else "euler",
+  method = "deSolve",
   cumulative_flows = list(
     infections = list(from = "S", to = "I")
   )

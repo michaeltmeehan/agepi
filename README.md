@@ -37,22 +37,26 @@ models before moving to a larger modelling framework.
 
 ## Installation
 
-Install the development version from a local checkout:
+`agepi` is split into clear installation tiers so you can install only the
+pieces you need.
 
-```r
-install.packages("devtools")
-devtools::install(".")
-```
+| Tier | Best for | Install |
+| --- | --- | --- |
+| Minimal core | Core simulation, demography with direct inputs, and other functionality that only needs `Imports` | `pak::pkg_install("michaeltmeehan/agepi", dependencies = c("Depends", "Imports", "LinkingTo"))` |
+| Recommended | Plotting, examples, `epiparameter`, `linelist`, `contactdata`, `socialmixr`, and the package test suite | `pak::pkg_install("michaeltmeehan/agepi", dependencies = c("Depends", "Imports", "LinkingTo", "Suggests"))` |
+| WPP-backed demography | `population_from_wpp()` / `demography_from_wpp()` workflows that rely on the `wpp2024` data package | `pak::pkg_install("PPgp/wpp2024")` or `remotes::install_github("PPgp/wpp2024")` |
+| Advanced contact matrices | `load_contact_matrix_source(source = "conmat")` workflows | `install.packages("conmat", repos = c("https://idem-lab.r-universe.dev", "https://cloud.r-project.org"))` or `remotes::install_github("idem-lab/conmat")` |
+| Developer/test | Local development, examples, docs, and tests from a checkout | `devtools::install(".")` or `pak::pkg_install(".", dependencies = c("Depends", "Imports", "LinkingTo", "Suggests"))` |
 
-Or, if this repository is available on GitHub:
+The default package metadata keeps `deSolve` in `Imports`, so the core install
+stays light. Ordinary optional helpers remain in `Suggests`, while `wpp2024`
+and `conmat` are intentionally treated as separate external backends so they do
+not block minimal installs or ordinary dependency resolution.
 
-```r
-remotes::install_github("michaeltmeehan/agepi")
-```
-
-`deSolve` is suggested, not required. When it is installed, infection-only SIR
-and SEIR simulations can use `deSolve::ode()`; otherwise explicit Euler
-stepping is available.
+If you are starting from a local checkout, `devtools::install(".")` is the
+simplest path. If you are working from GitHub, `remotes::install_github("michaeltmeehan/agepi")`
+also works for the core package, and you can add the optional backend installs
+above when you need WPP-backed demography or synthetic conmat contacts.
 
 ## Quick Start
 
@@ -463,6 +467,11 @@ reproduce full external projection systems. See
 For a user-facing explanation of contact-matrix workflows, see
 [docs/contact_matrix_workflows.md](docs/contact_matrix_workflows.md).
 
+If `contactdata`, `socialmixr`, `wpp2024`, or `conmat` are unavailable, the
+matching loader or example will tell you which package is missing and how to
+proceed. For the WPP and conmat pathways, the simplest fallback is to supply a
+plain data frame or matrix directly and use the dependency-free adapters.
+
 The intended source workflow keeps provenance separate from adaptation:
 
 ```r
@@ -526,14 +535,16 @@ and print a message instead of failing when those packages are unavailable.
 - [examples/mock_demographic_workflow.R](examples/mock_demographic_workflow.R):
   demographic-only workflow with diagnostics.
 - [examples/wpp_demography_validation.R](examples/wpp_demography_validation.R):
-  optional WPP-connected demography benchmark using `wpp2024`.
+  optional WPP-connected demography benchmark that skips cleanly unless
+  `wpp2024` is installed.
 - [examples/kiribati_tb_realistic_demography.R](examples/kiribati_tb_realistic_demography.R):
   optional Kiribati TB public-data scaffold using WPP 2024 demography and a
   public contact-matrix source. It prefers Prem/contactdata when Kiribati is
   available in the installed dataset; otherwise it falls back to a documented
-  POLYMOD UK proxy. It is not calibrated and is not a policy model.
+  POLYMOD UK proxy. It skips cleanly unless the WPP and solver dependencies
+  are installed. It is not calibrated and is not a policy model.
 - [examples/demography_plots.R](examples/demography_plots.R): synthetic
-  exploratory demography plots using imported `ggplot2`.
+  exploratory demography plots using optional `ggplot2`.
 - [examples/validation/finalsize_sir_final_size.R](examples/validation/finalsize_sir_final_size.R):
   optional closed-population final-size comparison using `finalsize` when it is
   installed.

@@ -388,7 +388,7 @@ wpp_dataset <- function(dataset) {
     stop(
       "Package wpp2024 is required to load dataset '",
       dataset,
-      "'. Install wpp2024 or supply data directly.",
+      "'. Install it with pak::pkg_install(\"PPgp/wpp2024\") or remotes::install_github(\"PPgp/wpp2024\"), or supply data directly.",
       call. = FALSE
     )
   }

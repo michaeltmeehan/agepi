@@ -350,7 +350,7 @@ test_that("SEIR infection-only method deSolve runs", {
   expect_true(all(is.finite(output$value)))
 })
 
-test_that("method ode aliases the optional deSolve backend", {
+test_that("method ode aliases the deSolve backend", {
   skip_if_not_installed("deSolve")
 
   desolve_output <- simulate_deterministic(
@@ -385,7 +385,7 @@ test_that("method deSolve errors clearly when deSolve is unavailable", {
       contact_matrix = simulate_test_contacts(),
       method = "deSolve"
     ),
-    "requires the optional deSolve package"
+    "requires the deSolve package"
   )
 })
 
@@ -401,7 +401,7 @@ test_that("method ode errors clearly when deSolve is unavailable", {
       contact_matrix = simulate_test_contacts(),
       method = "ode"
     ),
-    "requires the optional deSolve package"
+    "requires the deSolve package"
   )
 })
 

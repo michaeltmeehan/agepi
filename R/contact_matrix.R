@@ -1054,7 +1054,7 @@ load_conmat_contact_matrix_source <- function(population,
                                               per_capita_household_size) {
   if (!requireNamespace("conmat", quietly = TRUE)) {
     stop(
-      "Package conmat is required for source = 'conmat'. Install conmat or choose another source.",
+      "Package conmat is required for source = 'conmat'. Install it with install.packages(\"conmat\", repos = c(\"https://idem-lab.r-universe.dev\", \"https://cloud.r-project.org\")) or remotes::install_github(\"idem-lab/conmat\"), or choose another source.",
       call. = FALSE
     )
   }
@@ -1072,7 +1072,7 @@ load_conmat_contact_matrix_source <- function(population,
       "Installed conmat version ",
       as.character(utils::packageVersion("conmat")),
       " is missing internal object 'polymod_setting_models', which conmat::extrapolate_polymod() requires. ",
-      "Reinstall or upgrade conmat, or use another contact-matrix source.",
+      "Reinstall or upgrade conmat from the IDEM Lab R-universe or GitHub, or use another contact-matrix source.",
       call. = FALSE
     )
   }

@@ -20,7 +20,11 @@ if (!"package:agepi" %in% search()) {
 }
 
 if (!requireNamespace("wpp2024", quietly = TRUE)) {
-  message("Install wpp2024 to run this example with popprojAge1dt.")
+  message(
+    "Install wpp2024 with pak::pkg_install(\"PPgp/wpp2024\") or ",
+    "remotes::install_github(\"PPgp/wpp2024\") to run this example with ",
+    "popprojAge1dt."
+  )
 } else {
   data("popprojAge1dt", package = "wpp2024")
 

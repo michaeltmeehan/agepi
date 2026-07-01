@@ -1,8 +1,8 @@
 test_that("Kiribati TB realistic demography example runs in a clean user process", {
   skip_if(
-    any(!vapply(c("wpp2024", "socialmixr", "deSolve"), requireNamespace, logical(1), quietly = TRUE)),
-    "optional package wpp2024, socialmixr, or deSolve is not available"
-  )
+  any(!vapply(c("wpp2024", "socialmixr"), requireNamespace, logical(1), quietly = TRUE)),
+  "optional package wpp2024 or socialmixr is not available"
+)
 
   example_file <- normalizePath(
     test_path("../../examples/kiribati_tb_realistic_demography.R"),

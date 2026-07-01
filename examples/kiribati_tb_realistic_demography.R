@@ -28,7 +28,7 @@ if ("package:agepi" %in% search()) {
 
 # Optional Packages -----------------------------------------------------------
 
-optional_packages <- c("wpp2024", "deSolve")
+optional_packages <- c("wpp2024")
 missing_optional_packages <- optional_packages[
   !vapply(optional_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -37,8 +37,8 @@ if (length(missing_optional_packages) > 0) {
   message(
     "Skipping Kiribati TB realistic demography example: optional package(s) ",
     paste(missing_optional_packages, collapse = ", "),
-    " are not installed. Install wpp2024 and deSolve to use public WPP ",
-    "inputs and the deSolve backend."
+    " are not installed. Install wpp2024 with pak::pkg_install(\"PPgp/wpp2024\") ",
+    "or remotes::install_github(\"PPgp/wpp2024\") to use the public WPP inputs."
   )
 } else {
 
@@ -90,12 +90,13 @@ if (requireNamespace("contactdata", quietly = TRUE) &&
   message("Using Prem/contactdata Kiribati synthetic contact matrix.")
 } else {
   if (!requireNamespace("socialmixr", quietly = TRUE)) {
-    stop(
-      "Kiribati is not available through contactdata, and socialmixr is not ",
-      "installed for the POLYMOD UK fallback. Install contactdata with ",
-      "Kiribati support or install socialmixr to use the documented fallback.",
-      call. = FALSE
+    message(
+      "Skipping Kiribati TB realistic demography example: neither contactdata ",
+      "nor socialmixr is available for the contact-matrix fallback. Install ",
+      "contactdata with Kiribati support or install socialmixr to run this ",
+      "example."
     )
+    quit(status = 0, save = "no")
   }
   message(
     "Prem/contactdata Kiribati contact matrix is unavailable; falling back to ",

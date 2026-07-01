@@ -85,7 +85,8 @@ cat("\n")
 if (!requireNamespace("wpp2024", quietly = TRUE)) {
   cat(
     "Skipping WPP age-distribution comparison: optional package wpp2024 ",
-    "is not installed.\n",
+    "is not installed. Install it with pak::pkg_install(\"PPgp/wpp2024\") ",
+    "or remotes::install_github(\"PPgp/wpp2024\").\n",
     sep = ""
   )
 } else {

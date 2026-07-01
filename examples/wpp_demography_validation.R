@@ -64,7 +64,8 @@ if (length(missing_functions) > 0) {
 if (!requireNamespace("wpp2024", quietly = TRUE)) {
   message(
     "Skipping WPP-connected demography benchmark example: optional package wpp2024 ",
-    "is not installed. Install wpp2024 separately to run this integration."
+    "is not installed. Install it with pak::pkg_install(\"PPgp/wpp2024\") ",
+    "or remotes::install_github(\"PPgp/wpp2024\") to run this integration."
   )
 } else {
 

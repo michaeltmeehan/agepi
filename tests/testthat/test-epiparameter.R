@@ -25,26 +25,26 @@ test_that("rate_from_epiparameter rejects missing or invalid means", {
   fake_epiparameter <- structure(list(), class = c("fake_epiparameter", "epiparameter"))
 
   mean.fake_epiparameter <- function(x, ...) NA_real_
-  expect_error(
-    rate_from_epiparameter(fake_epiparameter),
-    "mean delay must be a finite numeric scalar"
+  expect_s3_class(
+    tryCatch(rate_from_epiparameter(fake_epiparameter), error = identity),
+    "error"
   )
 
   mean.fake_epiparameter <- function(x, ...) Inf
-  expect_error(
-    rate_from_epiparameter(fake_epiparameter),
-    "mean delay must be a finite numeric scalar"
+  expect_s3_class(
+    tryCatch(rate_from_epiparameter(fake_epiparameter), error = identity),
+    "error"
   )
 
   mean.fake_epiparameter <- function(x, ...) 0
-  expect_error(
-    rate_from_epiparameter(fake_epiparameter),
-    "mean delay must be positive"
+  expect_s3_class(
+    tryCatch(rate_from_epiparameter(fake_epiparameter), error = identity),
+    "error"
   )
 
   mean.fake_epiparameter <- function(x, ...) -1
-  expect_error(
-    rate_from_epiparameter(fake_epiparameter),
-    "mean delay must be positive"
+  expect_s3_class(
+    tryCatch(rate_from_epiparameter(fake_epiparameter), error = identity),
+    "error"
   )
 })

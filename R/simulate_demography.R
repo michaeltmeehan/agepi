@@ -256,7 +256,7 @@ simulate_demography_integrated <- function(process,
     non_negative = validate_non_negative_demography_euler_state,
     tcrit = desolve_schedule_tcrit(process, times),
     desolve_error = paste(
-      "method = \"deSolve\" requires the optional deSolve package.",
+      "method = \"deSolve\" requires the deSolve package.",
       "Install deSolve or use method = \"euler\"."
     )
   )
