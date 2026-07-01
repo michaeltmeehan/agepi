@@ -237,20 +237,23 @@ load_contact_matrix_source <- function(source = c("polymod_uk", "polymod", "prem
 #' source-band assumptions. Fine-to-coarse aggregation uses
 #' [transform_contact_matrix()] with recipient-population weighting and
 #' therefore requires a source-grid population vector. Coarse-to-fine expansion
-#' assigns each target age group to the source age band that fully contains it
-#' and uses constant contacts within the source band.
+#' preserves the total contacts each target recipient age group makes with each
+#' original source age band. Contacts are split across nested target source age
+#' groups by target-grid population weights when `population` is supplied, or
+#' equally when `population` is `NULL`.
 #'
 #' @param source_contact_matrix An `agepi_contact_matrix_source` object returned
 #'   by [load_contact_matrix_source()].
 #' @param age_structure Target valid age structure.
-#' @param population Optional source-grid population vector required for
-#'   fine-to-coarse aggregation.
+#' @param population Optional population vector on the grid being weighted. For
+#'   fine-to-coarse aggregation this must be a source-grid population vector.
+#'   For coarse-to-fine expansion this must be a target-grid population vector
+#'   and is used to allocate contacts across split target source age groups.
 #' @param method Adaptation method. Currently only `"source_band"` is
 #'   supported. It uses recipient-population weighting for fine-to-coarse
-#'   aggregation and constant contacts within each source age band for
-#'   coarse-to-fine expansion. `"exact"` is accepted as a deprecated alias for
-#'   `"source_band"`; it is exact only under the same source-band/piecewise
-#'   constant assumption.
+#'   aggregation and contact-preserving source-band splitting for coarse-to-fine
+#'   expansion. `"exact"` is accepted as a deprecated alias for `"source_band"`;
+#'   it is exact only under the same source-band compatibility assumptions.
 #'
 #' @return A numeric contact matrix in agepi recipient-source orientation. A
 #'   metadata list is attached as attribute `"contact_source"`.
@@ -296,7 +299,7 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
   if (identical(method, "exact")) {
     warning(
       "method = 'exact' is deprecated; use method = 'source_band'. ",
-      "'exact' meant exact only under the source-band/piecewise-constant assumption.",
+      "'exact' meant exact only under source-band compatibility assumptions.",
       call. = FALSE
     )
     method <- "source_band"
@@ -334,14 +337,19 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
       "recipient-population weighting."
     )
   } else if (isTRUE(mapping$can_expand)) {
-    source_index <- mapping$target_to_source_index
-    contact_matrix <- source_matrix[source_index, source_index, drop = FALSE]
+    contact_matrix <- expand_contact_matrix_source_bands(
+      source_matrix = source_matrix,
+      target_age_structure = age_structure,
+      mapping = mapping,
+      population = population
+    )
     dimnames(contact_matrix) <- list(age_structure$age_groups, age_structure$age_groups)
     contact_matrix <- validate_contact_matrix(contact_matrix, age_structure)
     metadata$adaptation_note <- paste(
-      "The source matrix was expanded to the target age grid by assigning",
-      "each target age group to its containing source age band and using",
-      "constant contacts within each source band."
+      "The source matrix was expanded to the target age grid by preserving",
+      "total contacts with each source age band and splitting target source",
+      "age groups by",
+      if (is.null(population)) "equal weights." else "target-grid population weights."
     )
   } else {
     stop("source and target age grids are not compatible for source-band contact-matrix adaptation.", call. = FALSE)
@@ -351,6 +359,91 @@ adapt_contact_matrix_to_age_structure <- function(source_contact_matrix,
   metadata$model_age_grid <- paste(age_structure$age_groups, collapse = ", ")
   attr(contact_matrix, "contact_source") <- contact_source_metadata(source_contact_matrix, metadata)
   contact_matrix
+}
+
+expand_contact_matrix_source_bands <- function(source_matrix,
+                                               target_age_structure,
+                                               mapping,
+                                               population = NULL) {
+  target_to_source_index <- mapping$target_to_source_index
+  allocation_weights <- contact_matrix_expansion_allocation_weights(
+    target_age_structure = target_age_structure,
+    mapping = mapping,
+    population = population
+  )
+
+  expanded <- matrix(
+    0,
+    nrow = target_age_structure$n_age_groups,
+    ncol = target_age_structure$n_age_groups,
+    dimnames = list(target_age_structure$age_groups, target_age_structure$age_groups)
+  )
+
+  for (recipient_target_index in seq_len(target_age_structure$n_age_groups)) {
+    recipient_source_index <- target_to_source_index[recipient_target_index]
+    for (source_target_index in seq_len(target_age_structure$n_age_groups)) {
+      source_source_index <- target_to_source_index[source_target_index]
+      expanded[recipient_target_index, source_target_index] <-
+        source_matrix[recipient_source_index, source_source_index] *
+          allocation_weights[source_target_index]
+    }
+  }
+
+  expanded
+}
+
+contact_matrix_expansion_allocation_weights <- function(target_age_structure,
+                                                        mapping,
+                                                        population = NULL) {
+  if (!is.null(population)) {
+    population <- validate_contact_expansion_population(population, target_age_structure)
+  }
+
+  weights <- numeric(target_age_structure$n_age_groups)
+  for (source_index in seq_len(mapping$from_age_groups$n_age_groups)) {
+    target_indices <- mapping$target_indices_by_source[[source_index]]
+    if (is.null(population)) {
+      weights[target_indices] <- 1 / length(target_indices)
+    } else {
+      denominator <- sum(population[target_indices])
+      if (denominator == 0) {
+        stop(
+          "population for source age band '",
+          mapping$from_age_groups$age_groups[source_index],
+          "' must sum to a positive value when expanding a contact matrix.",
+          call. = FALSE
+        )
+      }
+      weights[target_indices] <- population[target_indices] / denominator
+    }
+  }
+
+  weights
+}
+
+validate_contact_expansion_population <- function(population, target_age_structure) {
+  if (!is.numeric(population) || is.matrix(population) || is.data.frame(population)) {
+    stop("population must be a numeric vector.", call. = FALSE)
+  }
+
+  if (length(population) != target_age_structure$n_age_groups) {
+    stop(
+      "population length must equal target age_structure$n_age_groups when expanding a contact matrix: ",
+      target_age_structure$n_age_groups,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(population) || any(!is.finite(population))) {
+    stop("population must be finite and cannot contain missing values.", call. = FALSE)
+  }
+
+  if (any(population < 0)) {
+    stop("population cannot contain negative values.", call. = FALSE)
+  }
+
+  as.numeric(population)
 }
 
 #' Build a published proxy contact matrix for a target age structure

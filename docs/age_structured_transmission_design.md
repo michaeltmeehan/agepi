@@ -235,7 +235,10 @@ native/source matrix with provenance, and
 `adapt_contact_matrix_to_age_structure()` adapts it to a target
 `AgeStructure()`. The preferred adaptation method is `method = "source_band"`;
 the older `method = "exact"` spelling is deprecated and retained only as an
-alias for the same source-band assumption.
+alias for the same source-band compatibility assumption. Aggregation uses
+source-grid recipient-population weighting. Expansion preserves total contacts
+with each source age band, allocating across nested target source groups by
+target-grid population weights when supplied and equally otherwise.
 
 Later versions may allow:
 

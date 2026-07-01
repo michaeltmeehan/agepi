@@ -246,7 +246,11 @@ The current source-layer workflow is broader but still explicit:
 `adapt_contact_matrix_to_age_structure()` adapts it to a target
 `AgeStructure()`. Use `method = "source_band"` for this adaptation. The older
 `method = "exact"` spelling is deprecated and retained only as an alias for the
-same source-band/piecewise-constant assumption.
+same source-band compatibility assumption. Fine-to-coarse adaptation uses
+source-grid recipient-population weighting. Coarse-to-fine adaptation preserves
+total contacts with each original source age band and splits those contacts
+across nested target source age groups by target-grid population weights when
+supplied, or equally otherwise.
 
 ## Source-Specific Adapters
 

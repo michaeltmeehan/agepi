@@ -63,8 +63,10 @@ Published or generated contact sources use the newer source-layer workflow:
 native/source age grid, and `adapt_contact_matrix_to_age_structure()` adapts it
 to a target `AgeStructure()`. The preferred adaptation method is
 `method = "source_band"`: fine-to-coarse aggregation uses
-recipient-population weighting and coarse-to-fine expansion copies constant
-contacts within source bands. The older `method = "exact"` spelling is
+source-grid recipient-population weighting and coarse-to-fine expansion
+preserves total contacts with each source band, splitting across nested target
+source groups by target-grid population weights when supplied and equally
+otherwise. The older `method = "exact"` spelling is
 deprecated and retained only as an alias for this source-band assumption.
 
 `ContactSchedule()` stores externally supplied contact matrices by time, and

@@ -242,19 +242,19 @@ test_that("contact_matrix_from_socialmixr accepts a small socialmixr result", {
   expect_false(anyNA(contact_matrix))
 })
 
-test_that("adapt_contact_matrix_to_age_structure expands nested source grids", {
+test_that("adapt_contact_matrix_to_age_structure expands nested source grids with equal source-band splitting", {
   source_ages <- AgeStructure(
-    age_groups = c("0-9", "10+"),
-    lower_bounds = c(0, 10),
-    upper_bounds = c(9, Inf)
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
   )
   target_ages <- AgeStructure(
-    age_groups = c("0-4", "5-9", "10-14", "15+"),
-    lower_bounds = c(0, 5, 10, 15),
-    upper_bounds = c(4, 9, 14, Inf)
+    age_groups = as.character(0:9),
+    lower_bounds = 0:9,
+    upper_bounds = 0:9
   )
   source_matrix <- matrix(
-    c(2, 1, 3, 4),
+    c(5, 10, 2, 4),
     nrow = 2,
     byrow = TRUE,
     dimnames = list(source_ages$age_groups, source_ages$age_groups)
@@ -269,24 +269,92 @@ test_that("adapt_contact_matrix_to_age_structure expands nested source grids", {
   contact_matrix <- adapt_contact_matrix_to_age_structure(source, target_ages)
   metadata <- attr(contact_matrix, "contact_source")
 
-  expect_equal(
-    contact_matrix,
-    matrix(
-      c(
-        2, 2, 1, 1,
-        2, 2, 1, 1,
-        3, 3, 4, 4,
-        3, 3, 4, 4
-      ),
-      nrow = 4,
-      byrow = TRUE,
-      dimnames = list(target_ages$age_groups, target_ages$age_groups)
-    ),
-    ignore_attr = TRUE
-  )
+  expect_equal(contact_matrix[1:5, 1:5], matrix(5 / 5, nrow = 5, ncol = 5), ignore_attr = TRUE)
+  expect_equal(contact_matrix[1:5, 6:10], matrix(10 / 5, nrow = 5, ncol = 5), ignore_attr = TRUE)
+  expect_equal(contact_matrix[6:10, 1:5], matrix(2 / 5, nrow = 5, ncol = 5), ignore_attr = TRUE)
+  expect_equal(contact_matrix[6:10, 6:10], matrix(4 / 5, nrow = 5, ncol = 5), ignore_attr = TRUE)
+
+  expect_equal(rowSums(contact_matrix[1:5, 1:5]), rep(5, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[1:5, 6:10]), rep(10, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[6:10, 1:5]), rep(2, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[6:10, 6:10]), rep(4, 5), ignore_attr = TRUE)
   expect_match(metadata$adaptation_note, "expanded")
-  expect_match(metadata$adaptation_note, "constant contacts within each source band")
+  expect_match(metadata$adaptation_note, "preserving")
+  expect_match(metadata$adaptation_note, "equal weights")
   expect_identical(metadata$adaptation_method, "source_band")
+})
+
+test_that("adapt_contact_matrix_to_age_structure expands nested source grids with target population weights", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  target_ages <- AgeStructure(
+    age_groups = as.character(0:9),
+    lower_bounds = 0:9,
+    upper_bounds = 0:9
+  )
+  source_matrix <- matrix(
+    c(5, 10, 2, 4),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(source_ages$age_groups, source_ages$age_groups)
+  )
+  source <- ContactMatrixSource(
+    matrix = source_matrix,
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source"
+  )
+  population <- c(10, 20, 30, 40, 50, 5, 5, 10, 20, 60)
+
+  contact_matrix <- adapt_contact_matrix_to_age_structure(source, target_ages, population = population)
+
+  expect_equal(rowSums(contact_matrix[1:5, 1:5]), rep(5, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[1:5, 6:10]), rep(10, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[6:10, 1:5]), rep(2, 5), ignore_attr = TRUE)
+  expect_equal(rowSums(contact_matrix[6:10, 6:10]), rep(4, 5), ignore_attr = TRUE)
+
+  expect_equal(contact_matrix["0", "4"], 5 * 50 / sum(c(10, 20, 30, 40, 50)), ignore_attr = TRUE)
+  expect_equal(contact_matrix["0", "9"], 10 * 60 / sum(c(5, 5, 10, 20, 60)), ignore_attr = TRUE)
+  expect_match(attr(contact_matrix, "contact_source")$adaptation_note, "target-grid population weights")
+})
+
+test_that("contact matrix expansion validates target-grid population", {
+  source_ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  target_ages <- AgeStructure(
+    age_groups = as.character(0:9),
+    lower_bounds = 0:9,
+    upper_bounds = 0:9
+  )
+  source <- ContactMatrixSource(
+    matrix = diag(2),
+    age_structure = source_ages,
+    source = "test",
+    source_reference = "test source"
+  )
+
+  expect_error(
+    adapt_contact_matrix_to_age_structure(source, target_ages, population = c(100, 200)),
+    "target age_structure\\$n_age_groups"
+  )
+  expect_error(
+    adapt_contact_matrix_to_age_structure(source, target_ages, population = c(rep(1, 5), rep(0, 5))),
+    "must sum to a positive value"
+  )
+  expect_error(
+    adapt_contact_matrix_to_age_structure(source, target_ages, population = c(rep(1, 9), NA_real_)),
+    "finite"
+  )
+  expect_error(
+    adapt_contact_matrix_to_age_structure(source, target_ages, population = c(rep(1, 9), -1)),
+    "negative"
+  )
 })
 
 test_that("adapt_contact_matrix_to_age_structure aggregates using transform_contact_matrix", {
@@ -456,7 +524,7 @@ test_that("POLYMOD source loader supports UK compatibility alias", {
   expect_true(all(is.finite(contact_matrix)))
   expect_true(all(contact_matrix >= 0))
   expect_match(metadata$source_label, "POLYMOD")
-  expect_match(metadata$adaptation_note, "constant contacts within each source band")
+  expect_match(metadata$adaptation_note, "preserving")
 })
 
 test_that("POLYMOD source loader supports another available country", {

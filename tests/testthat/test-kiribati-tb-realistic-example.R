@@ -64,7 +64,7 @@ test_that("Kiribati TB realistic demography example runs in a clean user process
     "stopifnot(env$contact_matrix_source$source %in% c('prem', 'polymod_uk'))",
     "if (identical(env$contact_matrix_source$source, 'prem')) stopifnot(identical(env$contact_matrix_source$country, 'Kiribati'))",
     "if (identical(env$contact_matrix_source$source, 'polymod_uk')) stopifnot(grepl('POLYMOD|socialmixr', env$contact_matrix_source$source_label))",
-    "stopifnot(grepl('constant contacts within each source band', env$contact_matrix_source$adaptation_note))",
+    "stopifnot(grepl('preserving', env$contact_matrix_source$adaptation_note))",
     "stopifnot(any(grepl('WHO', env$public_data_target_summary$target)))",
     "stopifnot(any(grepl('not modelled', env$public_data_target_summary$model_quantity)))",
     "cat('KIRIBATI_TB_EXAMPLE_CHECKS_OK\\n')",

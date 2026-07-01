@@ -242,9 +242,11 @@ The current source-band assumption is:
 
 - the source matrix is loaded on its native age grid;
 - the target model age grid is either nested inside or nests the source grid;
-- fine-to-coarse aggregation uses recipient-population weighting;
-- coarse-to-fine expansion treats contact rates as constant within each source
-  age band.
+- fine-to-coarse aggregation uses source-grid recipient-population weighting;
+- coarse-to-fine expansion preserves the total contacts each target recipient
+  age group makes with each original coarse source age band, splitting those
+  contacts across nested target source age groups by target-grid population
+  weights when supplied and equally otherwise.
 
 This is a practical modelling assumption, not a claim that fine-age contact
 structure is literally known. It lets agepi keep provenance and adaptation
@@ -253,10 +255,12 @@ model.
 
 ### Population requirement
 
-Population is required whenever fine-to-coarse aggregation is performed. The
-adapter errors if `population` is missing. There is no silent equal-weight
-fallback, because that would hide an assumption about how contacts should be
-averaged.
+Population is required whenever fine-to-coarse aggregation is performed. In
+that case, `population` must be on the source grid because recipient rows are
+averaged by source-grid population. For coarse-to-fine expansion, `population`
+is optional; when supplied it must be on the target grid and is used to allocate
+contacts across the finer target source age groups inside each original source
+band. Without it, the split is equal across those nested target source groups.
 
 If the source matrix already matches the target age grid exactly, the matrix is
 returned unchanged apart from validation and metadata attachment.
@@ -269,7 +273,7 @@ The adapter does not:
 - calibrate contacts to transmission data;
 - balance reciprocity after import;
 - re-fit source models;
-- split source bins into arbitrary finer bins.
+- split incompatible or partially overlapping source bins.
 
 `transform_contact_matrix()` is still available for exact fine-to-coarse
 aggregation, but it has narrower behaviour than the source-layer workflow. Use
@@ -481,7 +485,8 @@ The current contact-matrix boundary is intentionally narrow:
   indoor exposure;
 - source datasets may not include all countries;
 - fine-to-coarse aggregation needs source-grid population weights;
-- coarse-to-fine expansion assumes constant contacts within source bands;
+- coarse-to-fine population-weighted expansion needs target-grid population
+  weights, otherwise it uses equal splitting within each source band;
 - `ContactSchedule()` is not yet simulator-integrated;
 - orientation must remain consistent from source loading through simulation;
 - demography realism and contact realism are separate concerns.

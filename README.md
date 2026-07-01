@@ -484,9 +484,11 @@ if (requireNamespace("contactdata", quietly = TRUE) &&
 ```
 
 `population` is required when adapting a finer source matrix to coarser model
-age groups because aggregation is recipient-population weighted. Expanding a
-coarser source matrix to nested target ages uses constant contacts within each
-source age band.
+age groups because aggregation is source-grid recipient-population weighted.
+When expanding a coarser source matrix to nested target ages, the adapter
+preserves total contacts with each original source age band and splits them
+across target source age groups using target-grid population weights when
+supplied, or equal weights otherwise.
 
 Prem/contactdata matrices are preferred when the requested country is available
 in the installed `contactdata` dataset. Kiribati may be absent from that

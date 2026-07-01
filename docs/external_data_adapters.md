@@ -168,10 +168,11 @@ source values are:
 `adapt_contact_matrix_to_age_structure()` then performs explicit source-band
 adaptation only: fine-to-coarse aggregation delegates to
 `transform_contact_matrix()` and requires source-grid population weights, while
-coarse-to-fine expansion copies source-band contacts to nested target ages
-(`method = "source_band"` / constant within source band). The older
-`method = "exact"` spelling is deprecated because the result is exact only
-under the source-band/piecewise-constant assumption. It does not perform
+coarse-to-fine expansion preserves total contacts with each source age band and
+splits them across nested target source age groups using target-grid population
+weights when supplied, or equal weights otherwise. The older `method = "exact"`
+spelling is deprecated because the result is exact only under source-band
+compatibility assumptions. It does not perform
 interpolation, reciprocity correction, population balancing, or source-specific
 calibration. The deprecated `contact_matrix_for_age_structure()` wrapper
 remains only for compatibility with older examples.

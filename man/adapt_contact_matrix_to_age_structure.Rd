@@ -17,15 +17,16 @@ by \code{\link[=load_contact_matrix_source]{load_contact_matrix_source()}}.}
 
 \item{age_structure}{Target valid age structure.}
 
-\item{population}{Optional source-grid population vector required for
-fine-to-coarse aggregation.}
+\item{population}{Optional population vector on the grid being weighted. For
+fine-to-coarse aggregation this must be a source-grid population vector.
+For coarse-to-fine expansion this must be a target-grid population vector
+and is used to allocate contacts across split target source age groups.}
 
 \item{method}{Adaptation method. Currently only \code{"source_band"} is
 supported. It uses recipient-population weighting for fine-to-coarse
-aggregation and constant contacts within each source age band for
-coarse-to-fine expansion. \code{"exact"} is accepted as a deprecated alias for
-\code{"source_band"}; it is exact only under the same source-band/piecewise
-constant assumption.}
+aggregation and contact-preserving source-band splitting for coarse-to-fine
+expansion. \code{"exact"} is accepted as a deprecated alias for \code{"source_band"};
+it is exact only under the same source-band compatibility assumptions.}
 }
 \value{
 A numeric contact matrix in agepi recipient-source orientation. A
@@ -36,8 +37,10 @@ Adapts a loaded source contact matrix to a requested age grid using
 source-band assumptions. Fine-to-coarse aggregation uses
 \code{\link[=transform_contact_matrix]{transform_contact_matrix()}} with recipient-population weighting and
 therefore requires a source-grid population vector. Coarse-to-fine expansion
-assigns each target age group to the source age band that fully contains it
-and uses constant contacts within the source band.
+preserves the total contacts each target recipient age group makes with each
+original source age band. Contacts are split across nested target source age
+groups by target-grid population weights when \code{population} is supplied, or
+equally when \code{population} is \code{NULL}.
 }
 \examples{
 source_ages <- AgeStructure(
