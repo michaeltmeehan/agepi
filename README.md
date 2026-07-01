@@ -93,6 +93,11 @@ order:
 1. [tutorials/01_getting_started_age_structured_models.qmd](tutorials/01_getting_started_age_structured_models.qmd)
 2. [tutorials/02_custom_models_and_cumulative_flows.qmd](tutorials/02_custom_models_and_cumulative_flows.qmd)
 3. [tutorials/03_demography_and_coupling.qmd](tutorials/03_demography_and_coupling.qmd)
+4. [tutorials/04_stochastic_simulation.qmd](tutorials/04_stochastic_simulation.qmd)
+5. [tutorials/05_demography_only_and_diagnostics.qmd](tutorials/05_demography_only_and_diagnostics.qmd)
+6. [tutorials/06_external_data_and_case_study_scaffolds.qmd](tutorials/06_external_data_and_case_study_scaffolds.qmd)
+
+The full index lives in [tutorials/README.md](tutorials/README.md).
 
 ## Main workflows
 

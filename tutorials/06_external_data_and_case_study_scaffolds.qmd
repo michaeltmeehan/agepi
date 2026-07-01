@@ -1,0 +1,163 @@
+---
+title: "External Data and Case-Study Scaffolds"
+format: html
+---
+
+This tutorial explains how `agepi` connects transparent model workflows to
+optional external data sources and realistic-but-not-calibrated case-study
+scaffolds.
+
+The main idea is a boundary, not a new model family: core modelling inputs stay
+in `agepi` objects, while external-data adapters prepare optional source data
+for those objects.
+
+For more detail, see [docs/external_data_adapters.md](../docs/external_data_adapters.md),
+[docs/contact_matrix_workflows.md](../docs/contact_matrix_workflows.md),
+[docs/demography_workflows.md](../docs/demography_workflows.md),
+[examples/observed_case_age_groups.R](../examples/observed_case_age_groups.R),
+[examples/epiparameter_seir.R](../examples/epiparameter_seir.R),
+[examples/wpp_projection_backed_demography.R](../examples/wpp_projection_backed_demography.R),
+and [examples/kiribati_tb_realistic_demography.R](../examples/kiribati_tb_realistic_demography.R).
+
+```{r}
+if ("package:agepi" %in% search()) {
+  # Package already available.
+} else if (dir.exists("R")) {
+  invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
+} else if (requireNamespace("agepi", quietly = TRUE)) {
+  library(agepi)
+} else {
+  stop(
+    "Package agepi is not available. Run this tutorial from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+```
+
+Core inputs are the pieces the model actually consumes:
+
+- `AgeStructure()` for the age grid;
+- compartment-by-age state tables;
+- contact matrices in recipient-row, source-column orientation;
+- disease models such as `SIRModel()`, `SEIRModel()`, or `CompartmentModel()`;
+- demographic schedules when the model includes population change.
+
+External adapters sit one step upstream. They help with tasks such as mapping
+observed cases into the model age grid, translating WPP-style demography into
+`agepi` schedules, or loading and adapting a published contact-matrix source.
+
+The smallest example is observed-case age mapping:
+
+```{r}
+age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
+)
+
+observed_cases <- data.frame(
+  case_id = paste0("case_", 1:6),
+  onset_day = c(0, 0, 1, 1, 2, 2),
+  age = c(2, 8, 11, 36, 4, 7),
+  stringsAsFactors = FALSE
+)
+
+agepi_cases <- as_agepi_cases(
+  observed_cases,
+  age_structure = age_structure,
+  age_col = "age"
+)
+
+incident_targets <- aggregate(
+  case_id ~ onset_day + age_group,
+  agepi_cases,
+  length
+)
+names(incident_targets)[names(incident_targets) == "case_id"] <- "cases"
+
+agepi_cases
+incident_targets
+```
+
+That pattern matters because observed data rarely arrive in exactly the same
+age bins as the model. Mapping them explicitly keeps the age convention visible
+and makes later calibration or diagnostic work less ambiguous.
+
+Contact matrices follow the same logic. The package separates the source layer
+from the model layer so that provenance, adaptation, and orientation stay
+clear. In a small toy workflow, a plain numeric matrix may be enough. In a
+larger scaffold, the model may load a source matrix and adapt it to the model
+age grid.
+
+```{r}
+contact_matrix <- matrix(
+  c(
+    4, 2, 1,
+    2, 5, 2,
+    1, 2, 4
+  ),
+  nrow = age_structure$n_age_groups,
+  byrow = TRUE
+)
+
+contact_matrix
+```
+
+The external-data adapter story is broader than any single example:
+
+- WPP-style demographic tables can be standardised into fertility, mortality,
+  and migration schedules;
+- contact-matrix sources can be loaded and adapted to the simulation age grid;
+- epiparameter objects can provide a high-level way to convert a delay
+  distribution into an approximate transition rate;
+- validation and diagnostic examples can compare simulated output to observed
+  or reference data without turning the package into a black-box fitting tool.
+
+Optional rate conversion from `epiparameter` looks like this:
+
+```{r}
+if (requireNamespace("epiparameter", quietly = TRUE)) {
+  incubation <- epiparameter::epiparameter_db(
+    disease = "COVID-19",
+    epi_name = "incubation period",
+    single_epiparameter = TRUE
+  )
+  rate_from_epiparameter(incubation)
+} else {
+  message("epiparameter is optional here; see examples/epiparameter_seir.R.")
+}
+```
+
+For WPP-style demography, the package keeps the distinction clear between
+standardising input tables and simulating the resulting process. The adapter
+layer prepares the schedules, while `simulate_demography()` and
+`simulate_deterministic()` consume the resulting `DemographicProcess()`.
+
+```{r}
+if (requireNamespace("wpp2024", quietly = TRUE)) {
+  message("See examples/wpp_projection_backed_demography.R and examples/kiribati_tb_realistic_demography.R for the full WPP-backed pathway.")
+} else {
+  message("wpp2024 is optional here; the WPP-backed examples are linked for reference.")
+}
+```
+
+The Kiribati TB scaffold is the best example of how these pieces fit together
+in a realistic but still provisional workflow. It combines WPP-backed
+demography, an adapted contact matrix, and a TB-style compartment model, but it
+remains a scaffold rather than a calibrated policy model.
+
+That caution matters. Case-study scaffolds are useful when you want to:
+
+- show how the package fits together on a real-world problem;
+- keep every modelling assumption transparent;
+- explore scenario structure before calibration;
+- identify which external data are missing.
+
+They are not the same as a fitted or policy-ready model. For Kiribati TB in
+particular, the public-data scaffold should be read as a transparent starting
+point whose assumptions still need calibration, validation, and local evidence.
+
+The short version is simple: core modelling inputs live inside `agepi`, while
+optional adapters and case-study scaffolds help you bring external data into
+that framework without hiding the assumptions.

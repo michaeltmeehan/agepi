@@ -1,0 +1,174 @@
+---
+title: "Demography-Only Workflows and Diagnostics"
+format: html
+---
+
+This tutorial gives standalone demography its own guided path, separate from
+epidemic-demography coupling.
+
+It is useful when you want to check age-specific population change on its own,
+compare a demographic process against observed or reference values, or prepare
+the population layer that a later epidemic workflow will consume.
+
+For more detail, see [docs/demography_workflows.md](../docs/demography_workflows.md),
+[docs/demographic_residuals.md](../docs/demographic_residuals.md),
+[examples/mock_demographic_workflow.R](../examples/mock_demographic_workflow.R),
+[examples/demography_plots.R](../examples/demography_plots.R), and
+[examples/wpp_demography_validation.R](../examples/wpp_demography_validation.R).
+
+```{r}
+if ("package:agepi" %in% search()) {
+  # Package already available.
+} else if (dir.exists("R")) {
+  invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
+} else if (requireNamespace("agepi", quietly = TRUE)) {
+  library(agepi)
+} else {
+  stop(
+    "Package agepi is not available. Run this tutorial from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+
+age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10+"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, Inf)
+)
+
+fertility <- FertilitySchedule(
+  data.frame(
+    time = c(0, 1, 2),
+    age_group = c("10+", "10+", "10+"),
+    fertility_rate = c(0.02, 0.02, 0.02),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+mortality <- MortalitySchedule(
+  data.frame(
+    time = rep(c(0, 1, 2), each = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, times = 3),
+    mortality_rate = c(
+      0.01, 0.005, 0.02,
+      0.01, 0.005, 0.02,
+      0.01, 0.005, 0.02
+    ),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+migration <- MigrationSchedule(
+  data.frame(
+    time = rep(c(0, 1, 2), each = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, times = 3),
+    migration_count = c(
+      1, -1, 0,
+      1, -1, 0,
+      1, -1, 0
+    ),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+process <- build_demographic_process(
+  age_structure = age_structure,
+  fertility_schedule = fertility,
+  mortality_schedule = mortality,
+  migration_schedule = migration,
+  mode = "migration"
+)
+
+initial_population <- c(500, 450, 800)
+demography_only <- simulate_demography(
+  process = process,
+  initial_state = initial_population,
+  times = c(0, 1, 2),
+  time_policy = "step"
+)
+
+head(demography_only, 9)
+aggregate(population ~ time, demography_only, sum)
+```
+
+Demographic-only workflows are useful because they keep the mechanics visible:
+
+- fertility adds new people to the population process;
+- mortality removes people from the active population;
+- ageing moves people between age groups;
+- migration can add or remove people according to the declared policy.
+
+That makes `simulate_demography()` a good place to check whether your age grid
+and schedules behave the way you expect before you add a disease model on top.
+
+The output is a demographic population table with `time`, `age_group`, and
+`population` columns. It is intentionally separate from the epidemic trajectory
+format used by `simulate_deterministic()`.
+
+If you want a quick diagnostic comparison against observed data, the package
+provides residual helpers that stay in the demographic layer:
+
+```{r}
+observed <- Demography(
+  data.frame(
+    time = c(0, 1, 2),
+    age_group = rep(age_structure$age_groups, times = 3),
+    population = c(
+      500, 450, 800,
+      495, 455, 810,
+      490, 460, 820
+    ),
+    stringsAsFactors = FALSE
+  ),
+  age_structure
+)
+
+comparison <- compare_demography_to_observed(demography_only, observed)
+summary <- summarise_demography_comparison(comparison)
+residual <- implied_demographic_residual(observed, process)
+
+summary
+head(comparison, 6)
+head(residual, 6)
+```
+
+The diagnostic helpers do not fit the model for you. They show the gap between
+the simulated population and the observed or reference trajectory, which is
+often enough to see whether fertility, mortality, migration, or ageing needs
+attention.
+
+If you have a reporting grid that is broader than the model grid, use the age
+grid mapping helpers to aggregate output explicitly rather than assuming the
+model grid and reporting grid are interchangeable.
+
+```{r}
+reporting <- AgeStructure(
+  age_groups = c("0-9", "10+"),
+  lower_bounds = c(0, 10),
+  upper_bounds = c(9, Inf)
+)
+
+mapping <- AgeGridMapping(age_structure, reporting, open_ended = "include")
+aggregate_demography_trajectory_age_grid(demography_only, mapping)
+```
+
+Demographic-only outputs are also the cleanest starting point for later
+epidemic-demography workflows. Once the population layer is checked, the same
+age structure and schedule conventions can be reused inside
+`simulate_deterministic()` with a disease model attached.
+
+```{r}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plots <- plot_demography(demography_only)
+  names(plots)
+} else {
+  message("plot_demography() is optional here and needs ggplot2.")
+}
+```
+
+The plotting step is optional. If you only need the mechanics, the tables above
+are enough to validate the demographic process.

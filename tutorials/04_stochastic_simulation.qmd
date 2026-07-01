@@ -1,0 +1,156 @@
+---
+title: "Stochastic Simulation"
+format: html
+---
+
+This tutorial introduces fixed-population stochastic simulation in `agepi` and
+shows how it sits alongside the deterministic workflows from the earlier
+tutorials.
+
+It is a research prototype, not a calibration or forecasting workflow. The
+current stochastic simulator is fixed-population only: it does not yet include
+stochastic demography, ageing, fertility, mortality, or migration.
+
+For more detail, see [docs/stochastic_simulation_design.md](../docs/stochastic_simulation_design.md),
+[docs/epidemic_model_workflows.md](../docs/epidemic_model_workflows.md),
+[examples/stochastic_sir.R](../examples/stochastic_sir.R),
+[examples/stochastic_seir.R](../examples/stochastic_seir.R), and
+[examples/stochastic_cumulative_flows.R](../examples/stochastic_cumulative_flows.R).
+
+```{r}
+if ("package:agepi" %in% search()) {
+  # Package already available.
+} else if (dir.exists("R")) {
+  invisible(lapply(list.files("R", pattern = "[.]R$", full.names = TRUE), source))
+} else if (requireNamespace("agepi", quietly = TRUE)) {
+  library(agepi)
+} else {
+  stop(
+    "Package agepi is not available. Run this tutorial from the package root ",
+    "or install agepi first.",
+    call. = FALSE
+  )
+}
+
+age_structure <- AgeStructure(
+  age_groups = c("0-4", "5-9", "10-14"),
+  lower_bounds = c(0, 5, 10),
+  upper_bounds = c(4, 9, 14)
+)
+
+population <- c(200, 250, 180)
+initial_infections <- c(3, 2, 1)
+initial_state <- data.frame(
+  compartment = rep(c("S", "I", "R"), each = age_structure$n_age_groups),
+  age_group = rep(age_structure$age_groups, times = 3),
+  value = c(population - initial_infections, initial_infections, rep(0, 3)),
+  stringsAsFactors = FALSE
+)
+
+contact_matrix <- matrix(
+  c(
+    4, 2, 1,
+    2, 5, 2,
+    1, 2, 4
+  ),
+  nrow = age_structure$n_age_groups,
+  byrow = TRUE
+)
+
+times <- seq(0, 10, by = 1)
+model <- SIRModel(gamma = 0.25)
+
+stochastic <- simulate_stochastic(
+  initial_state = initial_state,
+  times = times,
+  model = model,
+  age_structure = age_structure,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  seed = 123,
+  return_events = TRUE
+)
+
+deterministic <- simulate_deterministic(
+  initial_state = initial_state,
+  times = times,
+  model = model,
+  age_structure = age_structure,
+  contact_matrix = contact_matrix,
+  beta = 0.08
+)
+
+head(stochastic$trajectory, 12)
+head(stochastic$events, 10)
+head(deterministic, 12)
+aggregate(value ~ time + compartment, stochastic$trajectory, sum)
+aggregate(value ~ time + compartment, deterministic, sum)
+```
+
+The deterministic and stochastic runs use the same core model inputs:
+
+- the same `AgeStructure()`;
+- the same initial compartment-by-age state;
+- the same recipient-row, source-column contact matrix;
+- the same disease model.
+
+The difference is in how transitions happen. Deterministic simulation evolves
+the expected trajectory, while stochastic simulation samples realised events.
+That makes stochastic output useful when you want sample paths, event timing, or
+variability around a deterministic baseline.
+
+The return shape is still familiar. The stochastic simulator returns the usual
+`trajectory` table, and `return_events = TRUE` adds a realised event log with
+event times and transition identifiers. That log is often the best place to
+inspect what happened on a particular sample path.
+
+```{r}
+head(stochastic$events, 6)[, c("time", "event", "transition_id", "age_group", "from", "to")]
+```
+
+Because the event log is explicit, it is easy to derive simple diagnostics:
+
+```{r}
+stochastic_event_counts <- aggregate(
+  time ~ transition_id + age_group,
+  stochastic$events,
+  length
+)
+names(stochastic_event_counts)[names(stochastic_event_counts) == "time"] <- "realised_events"
+stochastic_event_counts
+```
+
+If you need cumulative flow counts, supply `cumulative_flows` and inspect the
+returned `cumulative` table. Those counts are derived from realised events and
+stay separate from the disease compartments themselves.
+
+```{r}
+stochastic_cumulative <- simulate_stochastic(
+  initial_state = initial_state,
+  times = times,
+  model = model,
+  age_structure = age_structure,
+  contact_matrix = contact_matrix,
+  beta = 0.08,
+  seed = 123,
+  return_events = TRUE,
+  cumulative_flows = list(
+    infections = list(from = "S", to = "I"),
+    recoveries = list(from = "I", to = "R")
+  )
+)
+
+head(stochastic_cumulative$cumulative, 12)
+```
+
+The main practical checks are straightforward:
+
+- use `seed` when you want reproducible sample paths;
+- inspect `trajectory` when you want the realised compartment time series;
+- inspect `events` when you want the event-level history;
+- compare against deterministic output when you want a baseline shape check.
+
+For the package boundary, the important point is simple: stochastic simulation
+currently covers fixed-population epidemic events only. If your question depends
+on stochastic births, deaths, ageing, or migration, that is outside the current
+stochastic surface.
