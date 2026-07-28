@@ -161,6 +161,11 @@ generic_infection_rates <- function(
     return(generic_empty_rate_table())
   }
 
+  susceptibility_matrix <- infection_transition_susceptibility_matrix(
+    model = model,
+    age_structure = age_structure
+  )
+
   infectious <- numeric(age_structure$n_age_groups)
   for (i in seq_along(model$infectious_compartments)) {
     infectious <- infectious +
@@ -184,16 +189,16 @@ generic_infection_rates <- function(
 
   rows <- vector("list", nrow(model$infection_transitions))
   for (i in seq_len(nrow(model$infection_transitions))) {
-    from_values <- transition_compartment_values(
-      state_long,
-      age_structure,
-      model$infection_transitions$from[i]
-    )
+      from_values <- transition_compartment_values(
+        state_long,
+        age_structure,
+        model$infection_transitions$from[i]
+      )
     rows[[i]] <- data.frame(
       from = model$infection_transitions$from[i],
       to = model$infection_transitions$to[i],
       age_group = age_structure$age_groups,
-      rate = as.numeric(lambda) * from_values,
+      rate = as.numeric(lambda) * susceptibility_matrix[i, ] * from_values,
       transition_id = transition_identifiers(
         from = model$infection_transitions$from[i],
         to = model$infection_transitions$to[i],
@@ -205,6 +210,125 @@ generic_infection_rates <- function(
   }
 
   do.call(rbind, rows)
+}
+
+infection_transition_susceptibility_matrix <- function(model, age_structure) {
+  validate_age_structure(age_structure)
+
+  if (nrow(model$infection_transitions) == 0) {
+    return(matrix(
+      numeric(),
+      nrow = 0,
+      ncol = age_structure$n_age_groups,
+      dimnames = list(character(), age_structure$age_groups)
+    ))
+  }
+
+  if ("susceptibility" %in% names(model$infection_transitions)) {
+    susceptibility_specs <- model$infection_transitions$susceptibility
+  } else {
+    susceptibility_specs <- rep(list(1), nrow(model$infection_transitions))
+  }
+
+  rows <- vector("list", nrow(model$infection_transitions))
+  for (i in seq_len(nrow(model$infection_transitions))) {
+    rows[[i]] <- normalize_infection_transition_susceptibility_for_age(
+      susceptibility = susceptibility_specs[[i]],
+      age_structure = age_structure,
+      name = paste0(
+        "susceptibility for infection transition ",
+        model$infection_transitions$from[i],
+        "->",
+        model$infection_transitions$to[i]
+      )
+    )
+  }
+
+  susceptibility_matrix <- do.call(rbind, rows)
+  row.names(susceptibility_matrix) <- transition_identifiers(
+    from = model$infection_transitions$from,
+    to = model$infection_transitions$to,
+    transition_type = "infection"
+  )
+  susceptibility_matrix
+}
+
+normalize_infection_transition_susceptibility_for_age <- function(
+  susceptibility,
+  age_structure,
+  name
+) {
+  if (is.null(susceptibility)) {
+    return(rep(1, age_structure$n_age_groups))
+  }
+
+  if (is.data.frame(susceptibility) || is.matrix(susceptibility) || is.list(susceptibility)) {
+    stop(name, " must be numeric.", call. = FALSE)
+  }
+
+  if (!is.numeric(susceptibility) || length(susceptibility) == 0 ||
+      anyNA(susceptibility) || any(!is.finite(susceptibility))) {
+    stop(name, " must be finite numeric value(s).", call. = FALSE)
+  }
+
+  if (any(susceptibility < 0)) {
+    stop(name, " cannot contain negative values.", call. = FALSE)
+  }
+
+  if (length(susceptibility) == 1) {
+    return(rep(as.numeric(susceptibility), age_structure$n_age_groups))
+  }
+
+  if (length(susceptibility) != age_structure$n_age_groups) {
+    stop(
+      name,
+      " length must be 1 or match the number of age groups: ",
+      age_structure$n_age_groups,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  susceptibility_names <- names(susceptibility)
+  if (is.null(susceptibility_names)) {
+    return(as.numeric(susceptibility))
+  }
+
+  if (anyNA(susceptibility_names) || any(susceptibility_names == "")) {
+    stop(name, " age-specific vector names must be non-empty.", call. = FALSE)
+  }
+
+  duplicated_names <- unique(susceptibility_names[duplicated(susceptibility_names)])
+  if (length(duplicated_names) > 0) {
+    stop(
+      name,
+      " age-specific vector names must be unique; duplicate age group(s): ",
+      paste(duplicated_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  unknown_names <- setdiff(susceptibility_names, age_structure$age_groups)
+  if (length(unknown_names) > 0) {
+    stop(
+      name,
+      " age-specific vector contains unknown age_group value(s): ",
+      paste(unknown_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  missing_names <- setdiff(age_structure$age_groups, susceptibility_names)
+  if (length(missing_names) > 0) {
+    stop(
+      name,
+      " age-specific vector is missing age_group value(s): ",
+      paste(missing_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  as.numeric(susceptibility[age_structure$age_groups])
 }
 
 generic_per_capita_transition_rates <- function(state_long, model, age_structure) {

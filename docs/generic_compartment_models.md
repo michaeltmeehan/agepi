@@ -37,12 +37,39 @@ infection_transitions = data.frame(from = "S", to = "I")
 For each recipient age group, infection flow is:
 
 ```r
-lambda[age] * state[from, age]
+lambda[age] * state[from, age] * susceptibility[transition, age]
 ```
 
 where `lambda` is computed by `force_of_infection()`. Multiple infection
-transitions can be supplied when a custom model needs them, but each transition
-uses the same age-specific force of infection.
+transitions can be supplied when a custom model needs them, and each transition
+uses the same age-specific force of infection with its own susceptibility
+modifier. Susceptibility is a relative instantaneous infection-hazard
+multiplier. A value of `0.5` means half the hazard of a reference compartment
+exposed to the same force of infection.
+
+The optional `susceptibility` column may contain either:
+
+- a single non-negative numeric value per infection transition, which is
+  expanded across all age groups; or
+- a list-column of non-negative numeric vectors with one value per age group.
+
+Named age-specific vectors are matched to `age_structure$age_groups` and
+reordered when transition rates are evaluated. For example:
+
+```r
+infection_transitions = data.frame(
+  from = c("S", "V"),
+  to = c("I", "I"),
+  susceptibility = I(list(
+    1,
+    c("0-4" = 0.3, "5-17" = 0.4, "18-64" = 0.5, "65+" = 0.7)
+  ))
+)
+```
+
+If `susceptibility` is omitted, `CompartmentModel()` defaults it to `1` for
+every age group. Exact duplicate infection transitions are rejected so the same
+infection flow cannot be double-counted silently.
 
 ## Fixed Per-Capita Transitions
 
@@ -204,7 +231,8 @@ across all compartments by current age-specific shares instead of using
   during a simulation.
 - Vaccination schedules and time-varying intervention schedules are not yet
   implemented.
-- Infection transitions all use the same force of infection.
+- Infection transitions all use the same force of infection, but each
+  transition may apply its own age-specific susceptibility multiplier.
 - Cumulative flow tracking is supported for deterministic simulations with or
   without `demographic_process`, and as event-log-derived counts for
   fixed-population stochastic simulations.

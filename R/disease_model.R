@@ -48,7 +48,10 @@ SIRModel <- function(gamma) {
 #'
 #' @param compartments Unique non-empty character vector of compartment names.
 #' @param infection_transitions Data frame with columns `from` and `to`.
-#'   Infection flow is `lambda * state[from]` within each recipient age group.
+#'   An optional `susceptibility` column may be supplied either as a numeric
+#'   scalar per row or as a list-column of numeric vectors. When omitted,
+#'   susceptibility defaults to one for every age group. Infection flow is
+#'   `lambda * state[from] * susceptibility` within each recipient age group.
 #' @param transitions Optional data frame with columns `from`, `to`, and
 #'   `rate`, where `rate` is a non-negative per-capita transition rate. Each
 #'   rate may be a scalar or a named age-specific numeric vector in a list
@@ -95,11 +98,9 @@ CompartmentModel <- function(
       stringsAsFactors = FALSE
     )
   }
-  infection_transitions <- validate_generic_transitions(
+  infection_transitions <- validate_infection_transitions(
     infection_transitions,
-    compartments = compartments,
-    name = "infection_transitions",
-    require_rate = FALSE
+    compartments = compartments
   )
 
   if (is.null(transitions)) {
@@ -259,12 +260,7 @@ validate_disease_model <- function(model) {
   validate_compartments(model$compartments)
 
   if (model$model_type == "CompartmentModel") {
-    validate_generic_transitions(
-      model$infection_transitions,
-      compartments = model$compartments,
-      name = "infection_transitions",
-      require_rate = FALSE
-    )
+    validate_infection_transitions(model$infection_transitions, model$compartments)
     validate_generic_transitions(
       model$transitions,
       compartments = model$compartments,
@@ -482,6 +478,176 @@ validate_generic_transitions <- function(transitions, compartments, name, requir
   }
 
   transitions[, required_columns, drop = FALSE]
+}
+
+validate_infection_transitions <- function(transitions, compartments) {
+  if (!is.data.frame(transitions)) {
+    if (is.list(transitions) &&
+        !is.null(transitions$from) &&
+        !is.null(transitions$to)) {
+      transitions <- coerce_infection_transition_list(transitions)
+    } else {
+      stop("infection_transitions must be a data frame.", call. = FALSE)
+    }
+  }
+
+  required_columns <- c("from", "to")
+  missing_columns <- setdiff(required_columns, names(transitions))
+  if (length(missing_columns) > 0) {
+    stop(
+      "infection_transitions is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(transitions$from) || anyNA(transitions$to) ||
+      any(transitions$from == "") || any(transitions$to == "")) {
+    stop("infection_transitions from and to cannot contain missing or empty values.", call. = FALSE)
+  }
+
+  unknown_from <- setdiff(unique(transitions$from), compartments)
+  if (length(unknown_from) > 0) {
+    stop(
+      "infection_transitions contains unknown source compartment value(s): ",
+      paste(unknown_from, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  unknown_to <- setdiff(unique(transitions$to), compartments)
+  if (length(unknown_to) > 0) {
+    stop(
+      "infection_transitions contains unknown destination compartment value(s): ",
+      paste(unknown_to, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  same_compartment <- transitions$from == transitions$to
+  if (any(same_compartment)) {
+    stop("infection_transitions cannot contain self-transitions.", call. = FALSE)
+  }
+
+  transition_keys <- transitions[, c("from", "to"), drop = FALSE]
+  duplicate_rows <- duplicated(transition_keys)
+  if (any(duplicate_rows)) {
+    duplicated_key <- transition_keys[which(duplicate_rows)[1], , drop = FALSE]
+    stop(
+      "infection_transitions contains duplicate transition: ",
+      duplicated_key$from,
+      "->",
+      duplicated_key$to,
+      call. = FALSE
+    )
+  }
+
+  if (!"susceptibility" %in% names(transitions)) {
+    transitions$susceptibility <- rep(list(1), nrow(transitions))
+  } else {
+    transitions$susceptibility <- normalize_infection_transition_susceptibility_column(
+      transitions$susceptibility,
+      nrow(transitions)
+    )
+  }
+
+  transitions[, c("from", "to", "susceptibility"), drop = FALSE]
+}
+
+coerce_infection_transition_list <- function(transitions) {
+  if (is.null(names(transitions))) {
+    stop("infection_transitions list must be named.", call. = FALSE)
+  }
+
+  from <- transitions$from
+  to <- transitions$to
+  if (length(from) != length(to)) {
+    stop("infection_transitions from and to must have the same length.", call. = FALSE)
+  }
+
+  if (!is.null(transitions$susceptibility)) {
+    susceptibility <- transitions$susceptibility
+    if (is.list(susceptibility) && !is.data.frame(susceptibility)) {
+      return(data.frame(
+        from = from,
+        to = to,
+        susceptibility = I(susceptibility),
+        stringsAsFactors = FALSE
+      ))
+    }
+
+    return(data.frame(
+      from = from,
+      to = to,
+      susceptibility = susceptibility,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  data.frame(from = from, to = to, stringsAsFactors = FALSE)
+}
+
+normalize_infection_transition_susceptibility_column <- function(susceptibility, n_transitions) {
+  if (is.null(susceptibility)) {
+    return(rep(list(1), n_transitions))
+  }
+
+  if (is.data.frame(susceptibility) || is.matrix(susceptibility)) {
+    stop("infection_transitions susceptibility must be numeric or a list-column.", call. = FALSE)
+  }
+
+  if (!is.list(susceptibility)) {
+    if (!is.numeric(susceptibility) || length(susceptibility) != n_transitions) {
+      stop(
+        "infection_transitions susceptibility must be a numeric vector with one value per transition or a list-column.",
+        call. = FALSE
+      )
+    }
+    if (anyNA(susceptibility) || any(!is.finite(susceptibility))) {
+      stop("infection_transitions susceptibility cannot contain missing or non-finite values.", call. = FALSE)
+    }
+    if (any(susceptibility < 0)) {
+      stop("infection_transitions susceptibility cannot contain negative values.", call. = FALSE)
+    }
+    return(as.list(as.numeric(susceptibility)))
+  }
+
+  if (length(susceptibility) != n_transitions) {
+    stop(
+      "infection_transitions susceptibility list-column must contain one entry per transition.",
+      call. = FALSE
+    )
+  }
+
+  rows <- vector("list", n_transitions)
+  for (i in seq_len(n_transitions)) {
+    value <- susceptibility[[i]]
+    if (is.null(value) || is.data.frame(value) || is.matrix(value) || !is.numeric(value) ||
+        length(value) == 0 || anyNA(value) || any(!is.finite(value))) {
+      stop(
+        "infection_transitions susceptibility entry ",
+        i,
+        " must be finite numeric value(s).",
+        call. = FALSE
+      )
+    }
+    if (any(value < 0)) {
+      stop(
+        "infection_transitions susceptibility entry ",
+        i,
+        " cannot contain negative values.",
+        call. = FALSE
+      )
+    }
+    value_names <- names(value)
+    value <- as.numeric(value)
+    if (!is.null(value_names)) {
+      names(value) <- value_names
+    }
+    rows[[i]] <- value
+  }
+
+  rows
 }
 
 validate_generic_rate_column <- function(rate, name) {

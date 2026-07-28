@@ -18,7 +18,10 @@ CompartmentModel(
 \item{compartments}{Unique non-empty character vector of compartment names.}
 
 \item{infection_transitions}{Data frame with columns \code{from} and \code{to}.
-Infection flow is \code{lambda * state[from]} within each recipient age group.}
+An optional \code{susceptibility} column may be supplied either as a numeric
+scalar per row or as a list-column of numeric vectors. When omitted,
+susceptibility defaults to one for every age group. Infection flow is
+\code{lambda * state[from] * susceptibility} within each recipient age group.}
 
 \item{transitions}{Optional data frame with columns \code{from}, \code{to}, and
 \code{rate}, where \code{rate} is a non-negative per-capita transition rate. Each
@@ -45,9 +48,11 @@ A \code{DiseaseModel} list describing a generic compartment model.
 \description{
 Creates a simple generic disease-model object for deterministic
 age-structured compartmental models. Infection transitions use the existing
-\code{\link[=force_of_infection]{force_of_infection()}} convention. Other transitions are per-capita flows
-from \code{from} to \code{to}, with rates supplied either as finite non-negative
-scalars or as age-specific vectors when transition rates are evaluated.
+\code{\link[=force_of_infection]{force_of_infection()}} convention, with
+transition-specific susceptibility multipliers. Other transitions are
+per-capita flows from \code{from} to \code{to}, with rates supplied either as
+finite non-negative scalars or as age-specific vectors when transition rates
+are evaluated.
 }
 \details{
 \code{SIRModel()} and \code{SEIRModel()} remain supported convenience constructors for

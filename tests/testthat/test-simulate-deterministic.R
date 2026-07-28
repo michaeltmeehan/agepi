@@ -67,6 +67,50 @@ simulate_onset_state <- function(
   )
 }
 
+simulate_vaccine_ages <- function() {
+  AgeStructure(
+    age_groups = c("0-4"),
+    lower_bounds = c(0),
+    upper_bounds = c(4)
+  )
+}
+
+simulate_vaccine_state <- function(S = 90, V = 10, I = 10) {
+  data.frame(
+    compartment = c("S", "V", "I"),
+    age_group = c("0-4", "0-4", "0-4"),
+    value = c(S, V, I),
+    stringsAsFactors = FALSE
+  )
+}
+
+simulate_vaccine_model <- function(susceptibility = list(1, 0.5)) {
+  infection_transitions <- data.frame(
+    from = c("S", "V"),
+    to = c("I", "I"),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(susceptibility)) {
+    if (is.list(susceptibility)) {
+      infection_transitions$susceptibility <- I(susceptibility)
+    } else {
+      infection_transitions$susceptibility <- susceptibility
+    }
+  }
+
+  CompartmentModel(
+    compartments = c("S", "V", "I"),
+    infection_transitions = infection_transitions,
+    transitions = data.frame(
+      from = character(),
+      to = character(),
+      rate = numeric(),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+}
+
 cumulative_values_by_time_age <- function(cumulative, cumulative_name) {
   rows <- cumulative[cumulative$cumulative_name == cumulative_name, ]
   rows <- rows[order(rows$time, rows$age_group), ]
@@ -115,6 +159,44 @@ test_that("one-step Euler update matches hand-calculated SIR example", {
   final_rows <- output[output$time == 0.1, ]
 
   expect_equal(final_rows$value, c(87.3, 167.4, 12.5, 32.2, 0.2, 0.4))
+})
+
+test_that("deterministic simulation keeps legacy infection-transition semantics when susceptibility is omitted", {
+  output_without_susceptibility <- simulate_deterministic(
+    initial_state = simulate_vaccine_state(),
+    times = c(0, 0.1),
+    model = simulate_vaccine_model(NULL),
+    age_structure = simulate_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 0.12,
+    method = "euler"
+  )
+  output_with_explicit_one <- simulate_deterministic(
+    initial_state = simulate_vaccine_state(),
+    times = c(0, 0.1),
+    model = simulate_vaccine_model(list(1, 1)),
+    age_structure = simulate_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 0.12,
+    method = "euler"
+  )
+
+  expect_equal(output_without_susceptibility, output_with_explicit_one)
+})
+
+test_that("deterministic simulation conserves population with multiple susceptible compartments", {
+  output <- simulate_deterministic(
+    initial_state = simulate_vaccine_state(),
+    times = c(0, 0.1, 0.2),
+    model = simulate_vaccine_model(list(1, 0.5)),
+    age_structure = simulate_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 0.12,
+    method = "euler"
+  )
+
+  totals <- aggregate(value ~ time, output, sum)
+  expect_equal(totals$value, rep(110, nrow(totals)), tolerance = 1e-10)
 })
 
 test_that("simulate_deterministic works for SEIR with Euler", {

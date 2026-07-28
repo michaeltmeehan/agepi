@@ -36,6 +36,42 @@ test_contacts <- function() {
   ), nrow = 2, byrow = TRUE)
 }
 
+test_generic_vaccine_model <- function(susceptibility = list(1, 0.5)) {
+  infection_transitions <- data.frame(
+    from = c("S", "V"),
+    to = c("I", "I"),
+    susceptibility = if (is.list(susceptibility)) I(susceptibility) else susceptibility,
+    stringsAsFactors = FALSE
+  )
+
+  CompartmentModel(
+    compartments = c("S", "V", "I", "E", "R"),
+    infection_transitions = infection_transitions,
+    transitions = data.frame(
+      from = c("I", "E"),
+      to = c("R", "R"),
+      rate = c(0.2, 0.1),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+}
+
+test_generic_vaccine_state <- function(
+  S = c(100, 100),
+  V = c(100, 100),
+  I = c(10, 10),
+  E = c(0, 0),
+  R = c(0, 0)
+) {
+  data.frame(
+    compartment = rep(c("S", "V", "I", "E", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 5),
+    value = c(S, V, I, E, R),
+    stringsAsFactors = FALSE
+  )
+}
+
 test_that("transition_rates computes a manually checkable SIR example", {
   rates <- transition_rates(
     state = test_state(),
@@ -200,6 +236,249 @@ test_that("infectiousness modifies infection pressure from source age groups", {
   )
 
   expect_equal(rates$rate, c(40.5, 2, 144, 4))
+})
+
+test_that("legacy infection transitions default susceptibility to one", {
+  model_without_susceptibility <- CompartmentModel(
+    compartments = c("S", "V", "I", "E", "R"),
+    infection_transitions = data.frame(
+      from = c("S", "V"),
+      to = c("I", "I"),
+      stringsAsFactors = FALSE
+    ),
+    transitions = data.frame(
+      from = c("I", "E"),
+      to = c("R", "R"),
+      rate = c(0.2, 0.1),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+
+  model_with_scalar_one <- test_generic_vaccine_model(list(1, 1))
+
+  without_susceptibility <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = model_without_susceptibility,
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+  with_scalar_one <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = model_with_scalar_one,
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(without_susceptibility, with_scalar_one)
+})
+
+test_that("scalar susceptibility is expanded across all age groups", {
+  rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = test_generic_vaccine_model(0.5),
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(
+    rates$rate[rates$from == "S"],
+    c(2.380952380952, 2.380952380952)
+  )
+  expect_equal(
+    rates$rate[rates$from == "V"],
+    c(2.380952380952, 2.380952380952)
+  )
+})
+
+test_that("named age-specific susceptibility vectors are reordered by age group", {
+  rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = test_generic_vaccine_model(list(c("5-9" = 0.2, "0-4" = 0.5), c("0-4" = 1, "5-9" = 1))),
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(
+    rates$rate[rates$from == "S"],
+    c(2.380952380952, 0.952380952381)
+  )
+  expect_equal(
+    rates$rate[rates$from == "V"],
+    c(4.761904761905, 4.761904761905)
+  )
+})
+
+test_that("multiple susceptible compartments can target different infection destinations", {
+  model <- CompartmentModel(
+    compartments = c("S", "V", "I", "E", "R"),
+    infection_transitions = {
+      data.frame(
+        from = c("S", "V"),
+        to = c("I", "E"),
+        susceptibility = I(list(1, 0.5)),
+        stringsAsFactors = FALSE
+      )
+    },
+    transitions = data.frame(
+      from = c("I", "E"),
+      to = c("R", "R"),
+      rate = c(0.2, 0.1),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+
+  rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = model,
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(
+    paste(rates$from, rates$to, sep = "->"),
+    c("S->I", "V->E", "I->R", "E->R", "S->I", "V->E", "I->R", "E->R")
+  )
+  expect_equal(rates$rate[rates$from == "S"], c(4.761904761905, 4.761904761905))
+  expect_equal(rates$rate[rates$from == "V"], c(2.380952380952, 2.380952380952))
+})
+
+test_that("zero susceptibility produces no infections", {
+  rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = test_generic_vaccine_model(list(1, 0)),
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(rates$rate[rates$from == "V"], c(0, 0))
+})
+
+test_that("susceptibility values greater than one scale incidence", {
+  base_rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = test_generic_vaccine_model(list(1, 1)),
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+  scaled_rates <- transition_rates(
+    state = test_generic_vaccine_state(),
+    model = test_generic_vaccine_model(list(2.5, 1)),
+    age_structure = test_ages(),
+    contact_matrix = diag(2),
+    beta = 1
+  )
+
+  expect_equal(
+    scaled_rates$rate[scaled_rates$from == "S"],
+    base_rates$rate[base_rates$from == "S"] * 2.5
+  )
+})
+
+test_that("infection transition susceptibility validation is strict", {
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "V", "I", "E", "R"),
+      infection_transitions = {
+        data.frame(
+          from = c("S", "V"),
+          to = c("I", "I"),
+          susceptibility = I(list(1, c("0-4" = -0.1, "5-9" = 0.2))),
+          stringsAsFactors = FALSE
+        )
+      },
+      transitions = data.frame(
+        from = c("I", "E"),
+        to = c("R", "R"),
+        rate = c(0.2, 0.1),
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = "I"
+    ),
+    "cannot contain negative values"
+  )
+
+  expect_error(
+    transition_rates(
+      state = test_generic_vaccine_state(),
+      model = test_generic_vaccine_model(list(1, c(0.1, 0.2, 0.3))),
+      age_structure = test_ages(),
+      contact_matrix = diag(2),
+      beta = 1
+    ),
+    "length must be 1 or match the number of age groups"
+  )
+
+  expect_error(
+    transition_rates(
+      state = test_generic_vaccine_state(),
+      model = test_generic_vaccine_model(list(c("0-4" = 1, "unknown" = 2), 1)),
+      age_structure = test_ages(),
+      contact_matrix = diag(2),
+      beta = 1
+    ),
+    "unknown age_group value"
+  )
+
+  expect_error(
+    transition_rates(
+      state = test_generic_vaccine_state(),
+      model = test_generic_vaccine_model(list(c("0-4" = 1, 2), 1)),
+      age_structure = test_ages(),
+      contact_matrix = diag(2),
+      beta = 1
+    ),
+    "must be non-empty"
+  )
+
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "V", "I", "E", "R"),
+      infection_transitions = {
+        data.frame(
+          from = c("S", "V"),
+          to = c("I", "I"),
+          susceptibility = I(list(1, "bad")),
+          stringsAsFactors = FALSE
+        )
+      },
+      transitions = data.frame(
+        from = c("I", "E"),
+        to = c("R", "R"),
+        rate = c(0.2, 0.1),
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = "I"
+    ),
+    "must be finite numeric value"
+  )
+
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "V", "I", "E", "R"),
+      infection_transitions = data.frame(
+        from = c("S", "S"),
+        to = c("I", "I"),
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(
+        from = c("I", "E"),
+        to = c("R", "R"),
+        rate = c(0.2, 0.1),
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = "I"
+    ),
+    "duplicate transition"
+  )
 })
 
 test_that("zero infectious counts produce zero infection and zero recovery rates", {

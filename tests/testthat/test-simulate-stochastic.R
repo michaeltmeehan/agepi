@@ -84,6 +84,50 @@ stochastic_test_generic_seir_model <- function(sigma = 0.4, gamma = 0.2) {
   )
 }
 
+stochastic_vaccine_ages <- function() {
+  AgeStructure(
+    age_groups = c("0-4"),
+    lower_bounds = c(0),
+    upper_bounds = c(4)
+  )
+}
+
+stochastic_vaccine_state <- function(S = 20, V = 20, I = 10) {
+  data.frame(
+    compartment = c("S", "V", "I"),
+    age_group = c("0-4", "0-4", "0-4"),
+    value = c(S, V, I),
+    stringsAsFactors = FALSE
+  )
+}
+
+stochastic_vaccine_model <- function(susceptibility = list(1, 0.5)) {
+  infection_transitions <- data.frame(
+    from = c("S", "V"),
+    to = c("I", "I"),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(susceptibility)) {
+    if (is.list(susceptibility)) {
+      infection_transitions$susceptibility <- I(susceptibility)
+    } else {
+      infection_transitions$susceptibility <- susceptibility
+    }
+  }
+
+  CompartmentModel(
+    compartments = c("S", "V", "I"),
+    infection_transitions = infection_transitions,
+    transitions = data.frame(
+      from = character(),
+      to = character(),
+      rate = numeric(),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+}
+
 stochastic_test_seir_run <- function(
   initial_state = stochastic_test_seir_state(),
   times = seq(0, 1, by = 0.25),
@@ -412,6 +456,49 @@ test_that("generic event log keeps the stochastic event structure", {
   expect_true(all(result$events$from %in% c("S", "I")))
   expect_true(all(result$events$to %in% c("I", "R")))
   expect_true(all(diff(result$events$time) >= 0))
+})
+
+test_that("stochastic simulation preserves legacy infection-transition semantics when susceptibility is omitted", {
+  without_susceptibility <- simulate_stochastic(
+    initial_state = stochastic_vaccine_state(),
+    times = c(0, 5),
+    model = stochastic_vaccine_model(NULL),
+    age_structure = stochastic_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 0.6,
+    seed = 61,
+    return_events = TRUE
+  )
+  explicit_one <- simulate_stochastic(
+    initial_state = stochastic_vaccine_state(),
+    times = c(0, 5),
+    model = stochastic_vaccine_model(list(1, 1)),
+    age_structure = stochastic_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 0.6,
+    seed = 61,
+    return_events = TRUE
+  )
+
+  expect_equal(without_susceptibility, explicit_one)
+})
+
+test_that("stochastic simulation never generates infections from zero-susceptibility compartments", {
+  result <- simulate_stochastic(
+    initial_state = stochastic_vaccine_state(S = 30, V = 30, I = 10),
+    times = c(0, 5),
+    model = stochastic_vaccine_model(list(1, 0)),
+    age_structure = stochastic_vaccine_ages(),
+    contact_matrix = matrix(1, nrow = 1, ncol = 1),
+    beta = 1,
+    seed = 62,
+    return_events = TRUE
+  )
+
+  infection_events <- result$events[result$events$event == "infection", ]
+  expect_true(nrow(infection_events) > 0)
+  expect_true(all(infection_events$from == "S"))
+  expect_false(any(infection_events$from == "V"))
 })
 
 test_that("simulate_stochastic output is unchanged when cumulative_flows is NULL", {
