@@ -18,13 +18,15 @@ validate_cumulative_flows <- function(cumulative_flows, transition_rate_table) {
       cumulative_name = normalized$cumulative_name[i],
       from = normalized$from[i],
       to = normalized$to[i],
+      transition_id = if ("transition_id" %in% names(normalized)) normalized$transition_id[i] else NULL,
+      transition_type = if ("transition_type" %in% names(normalized)) normalized$transition_type[i] else NULL,
       transition_rate_table = transition_rate_table
     )
   }
 
   result <- do.call(rbind, rows)
   row.names(result) <- NULL
-  result
+  result[, c("cumulative_name", "transition_id", "from", "to"), drop = FALSE]
 }
 
 normalize_cumulative_flows <- function(cumulative_flows) {
@@ -52,22 +54,58 @@ normalize_cumulative_flow_list <- function(cumulative_flows) {
     if (!is.list(flow) || is.data.frame(flow)) {
       stop("each cumulative flow must be a list with from and to fields.", call. = FALSE)
     }
-    if (is.null(flow$from) || is.null(flow$to)) {
-      stop("each cumulative flow must include from and to fields.", call. = FALSE)
+    transition_id <- NULL
+    if (!is.null(flow$transition_id)) {
+      transition_id <- validate_cumulative_flow_character_column(flow$transition_id, "transition_id")
+      if (length(transition_id) != 1) {
+        stop("cumulative flow transition_id must be a single character value.", call. = FALSE)
+      }
+    }
+    transition_type <- NULL
+    if (!is.null(flow$transition_type)) {
+      transition_type <- validate_cumulative_flow_character_column(flow$transition_type, "transition_type")
+      if (length(transition_type) != 1) {
+        stop("cumulative flow transition_type must be a single character value.", call. = FALSE)
+      }
+      if (!transition_type %in% c("internal", "outflow")) {
+        stop("cumulative flow transition_type must be internal or outflow.", call. = FALSE)
+      }
     }
 
-    from <- validate_cumulative_flow_compartments(flow$from, "from")
-    to <- validate_cumulative_flow_compartments(flow$to, "to")
-    if (length(from) != length(to)) {
+    from <- NULL
+    if (!is.null(flow$from)) {
+      from <- validate_cumulative_flow_compartments(flow$from, "from")
+    }
+    to <- NULL
+    if (!is.null(flow$to)) {
+      to <- validate_cumulative_flow_compartments(flow$to, "to", allow_na = TRUE)
+    }
+
+    if (is.null(transition_id) && (is.null(from) || is.null(to))) {
+      stop("each cumulative flow must include from and to fields unless transition_id is supplied.", call. = FALSE)
+    }
+    if (is.null(transition_id) && !is.null(from) && !is.null(to) && length(from) != length(to)) {
       stop("cumulative flow from and to must have the same length.", call. = FALSE)
     }
 
-    rows[[i]] <- data.frame(
-      cumulative_name = rep(flow_names[i], length(from)),
-      from = from,
-      to = to,
-      stringsAsFactors = FALSE
-    )
+    if (!is.null(transition_id)) {
+      rows[[i]] <- data.frame(
+        cumulative_name = rep(flow_names[i], 1),
+        transition_id = transition_id,
+        from = if (!is.null(from)) from[1] else NA_character_,
+        to = if (!is.null(to)) to[1] else NA_character_,
+        transition_type = if (!is.null(transition_type)) transition_type else NA_character_,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      rows[[i]] <- data.frame(
+        cumulative_name = rep(flow_names[i], length(from)),
+        from = from,
+        to = to,
+        transition_type = if (!is.null(transition_type)) rep(transition_type, length(from)) else rep(NA_character_, length(from)),
+        stringsAsFactors = FALSE
+      )
+    }
   }
 
   do.call(rbind, rows)
@@ -98,8 +136,19 @@ normalize_cumulative_flow_data_frame <- function(cumulative_flows) {
     ),
     to = validate_cumulative_flow_character_column(
       cumulative_flows$to,
-      "to"
+      "to",
+      allow_na = TRUE
     ),
+    transition_id = if ("transition_id" %in% names(cumulative_flows)) {
+      validate_cumulative_flow_character_column(cumulative_flows$transition_id, "transition_id")
+    } else {
+      rep(NA_character_, nrow(cumulative_flows))
+    },
+    transition_type = if ("transition_type" %in% names(cumulative_flows)) {
+      validate_cumulative_flow_character_column(cumulative_flows$transition_type, "transition_type")
+    } else {
+      rep(NA_character_, nrow(cumulative_flows))
+    },
     stringsAsFactors = FALSE
   )
 }
@@ -125,17 +174,37 @@ validate_cumulative_flow_names <- function(cumulative_names) {
   invisible(cumulative_names)
 }
 
-validate_cumulative_flow_compartments <- function(x, field) {
-  if (!is.character(x) || length(x) < 1 || anyNA(x) || any(x == "")) {
+validate_cumulative_flow_compartments <- function(x, field, allow_na = FALSE) {
+  if (!is.character(x) || length(x) < 1) {
     stop("cumulative flow ", field, " must contain non-empty character value(s).", call. = FALSE)
+  }
+
+  if (allow_na) {
+    if (any(x == "", na.rm = TRUE)) {
+      stop("cumulative flow ", field, " must contain non-empty character value(s).", call. = FALSE)
+    }
+  } else {
+    if (anyNA(x) || any(x == "")) {
+      stop("cumulative flow ", field, " must contain non-empty character value(s).", call. = FALSE)
+    }
   }
 
   x
 }
 
-validate_cumulative_flow_character_column <- function(x, field) {
-  if (!is.character(x) || anyNA(x) || any(x == "")) {
+validate_cumulative_flow_character_column <- function(x, field, allow_na = FALSE) {
+  if (!is.character(x)) {
     stop("cumulative_flows data frame ", field, " must contain non-empty character values.", call. = FALSE)
+  }
+
+  if (allow_na) {
+    if (any(x == "", na.rm = TRUE)) {
+      stop("cumulative_flows data frame ", field, " must contain non-empty character values.", call. = FALSE)
+    }
+  } else {
+    if (anyNA(x) || any(x == "")) {
+      stop("cumulative_flows data frame ", field, " must contain non-empty character values.", call. = FALSE)
+    }
   }
 
   x
@@ -158,17 +227,66 @@ validate_cumulative_transition_rate_table <- function(transition_rate_table) {
 
   if (anyNA(transition_rate_table$transition_id) ||
       anyNA(transition_rate_table$from) ||
-      anyNA(transition_rate_table$to) ||
       any(transition_rate_table$transition_id == "") ||
-      any(transition_rate_table$from == "") ||
-      any(transition_rate_table$to == "")) {
-    stop("transition_rate_table transition_id, from, and to cannot contain missing or empty values.", call. = FALSE)
+      any(transition_rate_table$from == "")) {
+    stop("transition_rate_table transition_id and from cannot contain missing or empty values.", call. = FALSE)
+  }
+
+  outflow_rows <- startsWith(transition_rate_table$transition_id, "outflow:")
+  if (any(!outflow_rows & (is.na(transition_rate_table$to) | transition_rate_table$to == ""))) {
+    stop("transition_rate_table to cannot contain missing or empty values for internal transitions.", call. = FALSE)
   }
 
   invisible(transition_rate_table)
 }
 
-match_cumulative_flow_transition <- function(cumulative_name, from, to, transition_rate_table) {
+match_cumulative_flow_transition <- function(
+  cumulative_name,
+  from,
+  to,
+  transition_id = NULL,
+  transition_type = NULL,
+  transition_rate_table
+) {
+  if (!is.null(transition_id) && !is.na(transition_id) && transition_id != "") {
+    matches <- transition_rate_table[transition_rate_table$transition_id == transition_id, , drop = FALSE]
+    if (nrow(matches) == 0) {
+      stop(
+        "cumulative flow '",
+        cumulative_name,
+        "' does not match a declared transition_id: ",
+        transition_id,
+        call. = FALSE
+      )
+    }
+    logical_matches <- unique(matches[, c("transition_id", "from", "to"), drop = FALSE])
+    if (length(unique(logical_matches$transition_id)) != 1) {
+      stop(
+        "cumulative flow '",
+        cumulative_name,
+        "' is ambiguous for transition_id: ",
+        transition_id,
+        call. = FALSE
+      )
+    }
+
+    return(data.frame(
+      cumulative_name = cumulative_name,
+      transition_id = logical_matches$transition_id[1],
+      from = logical_matches$from[1],
+      to = logical_matches$to[1],
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  normalized_type <- if (!is.null(transition_type) && !is.na(transition_type) && transition_type != "") {
+    transition_type
+  } else if (is.na(to)) {
+    "outflow"
+  } else {
+    "internal"
+  }
+
   known_from <- unique(transition_rate_table$from)
   if (!from %in% known_from) {
     stop(
@@ -180,7 +298,44 @@ match_cumulative_flow_transition <- function(cumulative_name, from, to, transiti
     )
   }
 
-  known_to <- unique(transition_rate_table$to)
+  if (normalized_type == "outflow") {
+    matches <- transition_rate_table[
+      transition_rate_table$from == from &
+        is.na(transition_rate_table$to) &
+        startsWith(transition_rate_table$transition_id, "outflow:"),
+      c("transition_id", "from", "to"),
+      drop = FALSE
+    ]
+    if (nrow(matches) == 0) {
+      stop(
+        "cumulative flow '",
+        cumulative_name,
+        "' does not match a declared outflow from: ",
+        from,
+        call. = FALSE
+      )
+    }
+    logical_matches <- unique(matches)
+    if (length(unique(logical_matches$transition_id)) != 1) {
+      stop(
+        "cumulative flow '",
+        cumulative_name,
+        "' is ambiguous for outflow source: ",
+        from,
+        call. = FALSE
+      )
+    }
+
+    return(data.frame(
+      cumulative_name = cumulative_name,
+      transition_id = logical_matches$transition_id[1],
+      from = logical_matches$from[1],
+      to = logical_matches$to[1],
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  known_to <- unique(transition_rate_table$to[!is.na(transition_rate_table$to)])
   if (!to %in% known_to) {
     stop(
       "cumulative flow '",

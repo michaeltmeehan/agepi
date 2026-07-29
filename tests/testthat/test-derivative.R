@@ -132,6 +132,21 @@ test_that("rates_to_derivative handles zero rates", {
   expect_type(derivative$derivative, "double")
 })
 
+test_that("rates_to_derivative supports outflow transitions", {
+  rates <- data.frame(
+    from = c("I", "I"),
+    to = c(NA_character_, NA_character_),
+    age_group = c("0-4", "5-9"),
+    rate = c(3, 4),
+    transition_id = c("outflow:I", "outflow:I"),
+    stringsAsFactors = FALSE
+  )
+
+  derivative <- rates_to_derivative(rates, c("S", "I", "R"), derivative_test_ages())
+
+  expect_equal(derivative$derivative, c(0, 0, -3, -4, 0, 0))
+})
+
 test_that("rates_to_derivative rejects missing required columns", {
   rates <- derivative_test_rates()
   rates$to <- NULL

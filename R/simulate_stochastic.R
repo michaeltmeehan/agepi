@@ -230,6 +230,7 @@ stochastic_gillespie_fixed_population <- function(
       event_rows[[event_count]] <- data.frame(
         time = current_time,
         event = event$event,
+        transition_type = event$transition_type,
         transition_id = event$transition_id,
         age_group = event$age_group,
         from = event$from,
@@ -321,55 +322,53 @@ stochastic_event_table <- function(
   validate_stochastic_transition_rates(rates, model, age_structure)
 
   transition_order <- stochastic_transition_order(model)
-  rates$.transition_index <- match(
-    paste(rates$from, rates$to, sep = "->"),
-    paste(transition_order$from, transition_order$to, sep = "->")
-  )
+  rates$.transition_index <- match(rates$transition_id, transition_order$transition_id)
   rates$age_index <- match(rates$age_group, age_structure$age_groups)
+  rates$transition_type <- transition_type_from_ids(rates$transition_id)
   rates$event <- stochastic_event_labels(rates, model)
   rates <- rates[order(rates$.transition_index, rates$age_index), ]
   row.names(rates) <- NULL
 
-  rates[, c("event", "transition_id", "age_group", "age_index", "from", "to", "rate")]
+  rates[, c("event", "transition_type", "transition_id", "age_group", "age_index", "from", "to", "rate")]
 }
 
 stochastic_transition_order <- function(model) {
   if (identical(model$model_type, "CompartmentModel")) {
     transitions <- rbind(
-      model$infection_transitions[, c("from", "to"), drop = FALSE],
-      model$transitions[, c("from", "to"), drop = FALSE]
+      transition_order_from_infection_transitions(model$infection_transitions),
+      transition_order_from_compartment_transitions(model$transitions)
     )
     row.names(transitions) <- NULL
     return(transitions)
   }
 
-  model$transitions[, c("from", "to"), drop = FALSE]
+  transition_order_from_specialized_transitions(model$transitions)
 }
 
 stochastic_event_labels <- function(rates, model) {
-  labels <- paste(rates$from, rates$to, sep = "->")
+  labels <- transition_type_from_ids(rates$transition_id)
 
   if (identical(model$model_type, "SIR")) {
-    labels[labels == "S->I"] <- "infection"
-    labels[labels == "I->R"] <- "recovery"
+    labels[rates$transition_id == "infection:S->I"] <- "infection"
+    labels[rates$transition_id == "transition:I->R"] <- "recovery"
     return(labels)
   }
 
   if (identical(model$model_type, "SEIR")) {
-    labels[labels == "S->E"] <- "infection"
-    labels[labels == "E->I"] <- "progression"
-    labels[labels == "I->R"] <- "recovery"
+    labels[rates$transition_id == "infection:S->E"] <- "infection"
+    labels[rates$transition_id == "transition:E->I"] <- "progression"
+    labels[rates$transition_id == "transition:I->R"] <- "recovery"
     return(labels)
   }
 
-  infection_keys <- paste(
-    model$infection_transitions$from,
-    model$infection_transitions$to,
-    sep = "->"
-  )
-  labels[labels %in% infection_keys] <- "infection"
-  labels[labels == "E->I"] <- "progression"
-  labels[labels == "I->R"] <- "recovery"
+  if (identical(model$model_type, "CompartmentModel")) {
+    labels[rates$transition_type == "outflow"] <- "outflow"
+    labels[rates$transition_type == "infection"] <- "infection"
+    labels[rates$transition_type == "transition" & rates$from == "E" & rates$to == "I"] <- "progression"
+    labels[rates$transition_type == "transition" & rates$to == "R"] <- "recovery"
+    return(labels)
+  }
+
   labels
 }
 
@@ -381,8 +380,8 @@ validate_stochastic_transition_rates <- function(rates, model, age_structure) {
   )
 
   transition_order <- stochastic_transition_order(model)
-  expected_keys <- paste(transition_order$from, transition_order$to, sep = "->")
-  observed_keys <- paste(rates$from, rates$to, sep = "->")
+  expected_keys <- transition_order$transition_id
+  observed_keys <- rates$transition_id
   unknown_keys <- setdiff(unique(observed_keys), expected_keys)
   if (length(unknown_keys) > 0) {
     stop(
@@ -402,14 +401,16 @@ stochastic_sample_event <- function(rates, total_rate) {
 
 stochastic_apply_event <- function(state_vector, event, age_structure, compartments) {
   from_index <- stochastic_state_index(event$from, event$age_index, age_structure, compartments)
-  to_index <- stochastic_state_index(event$to, event$age_index, age_structure, compartments)
 
   if (state_vector[from_index] < 1) {
     stop("selected stochastic event would make the state negative.", call. = FALSE)
   }
 
   state_vector[from_index] <- state_vector[from_index] - 1
-  state_vector[to_index] <- state_vector[to_index] + 1
+  if (!identical(event$transition_type, "outflow")) {
+    to_index <- stochastic_state_index(event$to, event$age_index, age_structure, compartments)
+    state_vector[to_index] <- state_vector[to_index] + 1
+  }
   state_vector
 }
 
@@ -423,6 +424,7 @@ stochastic_event_log <- function(event_rows) {
     return(data.frame(
       time = numeric(),
       event = character(),
+      transition_type = character(),
       transition_id = character(),
       age_group = character(),
       from = character(),
@@ -435,6 +437,79 @@ stochastic_event_log <- function(event_rows) {
   events <- do.call(rbind, event_rows)
   row.names(events) <- NULL
   events
+}
+
+transition_order_from_infection_transitions <- function(infection_transitions) {
+  if (nrow(infection_transitions) == 0) {
+    return(data.frame(transition_id = character(), stringsAsFactors = FALSE))
+  }
+
+  data.frame(
+    transition_id = transition_identifiers(
+      from = infection_transitions$from,
+      to = infection_transitions$to,
+      transition_type = "infection"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+transition_order_from_compartment_transitions <- function(transitions) {
+  if (nrow(transitions) == 0) {
+    return(data.frame(transition_id = character(), stringsAsFactors = FALSE))
+  }
+
+  if (!"transition_id" %in% names(transitions)) {
+    transitions$transition_id <- transition_identifiers(
+      from = transitions$from,
+      to = transitions$to,
+      transition_type = ifelse(is.na(transitions$to), "outflow", "transition")
+    )
+  }
+
+  data.frame(
+    transition_id = transitions$transition_id,
+    stringsAsFactors = FALSE
+  )
+}
+
+transition_order_from_ordinary_transitions <- function(transitions) {
+  if (nrow(transitions) == 0) {
+    return(data.frame(transition_id = character(), stringsAsFactors = FALSE))
+  }
+
+  data.frame(
+    transition_id = transition_identifiers(
+      from = transitions$from,
+      to = transitions$to,
+      transition_type = ifelse(is.na(transitions$to), "outflow", "transition")
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+transition_order_from_specialized_transitions <- function(transitions) {
+  if (nrow(transitions) == 0) {
+    return(data.frame(transition_id = character(), stringsAsFactors = FALSE))
+  }
+
+  transition_types <- rep("transition", nrow(transitions))
+  if (nrow(transitions) > 0) {
+    transition_types[1] <- "infection"
+  }
+
+  data.frame(
+    transition_id = transition_identifiers(
+      from = transitions$from,
+      to = transitions$to,
+      transition_type = transition_types
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+transition_type_from_ids <- function(transition_ids) {
+  sub(":.*$", "", transition_ids)
 }
 
 prepare_stochastic_cumulative_flows <- function(

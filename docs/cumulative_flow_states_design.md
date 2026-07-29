@@ -193,6 +193,12 @@ uses them to augment the internal ODE state with auxiliary cumulative counters.
 They do not add counters to `model$compartments`, create stochastic
 propensities, or apply demographic processes to counters.
 
+Outflows are first-class selectors too: if a transition row has
+`transition_type = "outflow"` and `to = NA`, `validate_cumulative_flows()`
+accepts either an explicit `transition_id` such as `outflow:I` or an
+`from = "I", to = NA_character_` selector. The returned normalized table keeps
+the public `cumulative_name`, `transition_id`, `from`, and `to` shape.
+
 ## Recommended Design
 
 Cumulative flow states should be package-managed auxiliary states, not disease

@@ -643,6 +643,45 @@ test_that("cumulative-flow validation accepts named list specifications", {
   )
 })
 
+test_that("cumulative-flow validation accepts explicit outflow selectors", {
+  ages <- test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    outflows = data.frame(from = "I", rate = 0.1, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  rates <- transition_rates(
+    state = data.frame(
+      compartment = rep(c("S", "I", "R"), each = 2),
+      age_group = rep(ages$age_groups, times = 3),
+      value = c(0, 0, 10, 20, 0, 0),
+      stringsAsFactors = FALSE
+    ),
+    model = model,
+    age_structure = ages,
+    contact_matrix = test_contacts()
+  )
+
+  flows <- validate_cumulative_flows(
+    cumulative_flows = list(
+      removals = list(from = "I", to = NA_character_)
+    ),
+    transition_rate_table = rates
+  )
+
+  expect_equal(
+    flows,
+    data.frame(
+      cumulative_name = "removals",
+      transition_id = "outflow:I",
+      from = "I",
+      to = NA_character_,
+      stringsAsFactors = FALSE
+    )
+  )
+})
+
 test_that("cumulative-flow validation accepts multi-transition named list specifications", {
   rates <- data.frame(
     transition_id = c("infection:S->Lr", "transition:Lr->I", "transition:Ld->I", "transition:I->T"),

@@ -40,16 +40,18 @@ rates_to_derivative <- function(
       transition_rate_table$from[i],
       transition_rate_table$age_group[i]
     )
-    to_index <- match_derivative_cell(
-      derivative,
-      transition_rate_table$to[i],
-      transition_rate_table$age_group[i]
-    )
 
     derivative$derivative[from_index] <- derivative$derivative[from_index] -
       transition_rate_table$rate[i]
-    derivative$derivative[to_index] <- derivative$derivative[to_index] +
-      transition_rate_table$rate[i]
+    if (!is.na(transition_rate_table$to[i])) {
+      to_index <- match_derivative_cell(
+        derivative,
+        transition_rate_table$to[i],
+        transition_rate_table$age_group[i]
+      )
+      derivative$derivative[to_index] <- derivative$derivative[to_index] +
+        transition_rate_table$rate[i]
+    }
   }
 
   derivative[, c("compartment", "age_group", "derivative")]
@@ -75,9 +77,8 @@ validate_transition_rate_table <- function(
   }
 
   if (anyNA(transition_rate_table$from) ||
-      anyNA(transition_rate_table$to) ||
       anyNA(transition_rate_table$age_group)) {
-    stop("transition_rate_table from, to, and age_group cannot contain missing values.", call. = FALSE)
+    stop("transition_rate_table from and age_group cannot contain missing values.", call. = FALSE)
   }
 
   if (!is.numeric(transition_rate_table$rate)) {
@@ -96,6 +97,14 @@ validate_transition_rate_table <- function(
     stop("transition_rate_table rate cannot contain negative values.", call. = FALSE)
   }
 
+  if (!"transition_id" %in% names(transition_rate_table)) {
+    transition_rate_table$transition_id <- transition_identifiers(
+      from = transition_rate_table$from,
+      to = transition_rate_table$to,
+      transition_type = ifelse(is.na(transition_rate_table$to), "outflow", "transition")
+    )
+  }
+
   unknown_from <- setdiff(unique(transition_rate_table$from), compartments)
   if (length(unknown_from) > 0) {
     stop(
@@ -105,7 +114,19 @@ validate_transition_rate_table <- function(
     )
   }
 
-  unknown_to <- setdiff(unique(transition_rate_table$to), compartments)
+  if (anyNA(transition_rate_table$transition_id) || any(transition_rate_table$transition_id == "")) {
+    stop("transition_rate_table transition_id cannot contain missing or empty values.", call. = FALSE)
+  }
+
+  outflow_rows <- is.na(transition_rate_table$to)
+  if (any(outflow_rows)) {
+    outflow_ids <- transition_rate_table$transition_id[outflow_rows]
+    if (any(!startsWith(outflow_ids, "outflow:"))) {
+      stop("transition_rate_table rows with missing destinations must be outflows.", call. = FALSE)
+    }
+  }
+
+  unknown_to <- setdiff(unique(transition_rate_table$to[!is.na(transition_rate_table$to)]), compartments)
   if (length(unknown_to) > 0) {
     stop(
       "transition_rate_table contains unknown destination compartment value(s): ",
@@ -123,15 +144,13 @@ validate_transition_rate_table <- function(
     )
   }
 
-  transition_keys <- transition_rate_table[, c("from", "to", "age_group")]
+  transition_keys <- transition_rate_table[, c("transition_id", "age_group")]
   duplicate_rows <- duplicated(transition_keys)
   if (any(duplicate_rows)) {
     duplicated_key <- transition_keys[which(duplicate_rows)[1], , drop = FALSE]
     stop(
       "transition_rate_table contains duplicate transition row: ",
-      duplicated_key$from,
-      "->",
-      duplicated_key$to,
+      duplicated_key$transition_id,
       "/",
       duplicated_key$age_group,
       call. = FALSE

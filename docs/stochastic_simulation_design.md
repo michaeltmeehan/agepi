@@ -31,11 +31,12 @@ The implemented stochastic surface is deliberately narrow:
 - optional cumulative flow output derived from realised event logs.
 
 Each Gillespie propensity is built from `transition_rates()`. A transition-rate
-row with `transition_id`, `from`, `to`, `age_group`, and `rate` becomes one possible
-individual-level event in that age group. When the event fires, one individual
-is removed from `from` and added to `to`. This keeps event semantics aligned
-with deterministic derivatives from `rates_to_derivative()` while preserving
-integer counts.
+row with `transition_id`, `from`, `to`, `age_group`, and `rate` becomes one
+possible individual-level event in that age group. When the event fires, one
+individual is removed from `from` and added to `to`, except for explicit
+outflows whose `to` value is `NA` and which remove the individual without an
+internal destination. This keeps event semantics aligned with deterministic
+derivatives from `rates_to_derivative()` while preserving integer counts.
 
 The SIR event semantics are:
 
@@ -93,9 +94,9 @@ infectious compartments. Other declared `transitions` are interpreted as
 per-capita within-age transitions with scalar or named age-specific rates.
 Named age-specific rates are expanded by `transition_rates()`, so stochastic
 generic simulation inherits the same supported transition-rate structures as
-deterministic simulation. Generic stochastic support is therefore limited to
-fixed-population transitions that can be represented as one source compartment
-and one destination compartment in the same age group.
+deterministic simulation. Explicit outflows are also supported: the event log
+records them with `transition_type = "outflow"` and `to = NA`, while the
+state update removes one individual from the source compartment only.
 
 ## Cumulative flow output
 
@@ -106,11 +107,12 @@ extend the stochastic state vector, and does not add transition-rate rows or
 propensities.
 
 Requested flows are validated against `transition_rates()` metadata. During the
-simulation, realised events carry `time`, `event`, `transition_id`,
-`age_group`, `from`, `to`, and `rate`. The cumulative table then counts
-matching events by flow and age group at each requested output time, using the
-inclusive convention `event_time <= output_time`. Initial output times have
-zero cumulative counts unless an event is realised at that exact time.
+simulation, realised events carry `time`, `event`, `transition_type`,
+`transition_id`, `age_group`, `from`, `to`, and `rate`. The cumulative table
+then counts matching events by flow and age group at each requested output
+time, using the inclusive convention `event_time <= output_time`. Initial
+output times have zero cumulative counts unless an event is realised at that
+exact time.
 
 When cumulative flows are supplied, the return value contains the ordinary
 `trajectory` and a `cumulative` table with `time`, `cumulative_name`,

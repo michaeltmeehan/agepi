@@ -788,6 +788,40 @@ test_that("simulate_deterministic tracks basic cumulative infection flows", {
   }
 })
 
+test_that("simulate_deterministic supports outflow transitions", {
+  ages <- simulate_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "I"),
+    outflows = data.frame(from = "I", rate = 0.5, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "I"), each = 2),
+    age_group = rep(ages$age_groups, times = 2),
+    value = c(0, 0, 10, 20),
+    stringsAsFactors = FALSE
+  )
+
+  output <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 0.5, 1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0,
+    method = "euler",
+    cumulative_flows = list(removals = list(from = "I", to = NA_character_))
+  )
+
+  expect_equal(
+    output$cumulative$transition_id,
+    rep("outflow:I", length(output$cumulative$transition_id))
+  )
+  expect_true(all(output$cumulative$value >= 0))
+  totals <- aggregate(value ~ time, output$trajectory, sum)
+  expect_true(all(diff(totals$value) <= 0))
+})
+
 test_that("simulate_deterministic cumulative flows support generic clinical and subclinical transitions", {
   ages <- simulate_test_ages()
   transitions <- data.frame(

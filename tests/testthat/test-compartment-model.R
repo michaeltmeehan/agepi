@@ -133,6 +133,22 @@ test_that("CompartmentModel validates compartment names and transition definitio
   )
 })
 
+test_that("CompartmentModel supports explicit outflows", {
+  model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    outflows = data.frame(from = "I", rate = 0.05, stringsAsFactors = FALSE),
+    infectious_compartments = "I"
+  )
+
+  expect_identical(model$transitions$from, c("I", "I"))
+  expect_identical(model$transitions$to, c("R", NA_character_))
+  expect_identical(model$transitions$transition_type, c("internal", "outflow"))
+  expect_identical(model$transitions$transition_id, c("transition:I->R", "outflow:I"))
+  expect_silent(validate_disease_model(model))
+})
+
 test_that("generic SIR transition rates match SIRModel transition rates", {
   ages <- generic_test_ages()
   expected <- transition_rates(

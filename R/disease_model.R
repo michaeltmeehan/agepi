@@ -84,6 +84,7 @@ CompartmentModel <- function(
   compartments,
   infection_transitions = NULL,
   transitions = NULL,
+  outflows = NULL,
   infectious_compartments = NULL,
   infectiousness_weights = NULL,
   birth_compartment = NULL,
@@ -116,6 +117,19 @@ CompartmentModel <- function(
     compartments = compartments,
     name = "transitions",
     require_rate = TRUE
+  )
+
+  if (is.null(outflows)) {
+    outflows <- data.frame(
+      from = character(),
+      rate = numeric(),
+      stringsAsFactors = FALSE
+    )
+  }
+  outflows <- validate_generic_outflows(
+    outflows,
+    compartments = compartments,
+    name = "outflows"
   )
 
   if (is.null(infectious_compartments)) {
@@ -159,7 +173,7 @@ CompartmentModel <- function(
   model <- list(
     model_type = "CompartmentModel",
     compartments = compartments,
-    transitions = transitions,
+    transitions = combine_compartment_model_transitions(transitions, outflows),
     infection_transitions = infection_transitions,
     infectious_compartments = infectious_compartments,
     infectiousness_weights = infectiousness_weights,
@@ -261,11 +275,9 @@ validate_disease_model <- function(model) {
 
   if (model$model_type == "CompartmentModel") {
     validate_infection_transitions(model$infection_transitions, model$compartments)
-    validate_generic_transitions(
+    validate_compartment_model_transition_table(
       model$transitions,
-      compartments = model$compartments,
-      name = "transitions",
-      require_rate = TRUE
+      compartments = model$compartments
     )
     validate_generic_compartment_subset(
       model$infectious_compartments,
@@ -478,6 +490,198 @@ validate_generic_transitions <- function(transitions, compartments, name, requir
   }
 
   transitions[, required_columns, drop = FALSE]
+}
+
+validate_generic_outflows <- function(outflows, compartments, name) {
+  if (!is.data.frame(outflows)) {
+    stop(name, " must be a data frame.", call. = FALSE)
+  }
+
+  required_columns <- c("from", "rate")
+  missing_columns <- setdiff(required_columns, names(outflows))
+  if (length(missing_columns) > 0) {
+    stop(
+      name,
+      " is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(outflows$from) || any(outflows$from == "")) {
+    stop(name, " from cannot contain missing or empty values.", call. = FALSE)
+  }
+
+  unknown_from <- setdiff(unique(outflows$from), compartments)
+  if (length(unknown_from) > 0) {
+    stop(
+      name,
+      " contains unknown source compartment value(s): ",
+      paste(unknown_from, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if ("id" %in% names(outflows)) {
+    if (!is.character(outflows$id)) {
+      stop(name, " id must be a character vector.", call. = FALSE)
+    }
+    if (anyNA(outflows$id) || any(outflows$id == "")) {
+      stop(name, " id cannot contain missing or empty values.", call. = FALSE)
+    }
+    duplicated_ids <- unique(outflows$id[duplicated(outflows$id)])
+    if (length(duplicated_ids) > 0) {
+      stop(
+        name,
+        " id must be unique; duplicate outflow id(s): ",
+        paste(duplicated_ids, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  } else {
+    duplicated_sources <- unique(outflows$from[duplicated(outflows$from)])
+    if (length(duplicated_sources) > 0) {
+      stop(
+        name,
+        " contains multiple outflows from the same source without explicit id values: ",
+        paste(duplicated_sources, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+
+  validate_generic_rate_column(outflows$rate, paste0(name, " rate"))
+
+  outflows[, intersect(c("from", "rate", "id"), names(outflows)), drop = FALSE]
+}
+
+combine_compartment_model_transitions <- function(transitions, outflows) {
+  internal <- transitions
+  if (nrow(internal) > 0) {
+    internal$transition_type <- "internal"
+    internal$transition_id <- transition_identifiers(
+      from = internal$from,
+      to = internal$to,
+      transition_type = "transition"
+    )
+  } else {
+    internal$transition_type <- character()
+    internal$transition_id <- character()
+  }
+
+  external <- outflows
+  if (nrow(external) > 0) {
+    external$to <- NA_character_
+    external$transition_type <- "outflow"
+    external$transition_id <- transition_identifiers(
+      from = external$from,
+      to = external$to,
+      transition_type = "outflow",
+      id = if ("id" %in% names(external)) external$id else NULL
+    )
+    external$id <- NULL
+  } else {
+    external$to <- character()
+    external$transition_type <- character()
+    external$transition_id <- character()
+  }
+
+  combined <- rbind(
+    internal[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE],
+    external[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE]
+  )
+  row.names(combined) <- NULL
+  combined
+}
+
+validate_compartment_model_transition_table <- function(transitions, compartments) {
+  if (!is.data.frame(transitions)) {
+    stop("transitions must be a data frame.", call. = FALSE)
+  }
+
+  required_columns <- c("from", "to", "rate")
+  missing_columns <- setdiff(required_columns, names(transitions))
+  if (length(missing_columns) > 0) {
+    stop(
+      "transitions is missing required column(s): ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(transitions$from) || any(transitions$from == "")) {
+    stop("transitions from cannot contain missing or empty values.", call. = FALSE)
+  }
+
+  if (!"transition_type" %in% names(transitions)) {
+    transitions$transition_type <- ifelse(is.na(transitions$to), "outflow", "internal")
+  }
+
+  if (!"transition_id" %in% names(transitions)) {
+    transitions$transition_id <- transition_identifiers(
+      from = transitions$from,
+      to = transitions$to,
+      transition_type = ifelse(is.na(transitions$to), "outflow", "transition")
+    )
+  }
+
+  invalid_types <- setdiff(unique(transitions$transition_type), c("internal", "outflow"))
+  if (length(invalid_types) > 0) {
+    stop(
+      "transitions contains unsupported transition_type value(s): ",
+      paste(invalid_types, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  internal_rows <- transitions$transition_type == "internal"
+  outflow_rows <- transitions$transition_type == "outflow"
+
+  if (anyNA(transitions$to[internal_rows]) || any(transitions$to[internal_rows] == "")) {
+    stop("internal transitions to cannot contain missing or empty values.", call. = FALSE)
+  }
+  if (anyNA(transitions$to[outflow_rows])) {
+    transitions$to[outflow_rows] <- NA_character_
+  }
+  if (any(!outflow_rows & is.na(transitions$to))) {
+    stop("internal transitions cannot have missing destinations.", call. = FALSE)
+  }
+
+  unknown_from <- setdiff(unique(transitions$from), compartments)
+  if (length(unknown_from) > 0) {
+    stop(
+      "transitions contains unknown source compartment value(s): ",
+      paste(unknown_from, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  unknown_to <- setdiff(unique(transitions$to[!is.na(transitions$to)]), compartments)
+  if (length(unknown_to) > 0) {
+    stop(
+      "transitions contains unknown destination compartment value(s): ",
+      paste(unknown_to, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  same_compartment <- !is.na(transitions$to) & transitions$from == transitions$to
+  if (any(same_compartment)) {
+    stop("transitions cannot contain self-transitions.", call. = FALSE)
+  }
+
+  validate_generic_rate_column(transitions$rate, "transitions rate")
+
+  duplicated_ids <- unique(transitions$transition_id[duplicated(transitions$transition_id)])
+  if (length(duplicated_ids) > 0) {
+    stop(
+      "transitions contains duplicate transition_id value(s): ",
+      paste(duplicated_ids, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  transitions[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE]
 }
 
 validate_infection_transitions <- function(transitions, compartments) {

@@ -121,7 +121,6 @@ generic_transition_rates <- function(
   infectiousness
 ) {
   population <- transition_population_by_age(state_long, age_structure, model$compartments)
-  validate_positive_age_populations(population, age_structure)
 
   infection_rates <- generic_infection_rates(
     state_long = state_long,
@@ -177,15 +176,25 @@ generic_infection_rates <- function(
       )
   }
 
-  lambda <- force_of_infection(
-    infectious = infectious,
-    population = population,
-    contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
-    age_structure = age_structure
-  )
+  if (any(population == 0)) {
+    infectious_fraction <- ifelse(
+      population == 0,
+      0,
+      infectiousness * infectious / population
+    )
+    lambda <- as.numeric(beta * susceptibility * (contact_matrix %*% infectious_fraction))
+    names(lambda) <- age_structure$age_groups
+  } else {
+    lambda <- force_of_infection(
+      infectious = infectious,
+      population = population,
+      contact_matrix = contact_matrix,
+      beta = beta,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness,
+      age_structure = age_structure
+    )
+  }
 
   rows <- vector("list", nrow(model$infection_transitions))
   for (i in seq_len(nrow(model$infection_transitions))) {
@@ -346,18 +355,19 @@ generic_per_capita_transition_rates <- function(state_long, model, age_structure
     per_capita_rate <- validate_transition_rate_for_age(
       model$transitions$rate[[i]],
       age_structure,
-      paste0("transition rate for ", model$transitions$from[i], "->", model$transitions$to[i])
+      paste0("transition rate for ", transition_row_label(model$transitions, i))
     )
+    transition_id <- if ("transition_id" %in% names(model$transitions)) {
+      model$transitions$transition_id[i]
+    } else {
+      transition_row_identifier(model$transitions, i)
+    }
     rows[[i]] <- data.frame(
       from = model$transitions$from[i],
       to = model$transitions$to[i],
       age_group = age_structure$age_groups,
       rate = per_capita_rate * from_values,
-      transition_id = transition_identifiers(
-        from = model$transitions$from[i],
-        to = model$transitions$to[i],
-        transition_type = "transition"
-      ),
+      transition_id = transition_id,
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
@@ -378,8 +388,76 @@ generic_empty_rate_table <- function() {
   )
 }
 
-transition_identifiers <- function(from, to, transition_type) {
-  paste0(transition_type, ":", from, "->", to)
+transition_identifiers <- function(from, to, transition_type, id = NULL) {
+  transition_type <- as.character(transition_type)
+  from <- as.character(from)
+  if (!is.null(id) && !is.character(id)) {
+    id <- as.character(id)
+  }
+  out <- character(length(from))
+
+  outflow <- transition_type == "outflow"
+  if (any(outflow)) {
+    out[outflow] <- paste0(
+      "outflow:",
+      if (is.null(id)) from[outflow] else ifelse(is.na(id[outflow]), from[outflow], id[outflow])
+    )
+  }
+
+  if (any(!outflow)) {
+    out[!outflow] <- paste0(
+      transition_type[!outflow],
+      ":",
+      from[!outflow],
+      "->",
+      to[!outflow]
+    )
+  }
+
+  out
+}
+
+transition_row_label <- function(transitions, i) {
+  if (!"transition_type" %in% names(transitions)) {
+    if (is.na(transitions$to[i])) {
+      return(paste0(transitions$from[i], "->outside"))
+    }
+    return(paste0(transitions$from[i], "->", transitions$to[i]))
+  }
+
+  if (transitions$transition_type[i] == "outflow") {
+    return(paste0(transitions$from[i], "->outside"))
+  }
+
+  paste0(transitions$from[i], "->", transitions$to[i])
+}
+
+transition_row_identifier <- function(transitions, i) {
+  if ("transition_id" %in% names(transitions) && !is.na(transitions$transition_id[i])) {
+    return(transitions$transition_id[i])
+  }
+
+  if (!"transition_type" %in% names(transitions) && is.na(transitions$to[i])) {
+    return(transition_identifiers(
+      from = transitions$from[i],
+      to = transitions$to[i],
+      transition_type = "outflow"
+    ))
+  }
+
+  if ("transition_type" %in% names(transitions) && transitions$transition_type[i] == "outflow") {
+    return(transition_identifiers(
+      from = transitions$from[i],
+      to = transitions$to[i],
+      transition_type = "outflow"
+    ))
+  }
+
+  transition_identifiers(
+    from = transitions$from[i],
+    to = transitions$to[i],
+    transition_type = "transition"
+  )
 }
 
 validate_transition_rate_for_age <- function(rate, age_structure, name) {

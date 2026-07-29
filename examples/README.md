@@ -11,10 +11,12 @@ This folder is a grab bag of runnable scripts. The sections below group them by 
 ## Custom Compartment Models
 
 - [generic_msir.R](generic_msir.R) - a maternal-immunity SIR-style model built with `CompartmentModel()`; optional dependencies: none.
+- [generic_outflows.R](generic_outflows.R) - a generic compartment model with explicit external outflows and matching cumulative removals; optional dependencies: none.
 
 ## Cumulative Outputs
 
 - [deterministic_cumulative_flows.R](deterministic_cumulative_flows.R) - tracks deterministic cumulative infections and recoveries alongside the ordinary trajectory; optional dependencies: none.
+- [generic_outflows.R](generic_outflows.R) - demonstrates cumulative removals from an external sink declared with `outflows`; optional dependencies: none.
 
 ## Stochastic Simulation
 

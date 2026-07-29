@@ -111,6 +111,12 @@ because `CompartmentModel()` does not itself take an `AgeStructure()`.
 each logical transition. Age-specific rows for the same logical transition
 share the same ID, such as `infection:S->E` or `transition:E->IP`.
 
+External sinks are declared separately through `outflows = data.frame(from,
+rate[, id])`. Outflows remove people from the source compartment without
+adding them to another compartment. They are represented internally with
+`to = NA`, `transition_type = "outflow"`, and `transition_id` values such as
+`outflow:I` or an explicit user-supplied identifier.
+
 Multiple outgoing transitions from the same source compartment are supported
 when they have different destinations. For example, `E -> IP` and `E -> IS`
 can represent competing per-capita routes using age-specific rates. This is a
@@ -128,7 +134,8 @@ as fixed per-capita rates.
 
 For infection-only deterministic simulations, `simulate_deterministic()` can
 track selected transition flows as auxiliary cumulative states without adding
-them to `model$compartments`:
+them to `model$compartments`. The same cumulative selector machinery also
+matches explicit outflows by `transition_id` or by `from` with `to = NA`:
 
 ```r
 output <- simulate_deterministic(
@@ -140,7 +147,8 @@ output <- simulate_deterministic(
   cumulative_flows = list(
     exposures = list(from = "S", to = "E"),
     symptomatic = list(from = c("E", "IP"), to = c("IP", "IC")),
-    subclinical = list(from = "E", to = "IS")
+    subclinical = list(from = "E", to = "IS"),
+    removals = list(from = "I", to = NA_character_)
   )
 )
 
@@ -241,7 +249,8 @@ across all compartments by current age-specific shares instead of using
   as templates for custom structures.
 
 See `examples/generic_sir.R`, `examples/generic_seir.R`,
-`examples/generic_msir.R`, `examples/deterministic_cumulative_flows.R`, and
+`examples/generic_msir.R`, `examples/generic_outflows.R`,
+`examples/deterministic_cumulative_flows.R`, and
 `examples/stochastic_cumulative_flows.R` for complete runnable examples.
 `examples/tb_age_structured_demography.R` gives a toy TB-style chronic
 infection example using only the public API: `CompartmentModel()`, static

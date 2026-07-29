@@ -201,7 +201,7 @@ test_that("zero total event rate carries state forward to requested times", {
   expected_values <- rep(initial_state$value, times = 3)
   expect_equal(result$trajectory$value, expected_values)
   expect_equal(result$trajectory$time, rep(c(0, 0.5, 2), each = 6))
-  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_type", "transition_id", "age_group", "from", "to", "rate"))
   expect_equal(nrow(result$events), 0)
 })
 
@@ -215,7 +215,7 @@ test_that("event log records recovery-only semantics when beta is zero", {
     return_events = TRUE
   )
 
-  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_type", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(nrow(result$events) > 0)
   expect_true(all(result$events$event == "recovery"))
   expect_true(all(result$events$from == "I"))
@@ -336,8 +336,43 @@ test_that("SEIR event times are nondecreasing", {
 test_that("SEIR event log uses stable column order and event labels", {
   result <- stochastic_test_seir_run(times = c(0, 20), seed = 36, return_events = TRUE)
 
-  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_type", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(all(result$events$event %in% c("infection", "progression", "recovery")))
+})
+
+test_that("stochastic CompartmentModel supports outflow transitions", {
+  ages <- stochastic_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "I"),
+    outflows = data.frame(from = "I", rate = 5, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "I"), each = 2),
+    age_group = rep(ages$age_groups, times = 2),
+    value = c(0, 0, 10, 12),
+    stringsAsFactors = FALSE
+  )
+
+  result <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(0, 1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0,
+    seed = 11,
+    return_events = TRUE,
+    cumulative_flows = list(removals = list(from = "I", to = NA_character_))
+  )
+
+  expect_true(nrow(result$events) > 0)
+  expect_true(all(result$events$event == "outflow"))
+  expect_true(all(is.na(result$events$to)))
+  expect_equal(unique(result$cumulative$transition_id), "outflow:I")
+  expect_true(all(result$cumulative$value >= 0))
+  totals <- aggregate(value ~ time, result$trajectory, sum)
+  expect_true(all(diff(totals$value) <= 0))
 })
 
 test_that("generic CompartmentModel SIR path matches specialised SIR when seeded", {
@@ -450,7 +485,7 @@ test_that("generic event log keeps the stochastic event structure", {
     return_events = TRUE
   )
 
-  expect_identical(names(result$events), c("time", "event", "transition_id", "age_group", "from", "to", "rate"))
+  expect_identical(names(result$events), c("time", "event", "transition_type", "transition_id", "age_group", "from", "to", "rate"))
   expect_true(nrow(result$events) > 0)
   expect_true(all(result$events$transition_id %in% c("infection:S->I", "transition:I->R")))
   expect_true(all(result$events$from %in% c("S", "I")))
