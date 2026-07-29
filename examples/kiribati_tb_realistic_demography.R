@@ -181,7 +181,8 @@ self_recovery_rate = 0.4
 detection_rate = 1
 rel_detection_subclin = 0
 
-tx_rate = 2
+tx_period = 0.5 # 6 months
+tx_rate = 1 / tx_period
 tx_success_prop = 0.8
 tx_recovery_rate = tx_success_prop * tx_rate
 tx_failure_prop = 1 - tx_success_prop

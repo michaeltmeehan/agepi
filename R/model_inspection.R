@@ -121,13 +121,17 @@ inspect_compartment_flows <- function(model, compartment = NULL) {
   ]
   outflow_rows <- transitions[
     transitions$source == compartment &
-      (is.na(transitions$destination) | transitions$destination != compartment),
+    (is.na(transitions$destination) | transitions$destination != compartment),
     ,
     drop = FALSE
   ]
 
-  inflow_rows$direction <- "inflow"
-  outflow_rows$direction <- "outflow"
+  if (nrow(inflow_rows) > 0) {
+    inflow_rows$direction <- "inflow"
+  }
+  if (nrow(outflow_rows) > 0) {
+    outflow_rows$direction <- "outflow"
+  }
 
   selected <- rbind(inflow_rows, outflow_rows)
   if (nrow(selected) == 0) {

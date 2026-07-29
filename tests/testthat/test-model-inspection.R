@@ -92,6 +92,23 @@ test_that("inspect_compartment_flows summarizes compartment connectivity", {
   expect_equal(selected$transition_type, c("infection", "transition", "outflow"))
 })
 
+test_that("inspect_compartment_flows handles compartments with only inflows or only outflows", {
+  model <- CompartmentModel(
+    compartments = c("M.tb", "Incipient"),
+    infection_transitions = data.frame(from = "M.tb", to = "Incipient", stringsAsFactors = FALSE),
+    transitions = data.frame(from = character(), to = character(), rate = numeric(), stringsAsFactors = FALSE),
+    infectious_compartments = "Incipient"
+  )
+
+  selected <- inspect_compartment_flows(model, "M.tb")
+  expect_equal(selected$direction, "outflow")
+  expect_equal(selected$transition_id, "infection:M.tb->Incipient")
+
+  selected_in <- inspect_compartment_flows(model, "Incipient")
+  expect_equal(selected_in$direction, "inflow")
+  expect_equal(selected_in$transition_id, "infection:M.tb->Incipient")
+})
+
 test_that("diagnose_model_structure reports reachability and duplicate transition issues", {
   model <- CompartmentModel(
     compartments = c("S", "I", "R"),
