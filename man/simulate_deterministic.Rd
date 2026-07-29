@@ -45,11 +45,10 @@ group.}
 \item{infectiousness}{Optional non-negative numeric vector by source age
 group.}
 
-\item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for
-infection-only runs when available and \code{"euler"} otherwise; coupled
-demographic runs with \code{ageing_policy = "exponential"} preserve the existing
-Euler default. \code{"deSolve"} and \code{"ode"} request the optional \code{deSolve::ode()}
-backend. \code{"euler"} requests explicit Euler time steps.}
+\item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for infection-
+only runs and \code{"euler"} for coupled demographic runs with
+\code{ageing_policy = "exponential"}. \code{"deSolve"} and \code{"ode"} request the
+\code{deSolve::ode()} backend. \code{"euler"} requests explicit Euler time steps.}
 
 \item{demographic_process}{Optional \code{\link[=DemographicProcess]{DemographicProcess()}} object for
 first-pass deterministic SIR/SEIR/generic-demography coupling. Defaults to
@@ -98,14 +97,14 @@ compartment output and \code{cumulative} containing columns \code{time},
 \code{cumulative_name}, \code{transition_id}, \code{from}, \code{to}, \code{age_group}, and \code{value}.
 }
 \description{
-Runs a simple deterministic prototype simulation. For infection-only runs,
-deSolve is used by default when the suggested \code{deSolve} package is
-installed; otherwise the simulation falls back to explicit Euler time steps.
-Coupled demographic runs with the default derivative ageing policy keep the
-existing Euler default because exact schedule lookup is the default
-demographic policy. Annual-cohort operator splitting follows the ordinary
-method default unless \code{method} is set explicitly. Set \code{method = "deSolve"} or
-\code{method = "euler"} explicitly to choose a backend.
+Runs a simple deterministic prototype simulation. The package uses the
+\code{deSolve} backend for ODE integration, with explicit Euler still available as
+an alternative solver choice. Coupled demographic runs with the default
+derivative ageing policy keep the existing Euler default because exact
+schedule lookup is the default demographic policy. Annual-cohort operator
+splitting follows the ordinary method default unless \code{method} is set
+explicitly. Set \code{method = "deSolve"} or \code{method = "euler"} explicitly to
+choose a backend.
 }
 \details{
 The initial state may be supplied either as long-form state data or as a

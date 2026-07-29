@@ -8,6 +8,7 @@ CompartmentModel(
   compartments,
   infection_transitions = NULL,
   transitions = NULL,
+  outflows = NULL,
   infectious_compartments = NULL,
   infectiousness_weights = NULL,
   birth_compartment = NULL,
@@ -32,12 +33,13 @@ rates are evaluated against an \code{AgeStructure()}.}
 \item{infectious_compartments}{Character vector naming compartment(s) that
 contribute to infectious pressure. Defaults to \code{"I"} when present.}
 
-\item{infectiousness_weights}{Optional non-negative numeric vector or list of
-relative infectiousness weights for \code{infectious_compartments}. A numeric
-vector gives one scalar per infectious compartment. A list can give one scalar
-or one age-specific numeric vector per infectious compartment. Named lists are
-matched and reordered to \code{infectious_compartments}. Defaults to one for
-each infectious compartment.}
+\item{infectiousness_weights}{Optional non-negative numeric vector or list
+giving relative infectiousness for \code{infectious_compartments}. A numeric
+vector supplies one scalar per infectious compartment. A list can supply
+one scalar or one age-specific numeric vector per infectious compartment.
+When the list is named, names must match infectious compartments and are
+reordered to match \code{infectious_compartments}. Defaults to one for each
+infectious compartment.}
 
 \item{birth_compartment}{Optional compartment receiving demographic births.
 Defaults to \code{"S"} when present.}
@@ -51,11 +53,9 @@ A \code{DiseaseModel} list describing a generic compartment model.
 \description{
 Creates a simple generic disease-model object for deterministic
 age-structured compartmental models. Infection transitions use the existing
-\code{\link[=force_of_infection]{force_of_infection()}} convention, with
-transition-specific susceptibility multipliers. Other transitions are
-per-capita flows from \code{from} to \code{to}, with rates supplied either as
-finite non-negative scalars or as age-specific vectors when transition rates
-are evaluated.
+\code{\link[=force_of_infection]{force_of_infection()}} convention. Other transitions are per-capita flows
+from \code{from} to \code{to}, with rates supplied either as finite non-negative
+scalars or as age-specific vectors when transition rates are evaluated.
 }
 \details{
 \code{SIRModel()} and \code{SEIRModel()} remain supported convenience constructors for

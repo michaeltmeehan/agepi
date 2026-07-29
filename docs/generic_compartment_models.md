@@ -111,6 +111,25 @@ because `CompartmentModel()` does not itself take an `AgeStructure()`.
 each logical transition. Age-specific rows for the same logical transition
 share the same ID, such as `infection:S->E` or `transition:E->IP`.
 
+## Model Inspection
+
+The package also includes lightweight inspection helpers for checking the
+structure of a model before or after simulation:
+
+```r
+inspect_transitions(model)
+inspect_compartment_flows(model)
+inspect_compartment_flows(model, compartment = "I")
+diagnose_model_structure(model, initial_state)
+inspect_transition_rates(state, model, ages, contact_matrix, beta = 0.1)
+check_population_balance(state, model, ages, contact_matrix, beta = 0.1)
+```
+
+Use these when you want to confirm the logical transition table, see which
+compartments are source-only or sink-only, check reachability from an initial
+state, or verify that evaluated transition rates still balance at the whole
+population level.
+
 External sinks are declared separately through `outflows = data.frame(from,
 rate[, id])`. Outflows remove people from the source compartment without
 adding them to another compartment. They are represented internally with

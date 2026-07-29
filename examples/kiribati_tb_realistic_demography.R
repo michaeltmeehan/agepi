@@ -159,7 +159,7 @@ rel_sus_contained = 0.2 # Needs to be fitted
 rel_sus_cleared = 1 # Needs to be fitted
 rel_sus_recovered = rel_sus_cleared
 
-rel_infectiousness_sublin = 0.5
+rel_infectiousness_subclin = 0.5
 rel_infectiousness_lowinf = 0.4
 
 
@@ -168,7 +168,7 @@ clearance_rate = 0.02 # Needs to be fitted
 breakdown_rate = 0.1 # Needs to be fitted
 
 prop_infectious = 0.5
-progression_rate = 0.1 # Needs to be fitted
+progression_rate = c("0-4"=2.4, "5-14"=2., "15-64"=0.1, ">65"=2.4)
 
 clinical_progression_rate = 1 # Needs to be fitted
 clinical_regression_rate = 1 # Needs to be fitted
@@ -193,43 +193,64 @@ tx_relapse_prop = tx_failure_prop * pct_neg_tx_relapse
 tx_relapse_rate = tx_relapse_prop * tx_rate
 
 tb_model <- CompartmentModel(
-  compartments = c("S", "Lr", "Ld", "I", "T", "R"),
-  infection_transitions = data.frame(
-    from = "S",
-    to = "Lr",
-    susceptibility = 1,
-    stringsAsFactors = FALSE
-  ),
-  transitions = data.frame(
-    from = c("Lr", "Ld", "I", "T", "T"),
-    to = c("I", "I", "T", "R", "Lr"),
-    rate = I(list(
-      progression_rate,
-      breakdown_rate,
-      detection_rate,
-      tx_recovery_rate,
-      tx_relapse_rate
+  compartments = c("M.tb", "Incipient", "Contained", "Cleared", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Treatment", "Recovered"),
+  infection_transitions = data.frame(from = c("M.tb", "Contained", "Cleared", "Recovered"),
+                                     to = c("Incipient", "Incipient", "Incipient", "Incipient"),
+                                     susceptibility = I(list(
+                                       c(rep(rel_sus_children,2), rep(1,2)),
+                                       rel_sus_contained,
+                                       rel_sus_cleared,
+                                       rel_sus_recovered
+                                     ))
+                                     ),
+  infectious_compartments = c("Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf"),
+  infectiousness_weights = I(list( 
+    c(rep(0,2), rep(rel_infectiousness_subclin * rel_infectiousness_lowinf,2)), 
+    c(rep(0,2), rep(rel_infectiousness_subclin)), 
+    c(rep(0,2), rep(rel_infectiousness_lowinf,2)),
+    c(rep(0,2), rep(1,2))
     )),
-    stringsAsFactors = FALSE
+  transitions = data.frame(name = c("containment", "clearance", "breakdown", "progression.lowinf", "progression.inf", "clin.progression.lowinf", "clin.progression.inf", "clin.regression.lowinf", "clin.regression.inf", "infectious.gain.sub", "infectious.gain.clin", "infectiousness.loss.sub", "infectiousness.loss.clin", "self.recovery.lowinf", "self.recovery.inf", "detection.sub.lowinf", "detection.sub.inf", "detection.clin.lowinf", "detection.clin.inf", "tx.recovery", "relapse"),
+                           from = c("Incipient", "Contained", "Contained", "Incipient", "Incipient", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Sub.clin.lowinf", "Clin.lowinf", "Sub.clin.inf", "Clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Treatment", "Treatment"),
+                           to = c("Contained", "Cleared", "Incipient", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Sub.clin.inf", "Clin.inf", "Sub.clin.lowinf", "Clin.lowinf", "Recovered", "Recovered", "Treatment", "Treatment", "Treatment", "Treatment", "Recovered", "Sub.clin.lowinf"),
+                           rate = I(list(
+                             containment_rate,
+                             clearance_rate,
+                             breakdown_rate,
+                             (1 - prop_infectious) * progression_rate,
+                             prop_infectious * progression_rate,
+                             clinical_progression_rate,
+                             clinical_progression_rate,
+                             clinical_regression_rate,
+                             clinical_regression_rate,
+                             infectiousness_gain_rate,
+                             infectiousness_gain_rate,
+                             infectiousness_loss_rate,
+                             infectiousness_loss_rate,
+                             self_recovery_rate,
+                             self_recovery_rate,
+                             rel_detection_subclin * detection_rate,
+                             rel_detection_subclin * detection_rate,
+                             detection_rate,
+                             detection_rate,
+                             tx_rate,
+                             tx_relapse_rate
+                           ))
   ),
-  infectious_compartments = "I",
-  infectiousness_weights = 1,
-  outflows = data.frame(
-    from = character(),
-    rate = numeric(),
-    stringsAsFactors = FALSE
-  ),
-  birth_compartment = "S",
-  migration_compartment = "S"
+  outflows = data.frame(from = c("Clin.lowinf", "Clin.inf"),
+                        rate = c(0.025, 0.4), 
+                        stringsAsFactors = FALSE),
+  birth_compartment = c("M.tb"),
+  migration_compartment = c("M.tb")
 )
 
 
 tb_cumulative_flow_specs <- list(
-  infections = list(from = "S", to = "Lr"),
-  progression_to_active_tb = list(from = c("Lr", "Ld"), to = c("I", "I")),
-  treatment_initiation = list(from = "I", to = "T"),
-  treatment_completion = list(from = "T", to = "R"),
-  relapse_recurrent_tb = list(from = "T", to = "Lr")
+  infections = list(from = "M.tb", to = "Incipient"),
+  progression_to_active_tb = list(from = c("Incipient", "Incipient"), to = c("Sub.clin.lowinf", "Sub.clin.inf")),
+  treatment_initiation = list(from = c("Clin.lowinf", "Clin.inf", to = c("Treatment", "Treatment"))),
+  treatment_completion = list(from = "Treatment", to = "Recovered"),
+  relapse_tb = list(from = "Treatment", to = "Sub.clin.lowinf")
 )
 
 # Initial Conditions ----------------------------------------------------------
