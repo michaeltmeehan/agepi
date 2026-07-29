@@ -518,6 +518,66 @@ test_that("stochastic simulation preserves legacy infection-transition semantics
   expect_equal(without_susceptibility, explicit_one)
 })
 
+test_that("stochastic simulation treats scalar and list infectiousness weights equivalently", {
+  ages <- stochastic_test_ages()
+  state <- stochastic_test_state()
+  scalar_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = 0.5
+  )
+  list_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(0.5)
+  )
+  expanded_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(c("0-4" = 0.5, "5-9" = 0.5))
+  )
+
+  scalar_output <- simulate_stochastic(
+    initial_state = state,
+    times = c(0, 5),
+    model = scalar_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.03,
+    seed = 61,
+    return_events = TRUE
+  )
+  list_output <- simulate_stochastic(
+    initial_state = state,
+    times = c(0, 5),
+    model = list_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.03,
+    seed = 61,
+    return_events = TRUE
+  )
+  expanded_output <- simulate_stochastic(
+    initial_state = state,
+    times = c(0, 5),
+    model = expanded_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.03,
+    seed = 61,
+    return_events = TRUE
+  )
+
+  expect_equal(list_output, scalar_output)
+  expect_equal(expanded_output, scalar_output)
+})
+
 test_that("stochastic simulation never generates infections from zero-susceptibility compartments", {
   result <- simulate_stochastic(
     initial_state = stochastic_vaccine_state(S = 30, V = 30, I = 10),

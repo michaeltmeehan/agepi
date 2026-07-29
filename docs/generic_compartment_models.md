@@ -183,18 +183,36 @@ infectious_compartments = "I"
 ```
 
 If the compartment vector contains `I`, it is used by default. Models with
-other infectious states can name those states explicitly. When there is more
-than one infectious compartment, named `infectiousness_weights` gives fixed
-relative infectiousness weights for combining them before the force of
-infection is calculated:
+other infectious states can name those states explicitly. `infectiousness_weights`
+can be either:
+
+- a numeric vector with one scalar per infectious compartment, preserving the
+  legacy age-invariant behaviour; or
+- a list with one entry per infectious compartment, where each entry is either
+  a scalar or a named/un-named age-specific numeric vector.
+
+Named lists are the safest form because they are matched and reordered to
+`infectious_compartments`. Age-specific vectors are matched to
+`age_structure$age_groups` when transition rates are evaluated.
+
+For example, one compartment can use a scalar and another can use age-specific
+weights:
 
 ```r
 infectious_compartments = c("IP", "IC", "IS")
-infectiousness_weights = c(IP = 1, IC = 1, IS = 0.5)
+infectiousness_weights = list(
+  IP = c("0-4" = 0.2, "5-9" = 0.2, "10-14" = 0.2),
+  IC = c("0-4" = 1, "5-9" = 1, "10-14" = 1),
+  IS = 0.5
+)
 ```
 
-These compartment weights are separate from the age-specific `infectiousness`
-argument passed to `transition_rates()` or `simulate_deterministic()`.
+The compartment-level infectiousness weights are separate from the
+age-specific `infectiousness` argument passed to `transition_rates()` or
+`simulate_deterministic()`. Compartment weights modify the contribution of
+infectious source compartments and ages to infection pressure; the
+age-specific `infectiousness` argument scales the source-age infectious
+fraction directly inside `force_of_infection()`.
 
 ## Contact Matrix Convention
 
@@ -250,6 +268,7 @@ across all compartments by current age-specific shares instead of using
 
 See `examples/generic_sir.R`, `examples/generic_seir.R`,
 `examples/generic_msir.R`, `examples/generic_outflows.R`,
+`examples/generic_age_specific_infectiousness.R`,
 `examples/deterministic_cumulative_flows.R`, and
 `examples/stochastic_cumulative_flows.R` for complete runnable examples.
 `examples/tb_age_structured_demography.R` gives a toy TB-style chronic

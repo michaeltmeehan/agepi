@@ -59,9 +59,13 @@ SIRModel <- function(gamma) {
 #'   rates are evaluated against an `AgeStructure()`.
 #' @param infectious_compartments Character vector naming compartment(s) that
 #'   contribute to infectious pressure. Defaults to `"I"` when present.
-#' @param infectiousness_weights Optional named non-negative numeric weights for
-#'   `infectious_compartments`. Names must match infectious compartments.
-#'   Defaults to one for each infectious compartment.
+#' @param infectiousness_weights Optional non-negative numeric vector or list
+#'   giving relative infectiousness for `infectious_compartments`. A numeric
+#'   vector supplies one scalar per infectious compartment. A list can supply
+#'   one scalar or one age-specific numeric vector per infectious compartment.
+#'   When the list is named, names must match infectious compartments and are
+#'   reordered to match `infectious_compartments`. Defaults to one for each
+#'   infectious compartment.
 #' @param birth_compartment Optional compartment receiving demographic births.
 #'   Defaults to `"S"` when present.
 #' @param migration_compartment Optional compartment receiving net migration
@@ -917,64 +921,123 @@ validate_generic_infectiousness_weights <- function(
   if (is.null(weights)) {
     weights <- rep(1, length(infectious_compartments))
     names(weights) <- infectious_compartments
+    return(weights)
   }
 
-  if (!is.numeric(weights) || is.matrix(weights) || is.data.frame(weights) ||
-      length(weights) != length(infectious_compartments) ||
-      anyNA(weights) || any(!is.finite(weights))) {
+  if (is.numeric(weights) && !is.matrix(weights) && !is.data.frame(weights)) {
+    if (length(weights) != length(infectious_compartments) ||
+        anyNA(weights) || any(!is.finite(weights))) {
+      stop(
+        "infectiousness_weights must be a finite numeric vector with one value per infectious_compartment.",
+        call. = FALSE
+      )
+    }
+
+    if (any(weights < 0)) {
+      stop("infectiousness_weights cannot contain negative values.", call. = FALSE)
+    }
+
+    if (!is.null(names(weights))) {
+      validate_generic_top_level_weight_names(
+        names(weights),
+        infectious_compartments,
+        "infectiousness_weights"
+      )
+      weights <- weights[infectious_compartments]
+    }
+
+    weights <- as.numeric(weights)
+    names(weights) <- infectious_compartments
+    return(weights)
+  }
+
+  if (!is.list(weights) || is.data.frame(weights)) {
     stop(
-      "infectiousness_weights must be a finite numeric vector with one value per infectious_compartment.",
+      "infectiousness_weights must be a finite numeric vector or list.",
       call. = FALSE
     )
   }
 
-  if (length(weights) > 0) {
-    if (is.null(names(weights)) || anyNA(names(weights)) || any(names(weights) == "")) {
-      stop("infectiousness_weights must be named by infectious compartment.", call. = FALSE)
-    }
-
-    duplicated_names <- unique(names(weights)[duplicated(names(weights))])
-    if (length(duplicated_names) > 0) {
-      stop(
-        "infectiousness_weights names must be unique; duplicate compartment(s): ",
-        paste(duplicated_names, collapse = ", "),
-        call. = FALSE
-      )
-    }
-
-    unknown_names <- setdiff(names(weights), infectious_compartments)
-    if (length(unknown_names) > 0) {
-      stop(
-        "infectiousness_weights contains unknown infectious compartment value(s): ",
-        paste(unknown_names, collapse = ", "),
-        call. = FALSE
-      )
-    }
-
-    missing_names <- setdiff(infectious_compartments, names(weights))
-    if (length(missing_names) > 0) {
-      stop(
-        "infectiousness_weights is missing infectious compartment value(s): ",
-        paste(missing_names, collapse = ", "),
-        call. = FALSE
-      )
-    }
-  }
-
-  if (any(weights < 0)) {
-    stop("infectiousness_weights cannot contain negative values.", call. = FALSE)
-  }
-
-  if (require_positive && !any(weights > 0)) {
+  if (length(weights) != length(infectious_compartments)) {
     stop(
-      "infectiousness_weights must contain at least one positive value when infection_transitions are supplied.",
+      "infectiousness_weights list length must match the number of infectious_compartments: ",
+      length(infectious_compartments),
+      ".",
       call. = FALSE
     )
   }
 
-  weights <- as.numeric(weights[infectious_compartments])
+  weights_names <- names(weights)
+  if (!is.null(weights_names)) {
+    validate_generic_top_level_weight_names(
+      weights_names,
+      infectious_compartments,
+      "infectiousness_weights"
+    )
+    weights <- weights[infectious_compartments]
+  }
+
+  for (i in seq_along(weights)) {
+    weights[[i]] <- validate_generic_infectiousness_weight_value(
+      weights[[i]],
+      infectious_compartments[i]
+    )
+  }
+
   names(weights) <- infectious_compartments
   weights
+}
+
+validate_generic_top_level_weight_names <- function(weight_names, infectious_compartments, name) {
+  if (anyNA(weight_names) || any(weight_names == "")) {
+    stop(name, " names must be non-empty.", call. = FALSE)
+  }
+
+  duplicated_names <- unique(weight_names[duplicated(weight_names)])
+  if (length(duplicated_names) > 0) {
+    stop(
+      name,
+      " names must be unique; duplicate compartment(s): ",
+      paste(duplicated_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  unknown_names <- setdiff(weight_names, infectious_compartments)
+  if (length(unknown_names) > 0) {
+    stop(
+      name,
+      " contains unknown infectious compartment value(s): ",
+      paste(unknown_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  missing_names <- setdiff(infectious_compartments, weight_names)
+  if (length(missing_names) > 0) {
+    stop(
+      name,
+      " is missing infectious compartment value(s): ",
+      paste(missing_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+}
+
+validate_generic_infectiousness_weight_value <- function(weight, name) {
+  if (is.data.frame(weight) || is.matrix(weight) || is.list(weight)) {
+    stop(name, " must be numeric.", call. = FALSE)
+  }
+
+  if (!is.numeric(weight) || length(weight) == 0 || anyNA(weight) || any(!is.finite(weight))) {
+    stop(name, " must be finite numeric value(s).", call. = FALSE)
+  }
+
+  if (any(weight < 0)) {
+    stop(name, " cannot contain negative values.", call. = FALSE)
+  }
+
+  weight
 }
 
 validate_optional_generic_compartment <- function(x, compartments, name) {

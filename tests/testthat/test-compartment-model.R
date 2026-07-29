@@ -314,6 +314,73 @@ test_that("generic clinical/subclinical fixture is expressible with age-specific
   )
 })
 
+test_that("generic model accepts positional, named, and list-based infectiousness weights", {
+  ages <- generic_test_ages()
+  base_state <- data.frame(
+    compartment = rep(c("S", "A", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 3),
+    value = c(90, 180, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  positional_model <- CompartmentModel(
+    compartments = c("S", "A", "R"),
+    infection_transitions = data.frame(from = "S", to = "A", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "A", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "A",
+    infectiousness_weights = 0.5
+  )
+  list_model <- CompartmentModel(
+    compartments = c("S", "A", "R"),
+    infection_transitions = data.frame(from = "S", to = "A", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "A", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "A",
+    infectiousness_weights = list(0.5)
+  )
+  named_list_model <- CompartmentModel(
+    compartments = c("S", "A", "R"),
+    infection_transitions = data.frame(from = "S", to = "A", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "A", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "A",
+    infectiousness_weights = list("A" = 0.5)
+  )
+
+  expect_equal(
+    transition_rates(base_state, positional_model, ages, generic_test_contacts())$rate,
+    transition_rates(base_state, list_model, ages, generic_test_contacts())$rate
+  )
+  expect_equal(
+    transition_rates(base_state, positional_model, ages, generic_test_contacts())$rate,
+    transition_rates(base_state, named_list_model, ages, generic_test_contacts())$rate
+  )
+})
+
+test_that("generic model accepts age-specific infectiousness weights by compartment and age", {
+  ages <- generic_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "A", "R"),
+    infection_transitions = data.frame(from = "S", to = "A", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "A", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "A",
+    infectiousness_weights = list(c("0-4" = 0, "5-9" = 1))
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "A", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 3),
+    value = c(90, 180, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = generic_test_contacts()
+  )
+
+  expect_equal(rates$rate, c(9, 0, 72, 0))
+})
+
 test_that("generic age-specific transition-rate vectors are validated at expansion time", {
   ages <- generic_test_ages()
   make_model <- function(rate) {
@@ -439,16 +506,37 @@ test_that("generic model rejects malformed infectiousness weights", {
       compartments = c("S", "IP", "IC"),
       infection_transitions = data.frame(from = "S", to = "IP"),
       infectious_compartments = c("IP", "IC"),
-      infectiousness_weights = c(1, 0.5)
+      infectiousness_weights = list(IP = 1, c(0.5))
     ),
-    "must be named"
+    "names must be non-empty"
   )
   expect_error(
     CompartmentModel(
       compartments = c("S", "IP", "IC"),
       infection_transitions = data.frame(from = "S", to = "IP"),
       infectious_compartments = c("IP", "IC"),
-      infectiousness_weights = c(IP = 1, IS = 0.5)
+      infectiousness_weights = list(
+        IP = 1,
+        IP = 0.5
+      )
+    ),
+    "duplicate compartment"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = list(1, 0.5, 0.25)
+    ),
+    "list length must match"
+  )
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "IP", "IC"),
+      infection_transitions = data.frame(from = "S", to = "IP"),
+      infectious_compartments = c("IP", "IC"),
+      infectiousness_weights = list(IP = 1, IS = 0.5)
     ),
     "unknown infectious compartment"
   )
@@ -470,14 +558,13 @@ test_that("generic model rejects malformed infectiousness weights", {
     ),
     "finite numeric vector"
   )
-  expect_error(
+  expect_silent(
     CompartmentModel(
       compartments = c("S", "IP", "IC"),
       infection_transitions = data.frame(from = "S", to = "IP"),
       infectious_compartments = c("IP", "IC"),
       infectiousness_weights = c(IP = 0, IC = 0)
-    ),
-    "at least one positive"
+    )
   )
 })
 

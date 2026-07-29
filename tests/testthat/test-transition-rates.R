@@ -238,6 +238,234 @@ test_that("infectiousness modifies infection pressure from source age groups", {
   expect_equal(rates$rate, c(40.5, 2, 144, 4))
 })
 
+test_that("scalar infectiousness weights match scalar list weights and explicit age replication", {
+  ages <- test_ages()
+  state <- test_state()
+  scalar_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = 0.5
+  )
+  list_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(0.5)
+  )
+  expanded_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(c("0-4" = 0.5, "5-9" = 0.5))
+  )
+
+  scalar_rates <- transition_rates(state, scalar_model, ages, diag(2))
+  list_rates <- transition_rates(state, list_model, ages, diag(2))
+  expanded_rates <- transition_rates(state, expanded_model, ages, diag(2))
+
+  expect_equal(list_rates, scalar_rates)
+  expect_equal(expanded_rates, scalar_rates)
+})
+
+test_that("named infectiousness weights are reordered by infectious compartment and age group", {
+  ages <- test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "IP", "IC", "R"),
+    infection_transitions = data.frame(from = "S", to = "IP", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = c("IP", "IC"),
+      to = c("IC", "R"),
+      rate = c(0, 0),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("IP", "IC"),
+    infectiousness_weights = list(
+      IC = c("5-9" = 0.5, "0-4" = 0.25),
+      IP = c("5-9" = 1, "0-4" = 2)
+    )
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "IP", "IC", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 4),
+    value = c(90, 180, 10, 20, 30, 40, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  expect_identical(names(model$infectiousness_weights), c("IP", "IC"))
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = diag(2)
+  )
+
+  effective_infectious <- c(
+    "0-4" = 2 * 10 + 0.25 * 30,
+    "5-9" = 1 * 20 + 0.5 * 40
+  )
+  population <- c("0-4" = 90 + 10 + 30, "5-9" = 180 + 20 + 40)
+  expected_infection <- c(
+    90 * effective_infectious["0-4"] / population["0-4"],
+    180 * effective_infectious["5-9"] / population["5-9"]
+  )
+
+  expect_equal(rates$rate[rates$from == "S"], as.numeric(expected_infection))
+})
+
+test_that("named infectiousness weights are reordered across infectious compartments and age groups", {
+  ages <- AgeStructure(
+    age_groups = c("child", "adult"),
+    lower_bounds = c(0, 18),
+    upper_bounds = c(17, 99)
+  )
+
+  # Both the infectious-compartment order and the age-group order are
+  # intentionally scrambled here to exercise simultaneous reordering.
+  model <- CompartmentModel(
+    compartments = c("S", "E", "I1", "I2"),
+    infection_transitions = data.frame(from = "S", to = "E", stringsAsFactors = FALSE),
+    transitions = data.frame(
+      from = character(),
+      to = character(),
+      rate = numeric(),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("I1", "I2"),
+    infectiousness_weights = list(
+      I2 = c(adult = 1.0, child = 0.5),
+      I1 = c(adult = 0.4, child = 0.2)
+    )
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "E", "I1", "I2"), each = 2),
+    age_group = rep(ages$age_groups, times = 4),
+    value = c(140, 160, 0, 0, 10, 20, 30, 40),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = diag(2)
+  )
+
+  expected_effective_infectious <- c(child = 17, adult = 48)
+  expected_rates <- c(
+    child = 140 * expected_effective_infectious["child"] / 180,
+    adult = 160 * expected_effective_infectious["adult"] / 220
+  )
+
+  expect_identical(names(model$infectiousness_weights), c("I1", "I2"))
+  expect_equal(rates$rate[rates$from == "S"], as.numeric(expected_rates))
+})
+
+test_that("zero infectiousness removes transmission and weights above one scale rates", {
+  ages <- test_ages()
+  state <- test_state()
+  zero_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = 0
+  )
+  scaled_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = 2.5
+  )
+
+  zero_rates <- transition_rates(state, zero_model, ages, diag(2))
+  scaled_rates <- transition_rates(state, scaled_model, ages, diag(2))
+
+  expect_equal(zero_rates$rate[zero_rates$from == "S"], c(0, 0))
+  expect_equal(scaled_rates$rate[scaled_rates$from == "S"], c(22.5, 45))
+})
+
+test_that("age-specific susceptibility and infectiousness combine in the infection-flow formula", {
+  ages <- test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "V", "IP", "IC", "R"),
+    infection_transitions = data.frame(
+      from = c("S", "V"),
+      to = c("IP", "IP"),
+      susceptibility = I(list(
+        c("0-4" = 0.5, "5-9" = 2),
+        c("0-4" = 1, "5-9" = 0.25)
+      )),
+      stringsAsFactors = FALSE
+    ),
+    transitions = data.frame(
+      from = c("IP", "IC"),
+      to = c("R", "R"),
+      rate = c(0, 0),
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = c("IP", "IC"),
+    infectiousness_weights = list(
+      c("0-4" = 2, "5-9" = 1),
+      c("0-4" = 0.25, "5-9" = 0.5)
+    )
+  )
+  state <- data.frame(
+    compartment = rep(c("S", "V", "IP", "IC", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 5),
+    value = c(50, 100, 40, 80, 10, 20, 30, 40, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = matrix(1, nrow = 2, ncol = 2)
+  )
+
+  effective_infectious <- c(
+    "0-4" = 2 * 10 + 0.25 * 30,
+    "5-9" = 1 * 20 + 0.5 * 40
+  )
+  population <- c("0-4" = 50 + 40 + 10 + 30, "5-9" = 100 + 80 + 20 + 40)
+  lambda <- sum(effective_infectious / population)
+  expected <- c(
+    50 * 0.5 * lambda,
+    40 * 1 * lambda,
+    100 * 2 * lambda,
+    80 * 0.25 * lambda
+  )
+
+  expect_equal(rates$rate[rates$from %in% c("S", "V")], as.numeric(expected))
+})
+
+test_that("duplicate age-group names in infectiousness weights are rejected at expansion time", {
+  ages <- test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(c("0-4" = 0.2, "0-4" = 0.4))
+  )
+
+  expect_error(
+    transition_rates(
+      state = test_state(),
+      model = model,
+      age_structure = ages,
+      contact_matrix = test_contacts()
+    ),
+    "duplicate age group"
+  )
+})
+
 test_that("legacy infection transitions default susceptibility to one", {
   model_without_susceptibility <- CompartmentModel(
     compartments = c("S", "V", "I", "E", "R"),

@@ -272,6 +272,63 @@ test_that("simulate_deterministic supports generic age-specific downstream trans
   expect_equal(aggregate(value ~ age_group, final_rows, sum)$value, c(110, 220))
 })
 
+test_that("deterministic simulation treats scalar and list infectiousness weights equivalently", {
+  ages <- simulate_test_ages()
+  state <- simulate_test_state()
+  scalar_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = 0.5
+  )
+  list_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(0.5)
+  )
+  expanded_model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I",
+    infectiousness_weights = list(c("0-4" = 0.5, "5-9" = 0.5))
+  )
+
+  scalar_output <- simulate_deterministic(
+    initial_state = state,
+    times = c(0, 0.1),
+    model = scalar_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.1,
+    method = "euler"
+  )
+  list_output <- simulate_deterministic(
+    initial_state = state,
+    times = c(0, 0.1),
+    model = list_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.1,
+    method = "euler"
+  )
+  expanded_output <- simulate_deterministic(
+    initial_state = state,
+    times = c(0, 0.1),
+    model = expanded_model,
+    age_structure = ages,
+    contact_matrix = diag(2),
+    beta = 0.1,
+    method = "euler"
+  )
+
+  expect_equal(list_output, scalar_output)
+  expect_equal(expanded_output, scalar_output)
+})
+
 
 test_that("method defaults to deSolve when available and Euler otherwise", {
   default_output <- simulate_deterministic(

@@ -165,15 +165,19 @@ generic_infection_rates <- function(
     age_structure = age_structure
   )
 
-  infectious <- numeric(age_structure$n_age_groups)
-  for (i in seq_along(model$infectious_compartments)) {
-    infectious <- infectious +
-      model$infectiousness_weights[i] *
-      transition_compartment_values(
-        state_long,
-        age_structure,
-        model$infectious_compartments[i]
-      )
+  infectiousness_matrix <- generic_infectiousness_weight_matrix(
+    model = model,
+    age_structure = age_structure
+  )
+  infectious_state_matrix <- generic_infectious_state_matrix(
+    state_long = state_long,
+    model = model,
+    age_structure = age_structure
+  )
+  infectious <- if (nrow(infectious_state_matrix) == 0) {
+    numeric(age_structure$n_age_groups)
+  } else {
+    colSums(infectious_state_matrix * infectiousness_matrix)
   }
 
   if (any(population == 0)) {
@@ -221,6 +225,56 @@ generic_infection_rates <- function(
   do.call(rbind, rows)
 }
 
+generic_infectious_state_matrix <- function(state_long, model, age_structure) {
+  if (length(model$infectious_compartments) == 0) {
+    return(matrix(
+      numeric(),
+      nrow = 0,
+      ncol = age_structure$n_age_groups,
+      dimnames = list(character(), age_structure$age_groups)
+    ))
+  }
+
+  rows <- lapply(model$infectious_compartments, function(compartment) {
+    transition_compartment_values(state_long, age_structure, compartment)
+  })
+  state_matrix <- do.call(rbind, rows)
+  row.names(state_matrix) <- model$infectious_compartments
+  colnames(state_matrix) <- age_structure$age_groups
+  state_matrix
+}
+
+generic_infectiousness_weight_matrix <- function(model, age_structure) {
+  validate_age_structure(age_structure)
+
+  if (length(model$infectious_compartments) == 0) {
+    return(matrix(
+      numeric(),
+      nrow = 0,
+      ncol = age_structure$n_age_groups,
+      dimnames = list(character(), age_structure$age_groups)
+    ))
+  }
+
+  weights <- validate_generic_infectiousness_weights(
+    model$infectiousness_weights,
+    model$infectious_compartments
+  )
+
+  rows <- lapply(seq_along(weights), function(i) {
+    normalize_generic_infectiousness_weight_for_age(
+      susceptibility = weights[[i]],
+      age_structure = age_structure,
+      name = paste0("infectiousness_weights for infectious compartment ", names(weights)[i])
+    )
+  })
+
+  weight_matrix <- do.call(rbind, rows)
+  row.names(weight_matrix) <- names(weights)
+  colnames(weight_matrix) <- age_structure$age_groups
+  weight_matrix
+}
+
 infection_transition_susceptibility_matrix <- function(model, age_structure) {
   validate_age_structure(age_structure)
 
@@ -241,7 +295,7 @@ infection_transition_susceptibility_matrix <- function(model, age_structure) {
 
   rows <- vector("list", nrow(model$infection_transitions))
   for (i in seq_len(nrow(model$infection_transitions))) {
-    rows[[i]] <- normalize_infection_transition_susceptibility_for_age(
+    rows[[i]] <- normalize_generic_infectiousness_weight_for_age(
       susceptibility = susceptibility_specs[[i]],
       age_structure = age_structure,
       name = paste0(
@@ -262,7 +316,7 @@ infection_transition_susceptibility_matrix <- function(model, age_structure) {
   susceptibility_matrix
 }
 
-normalize_infection_transition_susceptibility_for_age <- function(
+normalize_generic_infectiousness_weight_for_age <- function(
   susceptibility,
   age_structure,
   name
