@@ -200,6 +200,392 @@ test_that("initialise_compartments_from_proportions rejects over-allocation", {
       proportions = list(I = c(0.8, 0.2), R = c(0.3, 0.1)),
       residual_compartment = "S"
     ),
-    "allocate more than the population"
+    "exceed 1"
   )
+})
+
+initialisation_test_age_structure <- function() {
+  AgeStructure(
+    age_groups = c("child", "adult"),
+    lower_bounds = c(0, 15),
+    upper_bounds = c(14, Inf)
+  )
+}
+
+initialisation_test_compartments <- c(
+  "M.tb",
+  "Incipient",
+  "Contained",
+  "Cleared",
+  "Sub.clin.lowinf",
+  "Sub.clin.inf",
+  "Clin.lowinf",
+  "Clin.inf",
+  "Treatment",
+  "Recovered"
+)
+
+test_that("initialise_compartments_from_proportions supports concise scalar inputs and omitted compartments", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+  concise <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = 0.01
+    ),
+    residual_compartment = "M.tb",
+    compartments = initialisation_test_compartments,
+    age_structure = ages
+  )
+
+  expect_identical(concise$compartment, rep(initialisation_test_compartments, each = ages$n_age_groups))
+  expect_identical(concise$age_group, rep(ages$age_groups, times = length(initialisation_test_compartments)))
+  expect_equal(
+    concise$value,
+    c(
+      990, 1980,
+      rep(0, 2 * 6),
+      10, 20,
+      rep(0, 2),
+      0, 0
+    )
+  )
+})
+
+test_that("initialise_compartments_from_proportions treats an empty named list as all residual", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  state <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = setNames(list(), character()),
+    residual_compartment = "M.tb",
+    compartments = initialisation_test_compartments,
+    age_structure = ages
+  )
+
+  expect_equal(unname(state$value[state$compartment == "M.tb"]), unname(population))
+  expect_equal(
+    unname(state$value[state$compartment != "M.tb"]),
+    rep(0, sum(state$compartment != "M.tb"))
+  )
+})
+
+test_that("initialise_compartments_from_proportions realigns named age-specific vectors", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  state <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = c(adult = 0.02, child = 0.01),
+      Recovered = c(0, 0)
+    ),
+    residual_compartment = "M.tb",
+    compartments = c("M.tb", "Clin.inf", "Recovered"),
+    age_structure = ages
+  )
+
+  expect_equal(
+    state$value[state$compartment == "Clin.inf"],
+    c(10, 40)
+  )
+  expect_equal(
+    state$value[state$compartment == "Recovered"],
+    c(0, 0)
+  )
+  expect_equal(
+    state$value[state$compartment == "M.tb"],
+    c(990, 1960)
+  )
+})
+
+test_that("initialise_compartments_from_proportions accepts unnamed full-length age-specific vectors", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  state <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = c(0.01, 0.02)
+    ),
+    residual_compartment = "M.tb",
+    compartments = c("M.tb", "Clin.inf"),
+    age_structure = ages
+  )
+
+  expect_equal(state$value[state$compartment == "Clin.inf"], c(10, 40))
+  expect_equal(state$value[state$compartment == "M.tb"], c(990, 1960))
+})
+
+test_that("initialise_compartments_from_proportions rejects malformed proportion lists", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(c(0.01, 0.02)),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "named list"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "named list"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = structure(list(c(0.01, 0.02), c(0.03, 0.04)), names = c("Clin.inf", "")),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "missing or empty compartment names"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = structure(list(c(0.01, 0.02), c(0.03, 0.04)), names = c("Clin.inf", "Clin.inf")),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "Duplicate compartment"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clincal.inf = c(0.01, 0.02)),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "Unknown compartment"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(M.tb = c(0.01, 0.02)),
+      residual_compartment = "M.tb",
+      compartments = initialisation_test_compartments,
+      age_structure = ages
+    ),
+    "must not be supplied"
+  )
+})
+
+test_that("initialise_compartments_from_proportions rejects malformed age-specific vectors", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = c(0.01, 0.02, 0.03)),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "length 1 or 2"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = c(child = 0.01, 0.02)),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "each model age group exactly once"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = c(child = 0.01, child = 0.02)),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "each model age group exactly once"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = c(child = 0.01, unknown = 0.02)),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "each model age group exactly once"
+  )
+})
+
+test_that("initialise_compartments_from_proportions rejects invalid proportion values", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = -0.01),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "between 0 and 1"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = 1.01),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "between 0 and 1"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = NA_real_),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "finite and non-missing"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = NaN),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "finite and non-missing"
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(Clin.inf = Inf),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf"),
+      age_structure = ages
+    ),
+    "finite and non-missing"
+  )
+})
+
+test_that("initialise_compartments_from_proportions enforces age-specific totals and tolerance", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+
+  exact_total <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = c(0.3, 0.2),
+      Recovered = c(0.7, 0.8)
+    ),
+    residual_compartment = "M.tb",
+    compartments = c("M.tb", "Clin.inf", "Recovered"),
+    age_structure = ages
+  )
+
+  expect_equal(exact_total$value[exact_total$compartment == "M.tb"], c(0, 0))
+  expect_equal(exact_total$value[exact_total$compartment == "Clin.inf"], c(300, 400))
+  expect_equal(exact_total$value[exact_total$compartment == "Recovered"], c(700, 1600))
+
+  tolerance <- sqrt(.Machine$double.eps) / 2
+  near_total <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = c(0.6, 0.4),
+      Recovered = c(0.4 + tolerance, 0.6)
+    ),
+    residual_compartment = "M.tb",
+    compartments = c("M.tb", "Clin.inf", "Recovered"),
+    age_structure = ages
+  )
+
+  expect_equal(near_total$value[near_total$compartment == "M.tb"], c(0, 0))
+  expect_equal(
+    near_total$value[near_total$compartment == "Clin.inf"],
+    c(600, 800)
+  )
+  expect_equal(
+    near_total$value[near_total$compartment == "Recovered"],
+    c(400 + tolerance * 1000, 1200)
+  )
+
+  expect_error(
+    initialise_compartments_from_proportions(
+      population = population,
+      proportions = list(
+        Clin.inf = c(0.8, 0.2),
+        Recovered = c(0.3, 0.1)
+      ),
+      residual_compartment = "M.tb",
+      compartments = c("M.tb", "Clin.inf", "Recovered"),
+      age_structure = ages
+    ),
+    "exceed 1"
+  )
+})
+
+test_that("concise and expanded state initialisation are identical", {
+  ages <- initialisation_test_age_structure()
+  population <- c(child = 1000, adult = 2000)
+  tb_compartments <- initialisation_test_compartments
+
+  concise <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Clin.inf = 0.01
+    ),
+    residual_compartment = "M.tb",
+    compartments = tb_compartments,
+    age_structure = ages
+  )
+
+  expanded <- initialise_compartments_from_proportions(
+    population = population,
+    proportions = list(
+      Incipient = rep(0, ages$n_age_groups),
+      Contained = rep(0, ages$n_age_groups),
+      Cleared = rep(0, ages$n_age_groups),
+      Sub.clin.lowinf = rep(0, ages$n_age_groups),
+      Sub.clin.inf = rep(0, ages$n_age_groups),
+      Clin.lowinf = rep(0, ages$n_age_groups),
+      Clin.inf = rep(0.01, ages$n_age_groups),
+      Treatment = rep(0, ages$n_age_groups),
+      Recovered = rep(0, ages$n_age_groups)
+    ),
+    residual_compartment = "M.tb",
+    compartments = tb_compartments,
+    age_structure = ages
+  )
+
+  expect_identical(concise, expanded)
 })

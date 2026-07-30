@@ -2,7 +2,7 @@
 % Please edit documentation in R/state_mapping.R
 \name{initialise_compartments_from_proportions}
 \alias{initialise_compartments_from_proportions}
-\title{Initialise compartment counts from age-specific proportions}
+\title{Initialise compartment counts from scalar or age-specific proportions}
 \usage{
 initialise_compartments_from_proportions(
   population,
@@ -15,8 +15,8 @@ initialise_compartments_from_proportions(
 \arguments{
 \item{population}{Numeric age-specific population vector.}
 
-\item{proportions}{Named list of numeric vectors, one per non-residual
-compartment.}
+\item{proportions}{Named list of numeric scalars or numeric vectors, one per
+non-residual compartment.}
 
 \item{residual_compartment}{Compartment receiving population not allocated
 by \code{proportions}.}
@@ -32,6 +32,36 @@ Long-format state data with columns \code{compartment}, \code{age_group}, and
 }
 \description{
 Allocates an age-specific population vector into compartments by multiplying
-supplied age-specific proportions by the population. The residual population
-is assigned to \code{residual_compartment}.
+supplied proportions by the population. Each supplied compartment proportion
+may be a scalar, an unnamed full-length vector in model age order, or a named
+full-length vector that is realigned to \code{age_structure$age_groups}. Any
+valid non-residual compartment omitted from \code{proportions} defaults to
+zero in every age group. The residual population is assigned to
+\code{residual_compartment}.
+}
+\examples{
+ages <- AgeStructure(
+  age_groups = c("child", "adult"),
+  lower_bounds = c(0, 18),
+  upper_bounds = c(17, Inf)
+)
+population <- c(child = 1000, adult = 2000)
+
+initialise_compartments_from_proportions(
+  population = population,
+  proportions = list(I = 0.01),
+  residual_compartment = "S",
+  compartments = c("S", "I", "R"),
+  age_structure = ages
+)
+
+initialise_compartments_from_proportions(
+  population = population,
+  proportions = list(
+    I = c(child = 0.001, adult = 0.01)
+  ),
+  residual_compartment = "S",
+  compartments = c("S", "I", "R"),
+  age_structure = ages
+)
 }

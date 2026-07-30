@@ -56,6 +56,7 @@ simulation_method <- "deSolve"
 demographic_time_policy <- "step"
 
 age_structure <- wpp_age_structure_1year(max_age = 95)
+age_lower <- age_structure$lower_bounds
 reporting_age_structure <- AgeStructure(
   c("0-4", "5-14", "15-24", "25-44", "45-64", "65+"),
   c(0, 5, 15, 25, 45, 65),
@@ -119,40 +120,7 @@ contact_matrix_source <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Provisional TB Assumptions --------------------------------------------------
-
-# These TB parameters are provisional and uncalibrated scaffold assumptions.
-# They are not Kiribati-specific estimates and should be replaced or calibrated
-# before any policy interpretation.
-age_lower <- age_structure$lower_bounds
-tb_parameters <- list(
-  beta = 0.13,
-  recent_to_remote = 0.35,
-  fast_progression = ifelse(age_lower < 5, 0.08,
-    ifelse(age_lower < 15, 0.025,
-      ifelse(age_lower < 65, 0.045, 0.06)
-    )
-  ),
-  reactivation = ifelse(age_lower < 15, 0.0005,
-    ifelse(age_lower < 25, 0.0015,
-      ifelse(age_lower < 45, 0.0025,
-        ifelse(age_lower < 65, 0.004, 0.006)
-      )
-    )
-  ),
-  treatment_initiation = 0.60,
-  treatment_completion = 0.75,
-  relapse = ifelse(age_lower < 15, 0.001,
-    ifelse(age_lower < 45, 0.003,
-      ifelse(age_lower < 65, 0.0045, 0.006)
-    )
-  ),
-  susceptibility = ifelse(age_lower < 15, 0.75, ifelse(age_lower < 65, 1.0, 1.15)),
-  infectiousness = ifelse(age_lower < 15, 0.20, ifelse(age_lower < 65, 1.0, 0.85))
-)
-
-
-
+# Model parameters -----------------------------------------------------------
 
 rel_sus_children = 0.5 # Needs to be fitted
 rel_sus_contained = 0.2 # Needs to be fitted
@@ -163,12 +131,12 @@ rel_infectiousness_subclin = 0.5
 rel_infectiousness_lowinf = 0.4
 
 
-containment_rate = c("0-4"=4.4, "5-14"=4.4, "15-64"=2, ">65"=2)
+containment_rate = ifelse(age_lower < 15, 4.4, ifelse(age_lower < 65, 2, 2))
 clearance_rate = 0.02 # Needs to be fitted
 breakdown_rate = 0.1 # Needs to be fitted
 
 prop_infectious = 0.5
-progression_rate = c("0-4"=2.4, "5-14"=2., "15-64"=0.1, ">65"=2.4)
+progression_rate = ifelse(age_lower < 15, 2.4, ifelse(age_lower < 65, 0.1, 2.4))
 
 clinical_progression_rate = 1 # Needs to be fitted
 clinical_regression_rate = 1 # Needs to be fitted
@@ -193,12 +161,16 @@ tx_death_rate = tx_death_prop * tx_rate
 tx_relapse_prop = tx_failure_prop * pct_neg_tx_relapse
 tx_relapse_rate = tx_relapse_prop * tx_rate
 
+
+# Model definition -----------------------------------------------------------
+
+
 tb_model <- CompartmentModel(
   compartments = c("M.tb", "Incipient", "Contained", "Cleared", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Treatment", "Recovered"),
   infection_transitions = data.frame(from = c("M.tb", "Contained", "Cleared", "Recovered"),
                                      to = c("Incipient", "Incipient", "Incipient", "Incipient"),
                                      susceptibility = I(list(
-                                       c(rep(rel_sus_children,2), rep(1,2)),
+                                       ifelse(age_lower < 15, rel_sus_children, 1),
                                        rel_sus_contained,
                                        rel_sus_cleared,
                                        rel_sus_recovered
@@ -206,10 +178,10 @@ tb_model <- CompartmentModel(
                                      ),
   infectious_compartments = c("Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf"),
   infectiousness_weights = I(list( 
-    c(rep(0,2), rep(rel_infectiousness_subclin * rel_infectiousness_lowinf,2)), 
-    c(rep(0,2), rep(rel_infectiousness_subclin)), 
-    c(rep(0,2), rep(rel_infectiousness_lowinf,2)),
-    c(rep(0,2), rep(1,2))
+    ifelse(age_lower < 15, 0, rel_infectiousness_subclin * rel_infectiousness_lowinf), 
+    ifelse(age_lower < 15, 0, rel_infectiousness_subclin), 
+    ifelse(age_lower < 15, 0, rel_infectiousness_lowinf),
+    rep(1, length(age_lower))
     )),
   transitions = data.frame(name = c("containment", "clearance", "breakdown", "progression.lowinf", "progression.inf", "clin.progression.lowinf", "clin.progression.inf", "clin.regression.lowinf", "clin.regression.inf", "infectious.gain.sub", "infectious.gain.clin", "infectiousness.loss.sub", "infectiousness.loss.clin", "self.recovery.lowinf", "self.recovery.inf", "detection.sub.lowinf", "detection.sub.inf", "detection.clin.lowinf", "detection.clin.inf", "tx.recovery", "relapse"),
                            from = c("Incipient", "Contained", "Contained", "Incipient", "Incipient", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Sub.clin.lowinf", "Clin.lowinf", "Sub.clin.inf", "Clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Treatment", "Treatment"),
@@ -234,7 +206,7 @@ tb_model <- CompartmentModel(
                              rel_detection_subclin * detection_rate,
                              detection_rate,
                              detection_rate,
-                             tx_rate,
+                             tx_recovery_rate,
                              tx_relapse_rate
                            ))
   ),
@@ -246,6 +218,9 @@ tb_model <- CompartmentModel(
 )
 
 
+
+# Outputs --------------------------------------------------------------------
+
 tb_cumulative_flow_specs <- list(
   infections = list(from = "M.tb", to = "Incipient"),
   progression_to_active_tb = list(from = c("Incipient", "Incipient"), to = c("Sub.clin.lowinf", "Sub.clin.inf")),
@@ -256,9 +231,9 @@ tb_cumulative_flow_specs <- list(
 
 # Initial Conditions ----------------------------------------------------------
 
-# These initial proportions are provisional and uncalibrated. `S` is assigned
-# as the residual population after latent, active, treatment, and recovered
-# states are initialised.
+# These initial proportions are provisional and uncalibrated. `M.tb` is
+# assigned as the residual population after latent, active, treatment, and
+# recovered states are initialised.
 active_prev <- ifelse(age_lower < 15, 0.00025,
   ifelse(age_lower < 25, 0.0009,
     ifelse(age_lower < 45, 0.0015,
@@ -267,8 +242,8 @@ active_prev <- ifelse(age_lower < 15, 0.00025,
   )
 )
 initial_proportions <- list(
-  Lr = ifelse(age_lower < 15, 0.004, ifelse(age_lower < 65, 0.008, 0.006)),
-  Ld = ifelse(age_lower < 5, 0.01,
+  Contained = ifelse(age_lower < 15, 0.004, ifelse(age_lower < 65, 0.008, 0.006)),
+  Cleared = ifelse(age_lower < 5, 0.01,
     ifelse(age_lower < 15, 0.04,
       ifelse(age_lower < 25, 0.14,
         ifelse(age_lower < 45, 0.24,
@@ -277,20 +252,17 @@ initial_proportions <- list(
       )
     )
   ),
-  I = active_prev,
-  T = 0.7 * active_prev,
-  R = ifelse(age_lower < 15, 0.005,
+  Clin.inf = active_prev,
+  Treatment = 0.7 * active_prev,
+  Recovered = ifelse(age_lower < 15, 0.005,
     ifelse(age_lower < 45, 0.035, ifelse(age_lower < 65, 0.055, 0.065))
   )
 )
-for (compartment in names(initial_proportions)) {
-  names(initial_proportions[[compartment]]) <- age_structure$age_groups
-}
 
 initial_state <- initialise_compartments_from_proportions(
   population = population_2025,
   proportions = initial_proportions,
-  residual_compartment = "S",
+  residual_compartment = "M.tb",
   compartments = tb_model$compartments,
   age_structure = age_structure
 )
@@ -323,9 +295,9 @@ population_summary <- total_population(trajectory)
 age_group_summary_broad <- aggregate_population_summary_age_grid(age_group_summary, reporting_age_mapping)
 cumulative_flow_wide <- cumulative_flow_totals_wide(cumulative_flows)
 
-active_tb <- trajectory[trajectory$compartment == "I", ]
-on_treatment <- trajectory[trajectory$compartment == "T", ]
-latent_tb <- trajectory[trajectory$compartment %in% c("Lr", "Ld"), ]
+active_tb <- trajectory[trajectory$compartment == "Clin.inf", ]
+on_treatment <- trajectory[trajectory$compartment == "Treatment", ]
+latent_tb <- trajectory[trajectory$compartment %in% c("Contained", "Cleared"), ]
 tb_burden_summary <- merge(
   stats::aggregate(value ~ time, active_tb, sum),
   stats::aggregate(value ~ time, on_treatment, sum),

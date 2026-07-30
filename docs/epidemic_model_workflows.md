@@ -82,9 +82,48 @@ State mapping helpers make that explicit:
 - `state_long_to_vector()` converts long-form rows to a numeric state vector;
 - `state_vector_to_long()` converts the other way;
 - `initialise_compartments_from_proportions()` allocates an age-specific
-  population into compartments from proportions;
+  population into compartments from scalar or age-specific proportions and
+  defaults omitted non-residual compartments to zero;
 - `validate_state_long()` and `validate_state_vector()` enforce the expected
   layout and missing-row checks.
+
+The initialisation helper is deliberately concise:
+
+```r
+ages <- AgeStructure(
+  age_groups = c("child", "adult"),
+  lower_bounds = c(0, 18),
+  upper_bounds = c(17, Inf)
+)
+population <- c(child = 1000, adult = 2000)
+
+initial_state <- initialise_compartments_from_proportions(
+  population = population,
+  proportions = list(
+    I = 0.01
+  ),
+  residual_compartment = "S",
+  compartments = c("S", "I", "R"),
+  age_structure = ages
+)
+```
+
+Age-specific named vectors can also be aligned automatically:
+
+```r
+initial_state <- initialise_compartments_from_proportions(
+  population = population,
+  proportions = list(
+    I = c(
+      child = 0.001,
+      adult = 0.01
+    )
+  ),
+  residual_compartment = "S",
+  compartments = c("S", "I", "R"),
+  age_structure = ages
+)
+```
 
 The `initial_state` supplied to simulation functions must match the model age
 structure and compartment order. Names on numeric state vectors are ignored on

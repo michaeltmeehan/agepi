@@ -54,15 +54,19 @@ state_vector_to_long <- function(state_vector, age_structure, compartments) {
   )
 }
 
-#' Initialise compartment counts from age-specific proportions
+#' Initialise compartment counts from scalar or age-specific proportions
 #'
 #' Allocates an age-specific population vector into compartments by multiplying
-#' supplied age-specific proportions by the population. The residual population
-#' is assigned to `residual_compartment`.
+#' supplied proportions by the population. Each supplied compartment proportion
+#' may be a scalar, an unnamed full-length vector in model age order, or a
+#' named full-length vector that is realigned to `age_structure$age_groups`.
+#' Any valid non-residual compartment omitted from `proportions` defaults to
+#' zero in every age group. The residual population is assigned to
+#' `residual_compartment`.
 #'
 #' @param population Numeric age-specific population vector.
-#' @param proportions Named list of numeric vectors, one per non-residual
-#'   compartment.
+#' @param proportions Named list of numeric scalars or numeric vectors, one per
+#'   non-residual compartment.
 #' @param residual_compartment Compartment receiving population not allocated
 #'   by `proportions`.
 #' @param compartments Optional full compartment order. Defaults to
@@ -71,6 +75,31 @@ state_vector_to_long <- function(state_vector, age_structure, compartments) {
 #'
 #' @return Long-format state data with columns `compartment`, `age_group`, and
 #'   `value`.
+#' @examples
+#' ages <- AgeStructure(
+#'   age_groups = c("child", "adult"),
+#'   lower_bounds = c(0, 18),
+#'   upper_bounds = c(17, Inf)
+#' )
+#' population <- c(child = 1000, adult = 2000)
+#'
+#' initialise_compartments_from_proportions(
+#'   population = population,
+#'   proportions = list(I = 0.01),
+#'   residual_compartment = "S",
+#'   compartments = c("S", "I", "R"),
+#'   age_structure = ages
+#' )
+#'
+#' initialise_compartments_from_proportions(
+#'   population = population,
+#'   proportions = list(
+#'     I = c(child = 0.001, adult = 0.01)
+#'   ),
+#'   residual_compartment = "S",
+#'   compartments = c("S", "I", "R"),
+#'   age_structure = ages
+#' )
 #' @export
 initialise_compartments_from_proportions <- function(population,
                                                      proportions,
@@ -82,7 +111,14 @@ initialise_compartments_from_proportions <- function(population,
   }
 
   age_groups <- validate_population_for_initialisation(population, age_structure)
-  validate_initialisation_proportions(proportions, length(population))
+  if (is.null(age_structure)) {
+    age_structure <- list(
+      age_groups = age_groups,
+      n_age_groups = length(age_groups)
+    )
+  }
+
+  validate_initialisation_proportions(proportions)
 
   if (!is.character(residual_compartment) || length(residual_compartment) != 1 ||
       is.na(residual_compartment) || !nzchar(residual_compartment)) {
@@ -94,42 +130,55 @@ initialise_compartments_from_proportions <- function(population,
   }
   validate_compartments(compartments)
 
-  unknown_proportion_names <- setdiff(names(proportions), compartments)
-  if (length(unknown_proportion_names) > 0) {
-    stop(
-      "proportions contains compartment(s) not in compartments: ",
-      paste(unknown_proportion_names, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
   if (!residual_compartment %in% compartments) {
     stop("residual_compartment must be included in compartments.", call. = FALSE)
   }
 
-  allocated <- rep(0, length(population))
-  names(allocated) <- age_groups
-  values_by_compartment <- vector("list", length(compartments))
-  names(values_by_compartment) <- compartments
+  validate_initialisation_proportion_names(
+    proportions = proportions,
+    compartments = compartments,
+    residual_compartment = residual_compartment
+  )
 
-  for (compartment in names(proportions)) {
-    values <- as.numeric(population) * as.numeric(proportions[[compartment]])
-    values_by_compartment[[compartment]] <- values
-    allocated <- allocated + values
+  n_age_groups <- age_structure$n_age_groups
+  normalised_proportions <- vector("list", length(compartments))
+  names(normalised_proportions) <- compartments
+  non_residual_compartments <- compartments[compartments != residual_compartment]
+
+  for (compartment in non_residual_compartments) {
+    x <- if (compartment %in% names(proportions)) proportions[[compartment]] else 0
+    normalised_proportions[[compartment]] <- normalise_initial_proportion(
+      x = x,
+      compartment = compartment,
+      age_structure = age_structure
+    )
   }
 
-  residual <- as.numeric(population) - allocated
-  if (any(residual < -1e-8)) {
-    stop("proportions allocate more than the population for at least one age group.", call. = FALSE)
+  if (length(non_residual_compartments) > 0) {
+    specified_proportions <- do.call(cbind, normalised_proportions[non_residual_compartments])
+    residual_proportion <- 1 - rowSums(specified_proportions)
+  } else {
+    residual_proportion <- rep(1, n_age_groups)
   }
-  residual[residual < 0] <- 0
-  values_by_compartment[[residual_compartment]] <- residual
 
-  for (compartment in compartments) {
-    if (is.null(values_by_compartment[[compartment]])) {
-      values_by_compartment[[compartment]] <- rep(0, length(population))
-    }
+  tolerance <- sqrt(.Machine$double.eps)
+  if (any(residual_proportion < -tolerance)) {
+    bad_age_group <- age_groups[which(residual_proportion < -tolerance)[1]]
+    stop(
+      "Specified proportions exceed 1 for age group `",
+      bad_age_group,
+      "`.",
+      call. = FALSE
+    )
   }
+  residual_proportion[residual_proportion < 0] <- 0
+  normalised_proportions[[residual_compartment]] <- residual_proportion
+
+  population <- as.numeric(population)
+  values_by_compartment <- lapply(
+    normalised_proportions[compartments],
+    function(proportion) population * proportion
+  )
 
   state <- data.frame(
     compartment = rep(compartments, each = length(population)),
@@ -314,35 +363,143 @@ validate_population_for_initialisation <- function(population, age_structure) {
   names(population)
 }
 
-validate_initialisation_proportions <- function(proportions, expected_length) {
+validate_initialisation_proportions <- function(proportions) {
   if (!is.list(proportions) || is.data.frame(proportions)) {
     stop("proportions must be a named list.", call. = FALSE)
   }
 
-  if (length(proportions) == 0) {
-    stop("proportions must contain at least one compartment.", call. = FALSE)
-  }
-
-  if (is.null(names(proportions)) || any(names(proportions) == "")) {
+  proportion_names <- names(proportions)
+  if (length(proportions) == 0 && is.null(proportion_names)) {
     stop("proportions must be a named list.", call. = FALSE)
   }
 
-  for (compartment in names(proportions)) {
-    values <- proportions[[compartment]]
-    if (!is.numeric(values) || length(values) != expected_length ||
-        anyNA(values) || any(!is.finite(values))) {
+  if (length(proportions) > 0 && is.null(proportion_names)) {
+    stop("proportions must be a named list.", call. = FALSE)
+  }
+
+  if (length(proportions) > 0 && (anyNA(proportion_names) || any(proportion_names == ""))) {
+    stop("proportions must not contain missing or empty compartment names.", call. = FALSE)
+  }
+
+  if (length(proportions) > 0) {
+    duplicated_compartments <- unique(proportion_names[duplicated(proportion_names)])
+    if (length(duplicated_compartments) > 0) {
       stop(
-        "proportion vector for compartment ",
-        compartment,
-        " must be finite numeric and match population length.",
+        "Duplicate compartment name(s) in `proportions`: ",
+        paste(duplicated_compartments, collapse = ", "),
         call. = FALSE
       )
-    }
-
-    if (any(values < 0 | values > 1)) {
-      stop("proportions must be between 0 and 1.", call. = FALSE)
     }
   }
 
   invisible(proportions)
+}
+
+validate_initialisation_proportion_names <- function(proportions,
+                                                     compartments,
+                                                     residual_compartment) {
+  if (length(proportions) == 0) {
+    return(invisible(proportions))
+  }
+
+  proportion_names <- names(proportions)
+
+  if (residual_compartment %in% proportion_names) {
+    stop(
+      "The residual compartment `",
+      residual_compartment,
+      "` must not be supplied in `proportions`.",
+      call. = FALSE
+    )
+  }
+
+  unknown_compartments <- setdiff(proportion_names, compartments)
+  if (length(unknown_compartments) > 0) {
+    stop(
+      "Unknown compartment in `proportions`: ",
+      paste(unknown_compartments, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(proportions)
+}
+
+normalise_initial_proportion <- function(x, compartment, age_structure) {
+  age_groups <- age_structure$age_groups
+  n_age_groups <- age_structure$n_age_groups
+
+  if (is.matrix(x) || !is.numeric(x)) {
+    stop(
+      "Proportion for compartment `",
+      compartment,
+      "` must be numeric.",
+      call. = FALSE
+    )
+  }
+
+  if (length(x) != 1 && length(x) != n_age_groups) {
+    stop(
+      "Proportion for compartment `",
+      compartment,
+      "` must have length 1 or ",
+      n_age_groups,
+      ".",
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(x) || any(!is.finite(x))) {
+    stop(
+      "Proportion for compartment `",
+      compartment,
+      "` must be finite and non-missing.",
+      call. = FALSE
+    )
+  }
+
+  values <- as.numeric(x)
+
+  if (length(values) == 1) {
+    values <- rep(values, n_age_groups)
+  } else {
+    value_names <- names(x)
+    if (!is.null(value_names) && length(value_names) > 0) {
+      if (length(value_names) != n_age_groups ||
+          anyNA(value_names) ||
+          any(value_names == "") ||
+          anyDuplicated(value_names)) {
+        stop(
+          "Named proportion vector for compartment `",
+          compartment,
+          "` must contain each model age group exactly once.",
+          call. = FALSE
+        )
+      }
+
+      unknown_age_groups <- setdiff(value_names, age_groups)
+      if (length(unknown_age_groups) > 0) {
+        stop(
+          "Named proportion vector for compartment `",
+          compartment,
+          "` must contain each model age group exactly once.",
+          call. = FALSE
+        )
+      }
+
+      values <- values[match(age_groups, value_names)]
+    }
+  }
+
+  if (any(values < 0) || any(values > 1)) {
+    stop(
+      "Proportion for compartment `",
+      compartment,
+      "` must be between 0 and 1.",
+      call. = FALSE
+    )
+  }
+
+  stats::setNames(values, age_groups)
 }
