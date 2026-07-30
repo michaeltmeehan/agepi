@@ -10,9 +10,7 @@ simulate_deterministic(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL,
+  beta = NULL,
   method = NULL,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
@@ -37,13 +35,10 @@ supported for infection-only deterministic simulation.}
 \item{contact_matrix}{Numeric contact matrix with rows as recipient age
 groups and columns as source age groups.}
 
-\item{beta}{Non-negative finite transmission scaling parameter.}
-
-\item{susceptibility}{Optional non-negative numeric vector by recipient age
-group.}
-
-\item{infectiousness}{Optional non-negative numeric vector by source age
-group.}
+\item{beta}{Optional non-negative finite transmission scaling parameter.
+When omitted, infectious models use \code{model$beta} if present and error if
+no default is available. Models without infection transitions do not
+require beta; an explicit beta is validated and otherwise ignored.}
 
 \item{method}{Simulation method. \code{NULL} selects \code{"deSolve"} for infection-
 only runs and \code{"euler"} for coupled demographic runs with
@@ -127,9 +122,11 @@ deterministic compartment models.
 }
 
 Both solver backends use the same transition-rate and derivative pathway:
-static contact matrix, static \code{beta}, static susceptibility, and static
-infectiousness. The deSolve backend also supports demographic coupling via
-the existing demographic derivative path.
+static contact matrix and a resolved transmission \code{beta} drawn from the
+simulation override or model default. Model-level infection-transition
+susceptibility and infectiousness weights are used automatically. The
+deSolve backend also supports demographic coupling via the existing
+demographic derivative path.
 
 A first-pass SIR/SEIR-demography coupling is available via
 \code{demographic_process}. In this coupled mode, births enter the youngest

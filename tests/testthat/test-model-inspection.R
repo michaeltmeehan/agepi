@@ -227,3 +227,101 @@ test_that("check_population_balance validates closed systems and external outflo
   expect_equal(outflow_balance$by_age$total_external_outflow, 1)
   expect_equal(outflow_balance$by_age$residual_balance_error, 0)
 })
+
+test_that("inspection helpers share beta resolution rules", {
+  ages <- test_inspection_ages()
+  state <- test_inspection_state()
+  contacts <- test_inspection_contacts()
+  infectious_model <- SIRModel(gamma = 0.2, beta = 0.4)
+
+  default_rates <- inspect_transition_rates(
+    state = state,
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+  explicit_model_rates <- inspect_transition_rates(
+    state = state,
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.4
+  )
+  zero_override_rates <- inspect_transition_rates(
+    state = state,
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0
+  )
+  other_override_rates <- inspect_transition_rates(
+    state = state,
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.1
+  )
+
+  expect_equal(default_rates, explicit_model_rates)
+  expect_true(all(zero_override_rates$rate[zero_override_rates$transition_id == "infection:S->I"] == 0))
+  expect_gt(
+    sum(other_override_rates$rate[other_override_rates$transition_id == "infection:S->I"]),
+    0
+  )
+
+  no_beta_model <- infectious_model
+  no_beta_model$beta <- NULL
+  expect_error(
+    inspect_transition_rates(
+      state = state,
+      model = no_beta_model,
+      age_structure = ages,
+      contact_matrix = contacts
+    ),
+    "beta is required"
+  )
+  expect_error(
+    check_population_balance(
+      state = state,
+      model = no_beta_model,
+      age_structure = ages,
+      contact_matrix = contacts
+    ),
+    "beta is required"
+  )
+
+  non_infectious_model <- CompartmentModel(
+    compartments = c("S", "R"),
+    transitions = data.frame(from = "S", to = "R", rate = 0.1, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  non_infectious_state <- data.frame(
+    compartment = rep(c("S", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 2),
+    value = c(100, 80, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  default_non_infectious_rates <- inspect_transition_rates(
+    state = non_infectious_state,
+    model = non_infectious_model,
+    age_structure = ages,
+    contact_matrix = matrix(0, nrow = 2, ncol = 2)
+  )
+  overridden_non_infectious_rates <- inspect_transition_rates(
+    state = non_infectious_state,
+    model = non_infectious_model,
+    age_structure = ages,
+    contact_matrix = matrix(0, nrow = 2, ncol = 2),
+    beta = 0.7
+  )
+  non_infectious_balance <- check_population_balance(
+    state = non_infectious_state,
+    model = non_infectious_model,
+    age_structure = ages,
+    contact_matrix = matrix(0, nrow = 2, ncol = 2)
+  )
+
+  expect_equal(default_non_infectious_rates, overridden_non_infectious_rates)
+  expect_true(non_infectious_balance$summary$passes_balance_check)
+})

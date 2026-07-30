@@ -5,18 +5,23 @@
 #' rate `gamma`.
 #'
 #' @param gamma Non-negative finite numeric scalar recovery rate.
+#' @param beta Optional non-negative finite numeric scalar transmission rate.
+#'   The model stores this default for later use by simulation and
+#'   transition-rate evaluation. When omitted, infection-capable models default
+#'   to `1`; models without infection transitions leave the field `NULL`.
 #'
 #' @return A `DiseaseModel` list describing an SIR model.
 #' @examples
 #' model <- SIRModel(gamma = 0.25)
 #' model$compartments
 #' @export
-SIRModel <- function(gamma) {
+SIRModel <- function(gamma, beta = NULL) {
   if (missing(gamma)) {
     stop("gamma is required.", call. = FALSE)
   }
 
   gamma <- validate_sir_gamma(gamma)
+  beta <- normalize_model_beta(beta, has_infection_process = TRUE)
 
   model <- list(
     model_type = "SIR",
@@ -26,6 +31,7 @@ SIRModel <- function(gamma) {
       to = c("I", "R"),
       stringsAsFactors = FALSE
     ),
+    beta = beta,
     gamma = gamma
   )
 
@@ -66,6 +72,10 @@ SIRModel <- function(gamma) {
 #'   When the list is named, names must match infectious compartments and are
 #'   reordered to match `infectious_compartments`. Defaults to one for each
 #'   infectious compartment.
+#' @param beta Optional non-negative finite numeric scalar transmission rate.
+#'   The model stores this default for later use by simulation and
+#'   transition-rate evaluation. When omitted, infection-capable models default
+#'   to `1`; models without infection transitions leave the field `NULL`.
 #' @param birth_compartment Optional compartment receiving demographic births.
 #'   Defaults to `"S"` when present.
 #' @param migration_compartment Optional compartment receiving net migration
@@ -91,6 +101,7 @@ CompartmentModel <- function(
   outflows = NULL,
   infectious_compartments = NULL,
   infectiousness_weights = NULL,
+  beta = NULL,
   birth_compartment = NULL,
   migration_compartment = NULL
 ) {
@@ -173,6 +184,7 @@ CompartmentModel <- function(
   if (is.null(migration_compartment)) {
     migration_compartment <- birth_compartment
   }
+  beta <- normalize_model_beta(beta, has_infection_process = nrow(infection_transitions) > 0)
 
   model <- list(
     model_type = "CompartmentModel",
@@ -181,6 +193,7 @@ CompartmentModel <- function(
     infection_transitions = infection_transitions,
     infectious_compartments = infectious_compartments,
     infectiousness_weights = infectiousness_weights,
+    beta = beta,
     birth_compartment = birth_compartment,
     migration_compartment = migration_compartment
   )
@@ -198,13 +211,17 @@ CompartmentModel <- function(
 #'
 #' @param sigma Non-negative finite numeric scalar progression rate.
 #' @param gamma Non-negative finite numeric scalar recovery rate.
+#' @param beta Optional non-negative finite numeric scalar transmission rate.
+#'   The model stores this default for later use by simulation and
+#'   transition-rate evaluation. When omitted, infection-capable models default
+#'   to `1`; models without infection transitions leave the field `NULL`.
 #'
 #' @return A `DiseaseModel` list describing an SEIR model.
 #' @examples
 #' model <- SEIRModel(sigma = 0.2, gamma = 0.25)
 #' model$transitions
 #' @export
-SEIRModel <- function(sigma, gamma) {
+SEIRModel <- function(sigma, gamma, beta = NULL) {
   if (missing(sigma)) {
     stop("sigma is required.", call. = FALSE)
   }
@@ -214,6 +231,7 @@ SEIRModel <- function(sigma, gamma) {
 
   sigma <- validate_seir_sigma(sigma)
   gamma <- validate_sir_gamma(gamma)
+  beta <- normalize_model_beta(beta, has_infection_process = TRUE)
 
   model <- list(
     model_type = "SEIR",
@@ -224,6 +242,7 @@ SEIRModel <- function(sigma, gamma) {
       stringsAsFactors = FALSE
     ),
     sigma = sigma,
+    beta = beta,
     gamma = gamma
   )
 
@@ -276,6 +295,10 @@ validate_disease_model <- function(model) {
   }
 
   validate_compartments(model$compartments)
+
+  if ("beta" %in% names(model) && !is.null(model$beta)) {
+    validate_force_beta(model$beta)
+  }
 
   if (model$model_type == "CompartmentModel") {
     validate_infection_transitions(model$infection_transitions, model$compartments)
@@ -344,6 +367,50 @@ disease_model_required_fields <- function(model_type) {
   }
 
   c("model_type", "compartments", "transitions", "sigma", "gamma")
+}
+
+normalize_model_beta <- function(beta, has_infection_process) {
+  if (is.null(beta)) {
+    if (isTRUE(has_infection_process)) {
+      return(1)
+    }
+    return(NULL)
+  }
+
+  validate_force_beta(beta)
+}
+
+model_has_infection_process <- function(model) {
+  if (identical(model$model_type, "CompartmentModel")) {
+    return(nrow(model$infection_transitions) > 0)
+  }
+
+  identical(model$model_type, "SIR") || identical(model$model_type, "SEIR")
+}
+
+resolve_transmission_beta <- function(model, beta = NULL) {
+  validate_disease_model(model)
+
+  if (!model_has_infection_process(model)) {
+    if (is.null(beta)) {
+      return(NULL)
+    }
+    return(validate_force_beta(beta))
+  }
+
+  if (!is.null(beta)) {
+    return(validate_force_beta(beta))
+  }
+
+  if ("beta" %in% names(model) && !is.null(model$beta)) {
+    return(validate_force_beta(model$beta))
+  }
+
+  stop(
+    "beta is required when the model contains infection transitions. ",
+    "Store a default in model$beta or supply beta at simulation/rate-evaluation time.",
+    call. = FALSE
+  )
 }
 
 validate_sir_gamma <- function(gamma) {

@@ -4,10 +4,15 @@
 \alias{SIRModel}
 \title{Construct a minimal SIR disease model}
 \usage{
-SIRModel(gamma)
+SIRModel(gamma, beta = NULL)
 }
 \arguments{
 \item{gamma}{Non-negative finite numeric scalar recovery rate.}
+
+\item{beta}{Optional non-negative finite numeric scalar transmission rate.
+The model stores this default for later use by simulation and
+transition-rate evaluation. When omitted, infection-capable models default
+to \code{1}; models without infection transitions leave the field \code{NULL}.}
 }
 \value{
 A \code{DiseaseModel} list describing an SIR model.

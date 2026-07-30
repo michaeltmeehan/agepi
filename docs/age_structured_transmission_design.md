@@ -252,7 +252,7 @@ get_contact_matrix <- function(t, mixing_model, demography) {
 
 ### 5.4 Future `RiskModel`
 
-Would store age-specific susceptibility, infectiousness, and severity parameters. This object is not currently implemented; current functions accept susceptibility and infectiousness vectors directly.
+Would store age-specific susceptibility, infectiousness, and severity parameters. This object is not currently implemented; the low-level `force_of_infection()` helper accepts susceptibility and infectiousness vectors directly.
 
 Initial version:
 
@@ -396,9 +396,7 @@ transition_rates <- function(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL
+  beta = NULL
 ) {
   ...
 }
@@ -425,6 +423,10 @@ For the current SIR model, include:
 Notes:
 
 - Ageing, births, background deaths, and infection-induced morbidity/mortality are not currently implemented.
+- Model-level susceptibility and infectiousness are now stored on the disease
+  model and applied automatically by `transition_rates()`,
+  `simulate_deterministic()`, and `simulate_stochastic()`.
+- Explicit simulation-level `beta` overrides the model default.
 
 ---
 
@@ -460,9 +462,7 @@ simulate_deterministic <- function(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL,
+  beta = NULL,
   method = "euler"
 ) {
   ...
@@ -476,6 +476,10 @@ Expected behaviour:
 - Use explicit Euler time steps by default. Optional `method = "deSolve"` is
   supported for the documented deterministic SIR/SEIR combinations when the
   suggested `deSolve` package is installed.
+- Model-level susceptibility and infectiousness are authoritative; the
+  simulator no longer takes them as separate arguments.
+- `beta` is optional, and an explicit simulation-level `beta` overrides
+  `model$beta`.
 - Return output in long format, with columns:
 
 ```text
@@ -773,7 +777,7 @@ The first complete runnable example should:
 1. define model age bins;
 2. create mock population and infection inputs;
 3. create a simple age-specific contact matrix;
-4. define age-specific susceptibility and infectiousness vectors;
+4. define model-stored susceptibility and infectiousness values;
 5. define an SIR disease model;
 6. seed infections in one or more age groups;
 7. run the deterministic simulation;

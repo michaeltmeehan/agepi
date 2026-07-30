@@ -60,6 +60,30 @@ test_that("SEIRModel rejects invalid parameters", {
   expect_error(SEIRModel(0.3, -0.1), "gamma cannot be negative")
 })
 
+test_that("validate_disease_model validates stored beta values", {
+  model <- SIRModel(gamma = 0.2, beta = 0.4)
+  expect_silent(validate_disease_model(model))
+
+  zero_beta <- model
+  zero_beta$beta <- 0
+  expect_silent(validate_disease_model(zero_beta))
+
+  null_beta <- model
+  null_beta$beta <- NULL
+  expect_silent(validate_disease_model(null_beta))
+
+  bad_betas <- list(-1, NA_real_, NaN, Inf, c(0.1, 0.2), "0.1")
+  for (bad_beta in bad_betas) {
+    malformed <- model
+    malformed$beta <- bad_beta
+    if (identical(bad_beta, -1)) {
+      expect_error(validate_disease_model(malformed), "beta cannot be negative")
+    } else {
+      expect_error(validate_disease_model(malformed), "beta must be a finite numeric scalar")
+    }
+  }
+})
+
 test_that("validate_disease_model rejects malformed model objects", {
   expect_error(validate_disease_model("SIR"), "model must be a list")
 

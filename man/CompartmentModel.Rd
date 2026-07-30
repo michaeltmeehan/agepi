@@ -11,6 +11,7 @@ CompartmentModel(
   outflows = NULL,
   infectious_compartments = NULL,
   infectiousness_weights = NULL,
+  beta = NULL,
   birth_compartment = NULL,
   migration_compartment = NULL
 )
@@ -40,6 +41,11 @@ one scalar or one age-specific numeric vector per infectious compartment.
 When the list is named, names must match infectious compartments and are
 reordered to match \code{infectious_compartments}. Defaults to one for each
 infectious compartment.}
+
+\item{beta}{Optional non-negative finite numeric scalar transmission rate.
+The model stores this default for later use by simulation and
+transition-rate evaluation. When omitted, infection-capable models default
+to \code{1}; models without infection transitions leave the field \code{NULL}.}
 
 \item{birth_compartment}{Optional compartment receiving demographic births.
 Defaults to \code{"S"} when present.}

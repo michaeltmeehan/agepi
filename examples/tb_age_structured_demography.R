@@ -99,6 +99,7 @@ tb_model <- CompartmentModel(
   infection_transitions = data.frame(from = "S", to = "Lr", stringsAsFactors = FALSE),
   transitions = transitions,
   infectious_compartments = "I",
+  beta = 0.06,
   birth_compartment = "S",
   migration_compartment = "S"
 )
@@ -133,9 +134,6 @@ tb_output <- simulate_deterministic(
   model = tb_model,
   age_structure = age_structure,
   contact_matrix = contact_matrix,
-  beta = 0.06,
-  susceptibility = susceptibility,
-  infectiousness = infectiousness,
   demographic_process = demographic_process,
   time_policy = "linear",
   method = "euler",

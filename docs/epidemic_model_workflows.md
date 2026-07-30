@@ -312,7 +312,7 @@ load and adapt contact matrices before they are used here.
 - a `model`;
 - an `AgeStructure()`;
 - a simulation-ready `contact_matrix`;
-- `beta`, and optionally `susceptibility` and `infectiousness`.
+- optional `beta`, with susceptibility and infectiousness supplied by the model.
 
 When `demographic_process` is supplied, it also accepts demographic coupling
 controls such as `time_policy`, `migration_policy`, `ageing_policy`, and
@@ -478,8 +478,9 @@ contact_matrix <- adapt_contact_matrix_to_age_structure(
 )
 ```
 
-The adapted matrix must match the model `AgeStructure()`. `beta`,
-susceptibility, and infectiousness complete the transmission setup.
+The adapted matrix must match the model `AgeStructure()`. Model-stored
+susceptibility and infectiousness complete the transmission setup, and `beta`
+optionally scales transmission.
 
 The contact-matrix guide in
 [docs/contact_matrix_workflows.md](contact_matrix_workflows.md) explains the
@@ -704,8 +705,8 @@ The current epidemic model surface is intentionally limited:
   still a first-pass convention;
 - contact matrices are interpreted as age-structured contact weights, not as a
   calibrated transmission model by themselves;
-- contact matrices, `beta`, susceptibility, and infectiousness together define
-  transmission pressure;
+- contact matrices, model-level `beta`, and model-stored susceptibility and
+  infectiousness together define transmission pressure;
 - disease-specific mortality conventions may still need explicit model choices;
 - solver choice and time stepping matter for numerical accuracy;
 - calibration support is a scaffold, not a full workflow;

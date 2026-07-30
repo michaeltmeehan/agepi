@@ -10,9 +10,7 @@ simulate_stochastic(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL,
+  beta = NULL,
   population = NULL,
   method = "gillespie",
   seed = NULL,
@@ -38,13 +36,10 @@ supported.}
 \item{contact_matrix}{Numeric contact matrix with rows as recipient age
 groups and columns as source age groups.}
 
-\item{beta}{Non-negative finite transmission scaling parameter.}
-
-\item{susceptibility}{Optional non-negative numeric vector by recipient age
-group.}
-
-\item{infectiousness}{Optional non-negative numeric vector by source age
-group.}
+\item{beta}{Optional non-negative finite transmission scaling parameter.
+When omitted, infectious models use \code{model$beta} if present and error if
+no default is available. Models without infection transitions do not
+require beta; an explicit beta is validated and otherwise ignored.}
 
 \item{population}{Optional fixed positive population vector by age group.
 When supplied, it must match the age-specific totals in \code{initial_state}.

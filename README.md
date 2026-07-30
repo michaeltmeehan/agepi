@@ -13,7 +13,7 @@ It is built for people who want to define age groups explicitly, work with compa
 - contact matrices;
 - SIR and SEIR starting models;
 - custom compartment models via `CompartmentModel()`;
-- age-specific susceptibility and infectiousness;
+- model-stored susceptibility and infectiousness;
 - cumulative flow outputs;
 - demographic schedules and age turnover;
 - optional adapters for external data sources.
@@ -83,7 +83,7 @@ head(compartment_totals(simulation))
 
 The key pieces are the age structure, the initial compartment state, the contact matrix, and the disease model. For most users, that is enough to start building and inspecting a simple age-structured model.
 
-If you need more control, `simulate_deterministic()` also supports age-specific susceptibility and infectiousness, demographic coupling, output aggregation, and cumulative flow tracking. Those features are documented in the workflow pages below rather than expanded here.
+If you need more control, `simulate_deterministic()` also supports model-stored susceptibility and infectiousness, demographic coupling, output aggregation, and cumulative flow tracking. Those features are documented in the workflow pages below rather than expanded here.
 
 ## Learning path
 

@@ -4,12 +4,17 @@
 \alias{SEIRModel}
 \title{Construct a minimal SEIR disease model}
 \usage{
-SEIRModel(sigma, gamma)
+SEIRModel(sigma, gamma, beta = NULL)
 }
 \arguments{
 \item{sigma}{Non-negative finite numeric scalar progression rate.}
 
 \item{gamma}{Non-negative finite numeric scalar recovery rate.}
+
+\item{beta}{Optional non-negative finite numeric scalar transmission rate.
+The model stores this default for later use by simulation and
+transition-rate evaluation. When omitted, infection-capable models default
+to \code{1}; models without infection transitions leave the field \code{NULL}.}
 }
 \value{
 A \code{DiseaseModel} list describing an SEIR model.

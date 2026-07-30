@@ -128,7 +128,9 @@ check_population_balance(state, model, ages, contact_matrix, beta = 0.1)
 Use these when you want to confirm the logical transition table, see which
 compartments are source-only or sink-only, check reachability from an initial
 state, or verify that evaluated transition rates still balance at the whole
-population level.
+population level. The inspection helpers follow the same beta resolution rules
+as the simulators: model-level beta is optional, explicit beta overrides are
+respected, and non-infectious models do not require beta.
 
 External sinks are declared separately through `outflows = data.frame(from,
 rate[, id])`. Outflows remove people from the source compartment without
@@ -227,10 +229,12 @@ infectiousness_weights = list(
 ```
 
 The compartment-level infectiousness weights are separate from the
-age-specific `infectiousness` argument passed to `transition_rates()` or
-`simulate_deterministic()`. Compartment weights modify the contribution of
-infectious source compartments and ages to infection pressure; the
-age-specific `infectiousness` argument scales the source-age infectious
+low-level `infectiousness` argument passed to `force_of_infection()`. The
+higher-level `transition_rates()`, `simulate_deterministic()`, and
+`simulate_stochastic()` functions use the model-stored susceptibility and
+infectiousness values automatically. Compartment weights modify the
+contribution of infectious source compartments and ages to infection pressure;
+the low-level direct infectiousness input scales the source-age infectious
 fraction directly inside `force_of_infection()`.
 
 ## Contact Matrix Convention

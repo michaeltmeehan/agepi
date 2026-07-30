@@ -33,9 +33,9 @@ Long-format state data with columns \code{compartment}, \code{age_group}, and
 \description{
 Allocates an age-specific population vector into compartments by multiplying
 supplied proportions by the population. Each supplied compartment proportion
-may be a scalar, an unnamed full-length vector in model age order, or a named
-full-length vector that is realigned to \code{age_structure$age_groups}. Any
-valid non-residual compartment omitted from \code{proportions} defaults to
+may be a scalar, an unnamed full-length vector in model age order, or a
+named full-length vector that is realigned to \code{age_structure$age_groups}.
+Any valid non-residual compartment omitted from \code{proportions} defaults to
 zero in every age group. The residual population is assigned to
 \code{residual_compartment}.
 }

@@ -32,11 +32,10 @@
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
-#' @param beta Non-negative finite transmission scaling parameter.
-#' @param susceptibility Optional non-negative numeric vector by recipient age
-#'   group.
-#' @param infectiousness Optional non-negative numeric vector by source age
-#'   group.
+#' @param beta Optional non-negative finite transmission scaling parameter.
+#'   When omitted, infectious models use `model$beta` if present and error if
+#'   no default is available. Models without infection transitions do not
+#'   require beta; an explicit beta is validated and otherwise ignored.
 #' @param population Optional fixed positive population vector by age group.
 #'   When supplied, it must match the age-specific totals in `initial_state`.
 #'   When omitted, age-specific totals from `initial_state` are used.
@@ -70,9 +69,7 @@ simulate_stochastic <- function(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL,
+  beta = NULL,
   population = NULL,
   method = "gillespie",
   seed = NULL,
@@ -89,17 +86,11 @@ simulate_stochastic <- function(
   validate_stochastic_model(model)
   validate_stochastic_no_demography(demographic_process)
   validate_contact_matrix(contact_matrix, age_structure)
-  beta <- validate_force_beta(beta)
-  susceptibility <- validate_optional_force_vector(
-    susceptibility,
-    age_structure$n_age_groups,
-    "susceptibility"
-  )
-  infectiousness <- validate_optional_force_vector(
-    infectiousness,
-    age_structure$n_age_groups,
-    "infectiousness"
-  )
+  if (model_has_infection_process(model)) {
+    beta <- resolve_transmission_beta(model, beta)
+  } else if (!is.null(beta)) {
+    beta <- validate_force_beta(beta)
+  }
 
   state_vector <- simulation_state_to_vector(
     initial_state,
@@ -124,9 +115,7 @@ simulate_stochastic <- function(
       model = model,
       age_structure = age_structure,
       contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness
+      beta = beta
     )
   }
 
@@ -138,8 +127,6 @@ simulate_stochastic <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       population = population,
       return_events = return_events,
       cumulative_spec = cumulative_spec
@@ -154,8 +141,6 @@ stochastic_gillespie_fixed_population <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   population,
   return_events,
   cumulative_spec = NULL
@@ -180,8 +165,6 @@ stochastic_gillespie_fixed_population <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       population = population
     )
     total_rate <- sum(propensities$rate)
@@ -284,8 +267,6 @@ stochastic_propensities <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   population
 ) {
   stochastic_event_table(
@@ -294,8 +275,6 @@ stochastic_propensities <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     population = population
   )
 }
@@ -306,8 +285,6 @@ stochastic_event_table <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   population
 ) {
   rates <- transition_rates(
@@ -315,9 +292,7 @@ stochastic_event_table <- function(
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness
+    beta = beta
   )
   validate_stochastic_transition_rates(rates, model, age_structure)
 
@@ -518,18 +493,14 @@ prepare_stochastic_cumulative_flows <- function(
   model,
   age_structure,
   contact_matrix,
-  beta,
-  susceptibility,
-  infectiousness
+  beta
 ) {
   rates <- transition_rates(
     state = state_vector,
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness
+    beta = beta
   )
   flows <- validate_cumulative_flows(cumulative_flows, rates)
   output_spec <- cumulative_flow_state_spec(flows, age_structure$age_groups)

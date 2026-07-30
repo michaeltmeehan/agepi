@@ -17,12 +17,24 @@ validation_sir_state <- function(S, I, R, ages) {
   )
 }
 
-validation_generic_sir_model <- function(gamma) {
+validation_generic_sir_model <- function(gamma, susceptibility = 1, infectiousness = 1) {
+  infectiousness_weights <- if (is.numeric(infectiousness) && length(infectiousness) == 1 && is.null(names(infectiousness))) {
+    infectiousness
+  } else {
+    list(infectiousness)
+  }
+
   CompartmentModel(
     compartments = c("S", "I", "R"),
-    infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+    infection_transitions = data.frame(
+      from = "S",
+      to = "I",
+      susceptibility = I(list(susceptibility)),
+      stringsAsFactors = FALSE
+    ),
     transitions = data.frame(from = "I", to = "R", rate = gamma, stringsAsFactors = FALSE),
-    infectious_compartments = "I"
+    infectious_compartments = "I",
+    infectiousness_weights = infectiousness_weights
   )
 }
 
@@ -131,8 +143,6 @@ test_that("age-structured SIR reduces to homogeneous scalar SIR under symmetric 
     age_structure = ages,
     contact_matrix = matrix(1 / ages$n_age_groups, ages$n_age_groups, ages$n_age_groups),
     beta = beta,
-    susceptibility = rep(1, ages$n_age_groups),
-    infectiousness = rep(1, ages$n_age_groups),
     method = "euler"
   )
 
@@ -254,8 +264,6 @@ test_that("age-structured SIR final size matches vector final-size equations", {
     age_structure = ages,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     method = "deSolve"
   )
   final <- output[output$time == max(output$time), ]
@@ -294,12 +302,14 @@ test_that("generic age-structured SIR final size matches vector final-size equat
   output <- simulate_deterministic(
     initial_state = validation_sir_state(S0, I0, R0, ages),
     times = seq(0, 500, by = 1),
-    model = validation_generic_sir_model(gamma = gamma),
+    model = validation_generic_sir_model(
+      gamma = gamma,
+      susceptibility = susceptibility,
+      infectiousness = infectiousness
+    ),
     age_structure = ages,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     method = "deSolve"
   )
   final <- output[output$time == max(output$time), ]

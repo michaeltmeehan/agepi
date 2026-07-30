@@ -124,6 +124,145 @@ test_that("transition_rates computes SEIR infection, progression, and recovery r
   expect_equal(rates, expected)
 })
 
+test_that("SIR and SEIR constructors match explicit unit susceptibility and infectiousness", {
+  ages <- test_ages()
+  contacts <- test_contacts()
+
+  sir_rates <- transition_rates(
+    state = test_state(),
+    model = SIRModel(gamma = 0.2, beta = 0.4),
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+  generic_sir_rates <- transition_rates(
+    state = test_state(),
+    model = CompartmentModel(
+      compartments = c("S", "I", "R"),
+      infection_transitions = data.frame(
+        from = "S",
+        to = "I",
+        susceptibility = 1,
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+      infectious_compartments = "I",
+      infectiousness_weights = 1,
+      beta = 0.4
+    ),
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+
+  seir_rates <- transition_rates(
+    state = test_seir_state(),
+    model = SEIRModel(sigma = 0.3, gamma = 0.2, beta = 0.4),
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+  generic_seir_rates <- transition_rates(
+    state = test_seir_state(),
+    model = CompartmentModel(
+      compartments = c("S", "E", "I", "R"),
+      infection_transitions = data.frame(
+        from = "S",
+        to = "E",
+        susceptibility = 1,
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(
+        from = c("E", "I"),
+        to = c("I", "R"),
+        rate = c(0.3, 0.2),
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = "I",
+      infectiousness_weights = 1,
+      beta = 0.4
+    ),
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+
+  expect_equal(sir_rates, generic_sir_rates)
+  expect_equal(seir_rates, generic_seir_rates)
+})
+
+test_that("transition_rates honors explicit beta overrides and ignores beta for non-infectious models", {
+  ages <- test_ages()
+  contacts <- test_contacts()
+  infectious_model <- SIRModel(gamma = 0.2, beta = 0.4)
+
+  default_rates <- transition_rates(
+    state = test_state(),
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+  zero_override <- transition_rates(
+    state = test_state(),
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0
+  )
+  other_override <- transition_rates(
+    state = test_state(),
+    model = infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.1
+  )
+  no_model_beta <- infectious_model
+  no_model_beta$beta <- NULL
+
+  expect_true(all(zero_override$rate[zero_override$transition_id == "infection:S->I"] == 0))
+  expect_equal(
+    zero_override$rate[zero_override$transition_id == "transition:I->R"],
+    default_rates$rate[default_rates$transition_id == "transition:I->R"]
+  )
+  expect_equal(
+    other_override$rate[other_override$transition_id == "infection:S->I"],
+    default_rates$rate[default_rates$transition_id == "infection:S->I"] * 0.25
+  )
+  expect_error(
+    transition_rates(
+      state = test_state(),
+      model = no_model_beta,
+      age_structure = ages,
+      contact_matrix = contacts
+    ),
+    "beta is required"
+  )
+
+  non_infectious_model <- CompartmentModel(
+    compartments = c("S", "R"),
+    transitions = data.frame(from = "S", to = "R", rate = 0.1, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  non_infectious_state <- data.frame(
+    compartment = rep(c("S", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 2),
+    value = c(100, 80, 0, 0),
+    stringsAsFactors = FALSE
+  )
+  non_infectious_default <- transition_rates(
+    state = non_infectious_state,
+    model = non_infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts
+  )
+  non_infectious_override <- transition_rates(
+    state = non_infectious_state,
+    model = non_infectious_model,
+    age_structure = ages,
+    contact_matrix = contacts,
+    beta = 0.7
+  )
+
+  expect_equal(non_infectious_default, non_infectious_override)
+  expect_identical(infectious_model$beta, 0.4)
+})
+
 test_that("SEIR force of infection depends on I rather than E", {
   rates_without_exposed <- transition_rates(
     state = test_seir_state(E = c(0, 0), I = c(10, 20), R = c(5, 15)),
@@ -217,10 +356,19 @@ test_that("gamma scaling affects only recovery rates", {
 test_that("susceptibility modifies infection rates by recipient age group", {
   rates <- transition_rates(
     state = test_state(),
-    model = SIRModel(gamma = 0.2),
+    model = CompartmentModel(
+      compartments = c("S", "I", "R"),
+      infection_transitions = data.frame(
+        from = "S",
+        to = "I",
+        susceptibility = I(list(c(0.5, 2))),
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+      infectious_compartments = "I"
+    ),
     age_structure = test_ages(),
-    contact_matrix = test_contacts(),
-    susceptibility = c(0.5, 2)
+    contact_matrix = test_contacts()
   )
 
   expect_equal(rates$rate, c(13.5, 2, 252, 4))
@@ -229,10 +377,15 @@ test_that("susceptibility modifies infection rates by recipient age group", {
 test_that("infectiousness modifies infection pressure from source age groups", {
   rates <- transition_rates(
     state = test_state(),
-    model = SIRModel(gamma = 0.2),
+    model = CompartmentModel(
+      compartments = c("S", "I", "R"),
+      infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+      transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+      infectious_compartments = "I",
+      infectiousness_weights = list(c(2, 0.5))
+    ),
     age_structure = test_ages(),
-    contact_matrix = test_contacts(),
-    infectiousness = c(2, 0.5)
+    contact_matrix = test_contacts()
   )
 
   expect_equal(rates$rate, c(40.5, 2, 144, 4))

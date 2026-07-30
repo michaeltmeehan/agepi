@@ -90,13 +90,7 @@ simulate_vaccine_model <- function(susceptibility = list(1, 0.5)) {
     to = c("I", "I"),
     stringsAsFactors = FALSE
   )
-  if (!is.null(susceptibility)) {
-    if (is.list(susceptibility)) {
-      infection_transitions$susceptibility <- I(susceptibility)
-    } else {
-      infection_transitions$susceptibility <- susceptibility
-    }
-  }
+  infection_transitions$susceptibility <- I(if (is.null(susceptibility)) list(1, 1) else susceptibility)
 
   CompartmentModel(
     compartments = c("S", "V", "I"),
@@ -1003,9 +997,7 @@ test_that("cumulative derivative equals the transition flow used by compartment 
     model = SIRModel(gamma = 0.2),
     age_structure = ages,
     contact_matrix = simulate_test_contacts(),
-    beta = 1,
-    susceptibility = NULL,
-    infectiousness = NULL
+    beta = 1
   )
 
   derivative <- deterministic_derivative_augmented(
@@ -1016,8 +1008,6 @@ test_that("cumulative derivative equals the transition flow used by compartment 
     age_structure = ages,
     contact_matrix = simulate_test_contacts(),
     beta = 1,
-    susceptibility = NULL,
-    infectiousness = NULL,
     cumulative_spec = spec
   )
   rates <- transition_rates(state, SIRModel(gamma = 0.2), ages, simulate_test_contacts())
@@ -1070,18 +1060,16 @@ test_that("cumulative_flows do not contaminate force-of-infection denominators",
     model = SIRModel(gamma = 0.2),
     age_structure = ages,
     contact_matrix = simulate_test_contacts(),
-    beta = 1,
-    susceptibility = NULL,
-    infectiousness = NULL
+    beta = 1
   )
 
   low_counter <- deterministic_derivative_augmented(
     c(state, 0, 0), length(state), 0, SIRModel(gamma = 0.2), ages,
-    simulate_test_contacts(), 1, NULL, NULL, cumulative_spec = spec
+    simulate_test_contacts(), 1, cumulative_spec = spec
   )
   high_counter <- deterministic_derivative_augmented(
     c(state, 1e9, 1e9), length(state), 0, SIRModel(gamma = 0.2), ages,
-    simulate_test_contacts(), 1, NULL, NULL, cumulative_spec = spec
+    simulate_test_contacts(), 1, cumulative_spec = spec
   )
 
   expect_equal(high_counter, low_counter)
@@ -1213,25 +1201,107 @@ test_that("invalid contact matrix dimensions are rejected via transition validat
 
 test_that("invalid susceptibility and infectiousness are rejected via transition validation", {
   expect_error(
-    simulate_deterministic(
-      initial_state = simulate_test_state(),
-      times = c(0, 0.1),
-      model = SIRModel(gamma = 0.2),
-      age_structure = simulate_test_ages(),
-      contact_matrix = simulate_test_contacts(),
-      susceptibility = c(1, -1)
+    CompartmentModel(
+      compartments = c("S", "V", "I"),
+      infection_transitions = data.frame(
+        from = c("S", "V"),
+        to = c("I", "I"),
+        susceptibility = I(list(1, c(1, -1))),
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(from = character(), to = character(), rate = numeric(), stringsAsFactors = FALSE),
+      infectious_compartments = "I"
     ),
-    "susceptibility cannot contain negative"
+    "cannot contain negative values"
   )
   expect_error(
-    simulate_deterministic(
-      initial_state = simulate_test_state(),
-      times = c(0, 0.1),
-      model = SIRModel(gamma = 0.2),
-      age_structure = simulate_test_ages(),
-      contact_matrix = simulate_test_contacts(),
-      infectiousness = c(1, 1, 1)
+    CompartmentModel(
+      compartments = c("S", "I", "R"),
+      infection_transitions = data.frame(from = "S", to = "I", stringsAsFactors = FALSE),
+      transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+      infectious_compartments = "I",
+      infectiousness_weights = c(1, 1, 1)
     ),
-    "infectiousness length"
+    "finite numeric vector with one value per infectious_compartment"
   )
+})
+
+test_that("simulate_deterministic respects explicit beta overrides without mutating the model", {
+  model <- SIRModel(gamma = 0.2, beta = 0.4)
+  times <- c(0, 1)
+
+  default_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = model,
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.4,
+    method = "euler",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+  zero_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = model,
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0,
+    method = "euler",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+  weak_output <- simulate_deterministic(
+    initial_state = simulate_test_state(),
+    times = times,
+    model = model,
+    age_structure = simulate_test_ages(),
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.1,
+    method = "euler",
+    cumulative_flows = list(infections = list(from = "S", to = "I"))
+  )
+
+  default_total <- sum(default_output$cumulative$value[default_output$cumulative$time == max(times)])
+  zero_total <- sum(zero_output$cumulative$value[zero_output$cumulative$time == max(times)])
+  weak_total <- sum(weak_output$cumulative$value[weak_output$cumulative$time == max(times)])
+
+  expect_identical(model$beta, 0.4)
+  expect_equal(zero_total, 0)
+  expect_gt(weak_total, zero_total)
+  expect_gt(default_total, weak_total)
+})
+
+test_that("simulate_deterministic does not require beta for non-infectious models", {
+  ages <- simulate_test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "R"),
+    transitions = data.frame(from = "S", to = "R", rate = 0.1, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "R"), each = 2),
+    age_group = rep(ages$age_groups, times = 2),
+    value = c(100, 80, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  baseline <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    method = "euler"
+  )
+  explicit_beta <- simulate_deterministic(
+    initial_state = initial_state,
+    times = c(0, 1),
+    model = model,
+    age_structure = ages,
+    contact_matrix = simulate_test_contacts(),
+    beta = 0.7,
+    method = "euler"
+  )
+
+  expect_equal(baseline, explicit_beta)
 })

@@ -45,8 +45,6 @@ initial_state <- data.frame(
 beta <- 0.08
 sigma <- 0.4
 gamma <- 0.25
-susceptibility <- c(0.8, 1, 1.2)
-infectiousness <- c(1.1, 1, 0.9)
 times <- seq(0, 2, by = 0.1)
 
 generic_model <- CompartmentModel(
@@ -70,8 +68,6 @@ generic_output <- simulate_deterministic(
   age_structure = age_structure,
   contact_matrix = contact_matrix,
   beta = beta,
-  susceptibility = susceptibility,
-  infectiousness = infectiousness,
   method = "euler"
 )
 
@@ -82,8 +78,6 @@ specialised_output <- simulate_deterministic(
   age_structure = age_structure,
   contact_matrix = contact_matrix,
   beta = beta,
-  susceptibility = susceptibility,
-  infectiousness = infectiousness,
   method = "euler"
 )
 

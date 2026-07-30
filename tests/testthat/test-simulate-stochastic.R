@@ -107,13 +107,7 @@ stochastic_vaccine_model <- function(susceptibility = list(1, 0.5)) {
     to = c("I", "I"),
     stringsAsFactors = FALSE
   )
-  if (!is.null(susceptibility)) {
-    if (is.list(susceptibility)) {
-      infection_transitions$susceptibility <- I(susceptibility)
-    } else {
-      infection_transitions$susceptibility <- susceptibility
-    }
-  }
+  infection_transitions$susceptibility <- I(if (is.null(susceptibility)) list(1, 1) else susceptibility)
 
   CompartmentModel(
     compartments = c("S", "V", "I"),
@@ -594,6 +588,78 @@ test_that("stochastic simulation never generates infections from zero-susceptibi
   expect_true(nrow(infection_events) > 0)
   expect_true(all(infection_events$from == "S"))
   expect_false(any(infection_events$from == "V"))
+})
+
+test_that("simulate_stochastic respects model beta, explicit zero overrides, and non-infectious models", {
+  model <- SIRModel(gamma = 0.2, beta = 0.4)
+
+  default_output <- simulate_stochastic(
+    initial_state = stochastic_test_state(),
+    times = c(0, 5),
+    model = model,
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    seed = 61,
+    return_events = TRUE
+  )
+  explicit_model_output <- simulate_stochastic(
+    initial_state = stochastic_test_state(),
+    times = c(0, 5),
+    model = model,
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0.4,
+    seed = 61,
+    return_events = TRUE
+  )
+  zero_override <- simulate_stochastic(
+    initial_state = stochastic_test_state(),
+    times = c(0, 5),
+    model = model,
+    age_structure = stochastic_test_ages(),
+    contact_matrix = stochastic_test_contacts(),
+    beta = 0,
+    seed = 61,
+    return_events = TRUE
+  )
+
+  expect_identical(model$beta, 0.4)
+  expect_equal(default_output, explicit_model_output)
+  expect_equal(sum(zero_override$events$event == "infection"), 0)
+
+  non_infectious_model <- CompartmentModel(
+    compartments = c("S", "R"),
+    transitions = data.frame(from = "S", to = "R", rate = 0.1, stringsAsFactors = FALSE),
+    infectious_compartments = character()
+  )
+  initial_state <- data.frame(
+    compartment = rep(c("S", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 2),
+    value = c(100, 80, 0, 0),
+    stringsAsFactors = FALSE
+  )
+
+  baseline <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(0, 2),
+    model = non_infectious_model,
+    age_structure = stochastic_test_ages(),
+    contact_matrix = matrix(0, nrow = 2, ncol = 2),
+    seed = 91,
+    return_events = TRUE
+  )
+  explicit_beta <- simulate_stochastic(
+    initial_state = initial_state,
+    times = c(0, 2),
+    model = non_infectious_model,
+    age_structure = stochastic_test_ages(),
+    contact_matrix = matrix(0, nrow = 2, ncol = 2),
+    beta = 0.7,
+    seed = 91,
+    return_events = TRUE
+  )
+
+  expect_equal(baseline, explicit_beta)
 })
 
 test_that("simulate_stochastic output is unchanged when cumulative_flows is NULL", {

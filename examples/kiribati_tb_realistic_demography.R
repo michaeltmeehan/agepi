@@ -183,6 +183,7 @@ tb_model <- CompartmentModel(
     ifelse(age_lower < 15, 0, rel_infectiousness_lowinf),
     rep(1, length(age_lower))
     )),
+  beta = tb_parameters$beta,
   transitions = data.frame(name = c("containment", "clearance", "breakdown", "progression.lowinf", "progression.inf", "clin.progression.lowinf", "clin.progression.inf", "clin.regression.lowinf", "clin.regression.inf", "infectious.gain.sub", "infectious.gain.clin", "infectiousness.loss.sub", "infectiousness.loss.clin", "self.recovery.lowinf", "self.recovery.inf", "detection.sub.lowinf", "detection.sub.inf", "detection.clin.lowinf", "detection.clin.inf", "tx.recovery", "relapse"),
                            from = c("Incipient", "Contained", "Contained", "Incipient", "Incipient", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Sub.clin.lowinf", "Clin.lowinf", "Sub.clin.inf", "Clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Treatment", "Treatment"),
                            to = c("Contained", "Cleared", "Incipient", "Sub.clin.lowinf", "Sub.clin.inf", "Clin.lowinf", "Clin.inf", "Sub.clin.lowinf", "Sub.clin.inf", "Sub.clin.inf", "Clin.inf", "Sub.clin.lowinf", "Clin.lowinf", "Recovered", "Recovered", "Treatment", "Treatment", "Treatment", "Treatment", "Recovered", "Sub.clin.lowinf"),
@@ -275,9 +276,6 @@ tb_output <- simulate_deterministic(
   model = tb_model,
   age_structure = age_structure,
   contact_matrix = contact_matrix,
-  beta = tb_parameters$beta,
-  susceptibility = tb_parameters$susceptibility,
-  infectiousness = tb_parameters$infectiousness,
   demographic_process = demographic_process,
   time_policy = demographic_time_policy,
   migration_policy = "proportional",

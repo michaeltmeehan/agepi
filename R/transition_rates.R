@@ -15,11 +15,10 @@
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
-#' @param beta Non-negative finite transmission scaling parameter.
-#' @param susceptibility Optional non-negative numeric vector by recipient age
-#'   group.
-#' @param infectiousness Optional non-negative numeric vector by source age
-#'   group.
+#' @param beta Optional non-negative finite transmission scaling parameter.
+#'   When omitted, infectious models use `model$beta` if present and error if
+#'   no default is available. Models without infection transitions do not
+#'   require beta; an explicit beta is validated and otherwise ignored.
 #'
 #' @return Data frame with columns `from`, `to`, `age_group`, `rate`, and
 #'   `transition_id`, ordered by age group outermost and transition innermost.
@@ -31,12 +30,15 @@ transition_rates <- function(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL
+  beta = NULL
 ) {
   validate_disease_model(model)
   validate_age_structure(age_structure)
+  if (model_has_infection_process(model)) {
+    beta <- resolve_transmission_beta(model, beta)
+  } else if (!is.null(beta)) {
+    beta <- validate_force_beta(beta)
+  }
 
   state_long <- transition_state_to_long(state, age_structure, model$compartments)
   validate_non_negative_state_values(state_long)
@@ -47,9 +49,7 @@ transition_rates <- function(
       model = model,
       age_structure = age_structure,
       contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness
+      beta = beta
     ))
   }
 
@@ -63,8 +63,6 @@ transition_rates <- function(
     population = population,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     age_structure = age_structure
   )
 
@@ -116,9 +114,7 @@ generic_transition_rates <- function(
   model,
   age_structure,
   contact_matrix,
-  beta,
-  susceptibility,
-  infectiousness
+  beta
 ) {
   population <- transition_population_by_age(state_long, age_structure, model$compartments)
 
@@ -128,8 +124,6 @@ generic_transition_rates <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     population = population
   )
   per_capita_rates <- generic_per_capita_transition_rates(
@@ -152,8 +146,6 @@ generic_infection_rates <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   population
 ) {
   if (nrow(model$infection_transitions) == 0) {
@@ -180,25 +172,13 @@ generic_infection_rates <- function(
     colSums(infectious_state_matrix * infectiousness_matrix)
   }
 
-  if (any(population == 0)) {
-    infectious_fraction <- ifelse(
-      population == 0,
-      0,
-      infectiousness * infectious / population
-    )
-    lambda <- as.numeric(beta * susceptibility * (contact_matrix %*% infectious_fraction))
-    names(lambda) <- age_structure$age_groups
-  } else {
-    lambda <- force_of_infection(
-      infectious = infectious,
-      population = population,
-      contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
-      age_structure = age_structure
-    )
-  }
+  lambda <- force_of_infection(
+    infectious = infectious,
+    population = population,
+    contact_matrix = contact_matrix,
+    beta = beta,
+    age_structure = age_structure
+  )
 
   rows <- vector("list", nrow(model$infection_transitions))
   for (i in seq_len(nrow(model$infection_transitions))) {

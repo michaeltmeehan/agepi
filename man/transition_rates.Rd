@@ -4,15 +4,7 @@
 \alias{transition_rates}
 \title{Compute disease transition rates}
 \usage{
-transition_rates(
-  state,
-  model,
-  age_structure,
-  contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL
-)
+transition_rates(state, model, age_structure, contact_matrix, beta = NULL)
 }
 \arguments{
 \item{state}{Long-form state data frame or numeric state vector.}
@@ -25,13 +17,10 @@ transition_rates(
 \item{contact_matrix}{Numeric contact matrix with rows as recipient age
 groups and columns as source age groups.}
 
-\item{beta}{Non-negative finite transmission scaling parameter.}
-
-\item{susceptibility}{Optional non-negative numeric vector by recipient age
-group.}
-
-\item{infectiousness}{Optional non-negative numeric vector by source age
-group.}
+\item{beta}{Optional non-negative finite transmission scaling parameter.
+When omitted, infectious models use \code{model$beta} if present and error if
+no default is available. Models without infection transitions do not
+require beta; an explicit beta is validated and otherwise ignored.}
 }
 \value{
 Data frame with columns \code{from}, \code{to}, \code{age_group}, \code{rate}, and

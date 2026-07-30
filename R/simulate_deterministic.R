@@ -28,9 +28,11 @@
 #'   deterministic compartment models.
 #'
 #' Both solver backends use the same transition-rate and derivative pathway:
-#' static contact matrix, static `beta`, static susceptibility, and static
-#' infectiousness. The deSolve backend also supports demographic coupling via
-#' the existing demographic derivative path.
+#' static contact matrix and a resolved transmission `beta` drawn from the
+#' simulation override or model default. Model-level infection-transition
+#' susceptibility and infectiousness weights are used automatically. The
+#' deSolve backend also supports demographic coupling via the existing
+#' demographic derivative path.
 #'
 #' A first-pass SIR/SEIR-demography coupling is available via
 #' `demographic_process`. In this coupled mode, births enter the youngest
@@ -61,11 +63,10 @@
 #' @param age_structure Valid age structure.
 #' @param contact_matrix Numeric contact matrix with rows as recipient age
 #'   groups and columns as source age groups.
-#' @param beta Non-negative finite transmission scaling parameter.
-#' @param susceptibility Optional non-negative numeric vector by recipient age
-#'   group.
-#' @param infectiousness Optional non-negative numeric vector by source age
-#'   group.
+#' @param beta Optional non-negative finite transmission scaling parameter.
+#'   When omitted, infectious models use `model$beta` if present and error if
+#'   no default is available. Models without infection transitions do not
+#'   require beta; an explicit beta is validated and otherwise ignored.
 #' @param method Simulation method. `NULL` selects `"deSolve"` for infection-
 #'   only runs and `"euler"` for coupled demographic runs with
 #'   `ageing_policy = "exponential"`. `"deSolve"` and `"ode"` request the
@@ -116,9 +117,7 @@ simulate_deterministic <- function(
   model,
   age_structure,
   contact_matrix,
-  beta = 1,
-  susceptibility = NULL,
-  infectiousness = NULL,
+  beta = NULL,
   method = NULL,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
@@ -136,6 +135,11 @@ simulate_deterministic <- function(
   validate_age_structure(age_structure)
   if (!is.null(output_age_structure)) {
     validate_age_structure(output_age_structure)
+  }
+  if (model_has_infection_process(model)) {
+    beta <- resolve_transmission_beta(model, beta)
+  } else if (!is.null(beta)) {
+    beta <- validate_force_beta(beta)
   }
   time_policy <- validate_simulation_demography_inputs(
     demographic_process = demographic_process,
@@ -165,9 +169,7 @@ simulate_deterministic <- function(
       model = model,
       age_structure = age_structure,
       contact_matrix = contact_matrix,
-      beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness
+      beta = beta
     )
   }
 
@@ -180,8 +182,6 @@ simulate_deterministic <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       demographic_process = demographic_process,
       time_policy = time_policy,
       migration_policy = migration_policy,
@@ -196,8 +196,6 @@ simulate_deterministic <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       demographic_process = demographic_process,
       time_policy = time_policy,
       migration_policy = migration_policy,
@@ -216,8 +214,6 @@ simulate_deterministic_annual_cohort_split <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
@@ -254,8 +250,6 @@ simulate_deterministic_annual_cohort_split <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       cumulative_spec = cumulative_spec
     )
 
@@ -299,8 +293,6 @@ deterministic_annual_interval_epidemic_step <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   cumulative_spec = NULL
 ) {
   if (is.null(cumulative_spec) && deterministic_epidemic_dynamics_disabled(model, beta)) {
@@ -320,8 +312,6 @@ deterministic_annual_interval_epidemic_step <- function(
         age_structure = age_structure,
         contact_matrix = contact_matrix,
         beta = beta,
-        susceptibility = susceptibility,
-        infectiousness = infectiousness,
         demographic_process = NULL,
         cumulative_spec = cumulative_spec
       )
@@ -346,7 +336,12 @@ deterministic_annual_interval_epidemic_step <- function(
 
 deterministic_epidemic_dynamics_disabled <- function(model, beta) {
   validate_disease_model(model)
-  beta_is_zero <- is.numeric(beta) && length(beta) == 1 && !is.na(beta) && is.finite(beta) && beta == 0
+  if (!model_has_infection_process(model)) {
+    return(nrow(model$transitions) == 0)
+  }
+
+  beta_value <- resolve_transmission_beta(model, beta)
+  beta_is_zero <- is.numeric(beta_value) && length(beta_value) == 1 && !is.na(beta_value) && is.finite(beta_value) && beta_value == 0
 
   if (model$model_type == "SIR") {
     return(beta_is_zero && model$gamma == 0)
@@ -539,8 +534,6 @@ simulate_deterministic_integrated <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
@@ -564,8 +557,6 @@ simulate_deterministic_integrated <- function(
         age_structure = age_structure,
         contact_matrix = contact_matrix,
         beta = beta,
-        susceptibility = susceptibility,
-        infectiousness = infectiousness,
         demographic_process = demographic_process,
         time_policy = time_policy,
         migration_policy = migration_policy,
@@ -608,8 +599,6 @@ deterministic_derivative_augmented <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
@@ -624,8 +613,6 @@ deterministic_derivative_augmented <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      susceptibility = susceptibility,
-      infectiousness = infectiousness,
       demographic_process = demographic_process,
       time_policy = time_policy,
       migration_policy = migration_policy
@@ -637,9 +624,7 @@ deterministic_derivative_augmented <- function(
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness
+    beta = beta
   )
   derivative <- rates_to_derivative(
     transition_rate_table = rates,
@@ -675,18 +660,14 @@ prepare_deterministic_cumulative_flows <- function(
   model,
   age_structure,
   contact_matrix,
-  beta,
-  susceptibility,
-  infectiousness
+  beta
 ) {
   rates <- transition_rates(
     state = state_vector,
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness
+    beta = beta
   )
   flows <- validate_cumulative_flows(cumulative_flows, rates)
   state_spec <- cumulative_flow_state_spec(flows, age_structure$age_groups)
@@ -772,8 +753,6 @@ deterministic_derivative <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
@@ -783,9 +762,7 @@ deterministic_derivative <- function(
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness
+    beta = beta
   )
   derivative <- rates_to_derivative(
     transition_rate_table = rates,
@@ -816,8 +793,6 @@ simulate_deterministic_euler <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
@@ -830,8 +805,6 @@ simulate_deterministic_euler <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     demographic_process = demographic_process,
     time_policy = time_policy,
     migration_policy = migration_policy
@@ -845,8 +818,6 @@ deterministic_euler_derivative <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
@@ -858,8 +829,6 @@ deterministic_euler_derivative <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     demographic_process = demographic_process,
     time_policy = time_policy,
     migration_policy = migration_policy
@@ -1018,8 +987,6 @@ simulate_deterministic_desolve <- function(
   age_structure,
   contact_matrix,
   beta,
-  susceptibility,
-  infectiousness,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error")
@@ -1032,8 +999,6 @@ simulate_deterministic_desolve <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    susceptibility = susceptibility,
-    infectiousness = infectiousness,
     demographic_process = demographic_process,
     time_policy = time_policy,
     migration_policy = migration_policy
