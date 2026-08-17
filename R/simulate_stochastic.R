@@ -299,7 +299,9 @@ stochastic_event_table <- function(
   transition_order <- stochastic_transition_order(model)
   rates$.transition_index <- match(rates$transition_id, transition_order$transition_id)
   rates$age_index <- match(rates$age_group, age_structure$age_groups)
-  rates$transition_type <- transition_type_from_ids(rates$transition_id)
+  if (!"transition_type" %in% names(rates)) {
+    rates$transition_type <- transition_type_from_ids(rates$transition_id)
+  }
   rates$event <- stochastic_event_labels(rates, model)
   rates <- rates[order(rates$.transition_index, rates$age_index), ]
   row.names(rates) <- NULL
@@ -321,7 +323,7 @@ stochastic_transition_order <- function(model) {
 }
 
 stochastic_event_labels <- function(rates, model) {
-  labels <- transition_type_from_ids(rates$transition_id)
+  labels <- if ("transition_type" %in% names(rates)) rates$transition_type else transition_type_from_ids(rates$transition_id)
 
   if (identical(model$model_type, "SIR")) {
     labels[rates$transition_id == "infection:S->I"] <- "infection"

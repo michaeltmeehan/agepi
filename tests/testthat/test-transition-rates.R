@@ -91,6 +91,8 @@ test_that("transition_rates computes a manually checkable SIR example", {
       "infection:S->I",
       "transition:I->R"
     ),
+    transition_label = rep(NA_character_, 4),
+    transition_type = c("infection", "transition", "infection", "transition"),
     stringsAsFactors = FALSE
   )
 
@@ -118,6 +120,8 @@ test_that("transition_rates computes SEIR infection, progression, and recovery r
       "transition:E->I",
       "transition:I->R"
     ),
+    transition_label = rep(NA_character_, 6),
+    transition_type = c("infection", "transition", "transition", "infection", "transition", "transition"),
     stringsAsFactors = FALSE
   )
 
@@ -906,7 +910,10 @@ test_that("transition_rates returns the expected output columns", {
     contact_matrix = test_contacts()
   )
 
-  expect_identical(names(rates), c("from", "to", "age_group", "rate", "transition_id"))
+  expect_identical(
+    names(rates),
+    c("from", "to", "age_group", "rate", "transition_id", "transition_label", "transition_type")
+  )
 })
 
 test_that("transition_rates includes stable logical transition identifiers", {
@@ -1013,12 +1020,44 @@ test_that("cumulative-flow validation accepts named list specifications", {
   )
 
   expect_equal(
-    flows,
+    flows[, c("cumulative_name", "transition_id", "from", "to")],
     data.frame(
       cumulative_name = c("infections", "progressions"),
       transition_id = c("infection:S->E", "transition:E->I"),
       from = c("S", "E"),
       to = c("E", "I"),
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_true(all(is.na(flows$transition_label)))
+  expect_equal(flows$transition_type, c("infection", "transition"))
+})
+
+test_that("cumulative-flow validation accepts mixed named list specifications", {
+  rates <- data.frame(
+    transition_id = c("infection:Mtb.naive->Incipient", "transition:Contained->Incipient"),
+    from = c("Mtb.naive", "Contained"),
+    to = c("Incipient", "Incipient"),
+    age_group = c("0-4", "0-4"),
+    rate = c(1, 2),
+    stringsAsFactors = FALSE
+  )
+
+  flows <- validate_cumulative_flows(
+    cumulative_flows = list(
+      infections_other = list(from = c("Mtb.naive", "Contained"), to = c("Incipient", "Incipient")),
+      infections_contained = list(transition_id = "infection:Mtb.naive->Incipient")
+    ),
+    transition_rate_table = rates
+  )
+
+  expect_equal(
+    flows[, c("cumulative_name", "transition_id", "from", "to")],
+    data.frame(
+      cumulative_name = c("infections_other", "infections_other", "infections_contained"),
+      transition_id = c(NA_character_, NA_character_, "infection:Mtb.naive->Incipient"),
+      from = c("Mtb.naive", "Contained", "Mtb.naive"),
+      to = c("Incipient", "Incipient", "Incipient"),
       stringsAsFactors = FALSE
     )
   )
@@ -1052,7 +1091,7 @@ test_that("cumulative-flow validation accepts explicit outflow selectors", {
   )
 
   expect_equal(
-    flows,
+    flows[, c("cumulative_name", "transition_id", "from", "to")],
     data.frame(
       cumulative_name = "removals",
       transition_id = "outflow:I",
@@ -1061,6 +1100,7 @@ test_that("cumulative-flow validation accepts explicit outflow selectors", {
       stringsAsFactors = FALSE
     )
   )
+  expect_equal(flows$transition_type, "outflow")
 })
 
 test_that("cumulative-flow validation accepts multi-transition named list specifications", {
@@ -1081,7 +1121,7 @@ test_that("cumulative-flow validation accepts multi-transition named list specif
   )
 
   expect_equal(
-    flows,
+    flows[, c("cumulative_name", "transition_id", "from", "to")],
     data.frame(
       cumulative_name = c("disease_onset", "disease_onset"),
       transition_id = c("transition:Lr->I", "transition:Ld->I"),
@@ -1090,6 +1130,7 @@ test_that("cumulative-flow validation accepts multi-transition named list specif
       stringsAsFactors = FALSE
     )
   )
+  expect_equal(flows$selector_index, c(1L, 2L))
 })
 
 test_that("cumulative-flow validation accepts data-frame specifications", {
@@ -1133,29 +1174,29 @@ test_that("cumulative-flow validation rejects malformed specifications", {
     ),
     "must be unique"
   )
-  expect_error(
-    validate_cumulative_flows(list(infections = list(from = "S")), rates),
-    "must include from and to"
+  expect_equal(
+    validate_cumulative_flows(list(infections = list(from = "S")), rates)$transition_id,
+    "infection:S->E"
   )
   expect_error(
     validate_cumulative_flows(list(infections = list(from = "X", to = "E")), rates),
-    "unknown source compartment"
+    "matched no transitions"
   )
   expect_error(
     validate_cumulative_flows(list(infections = list(from = "S", to = "X")), rates),
-    "unknown destination compartment"
+    "matched no transitions"
   )
   expect_error(
     validate_cumulative_flows(list(infections = list(from = "E", to = "R")), rates),
-    "does not match a declared transition"
+    "matched no transitions"
   )
   expect_error(
     validate_cumulative_flows(list(onsets = list(from = c("E", "I"), to = "R")), rates),
-    "same length"
+    "matched no transitions"
   )
   expect_error(
     validate_cumulative_flows(list(onsets = list(from = character(), to = character())), rates),
-    "non-empty character value"
+    "length 0"
   )
 })
 
@@ -1171,7 +1212,7 @@ test_that("cumulative-flow validation rejects ambiguous from-to matches", {
 
   expect_error(
     validate_cumulative_flows(list(progressions = list(from = "E", to = "I")), rates),
-    "ambiguous"
+    "matched multiple transitions"
   )
 })
 

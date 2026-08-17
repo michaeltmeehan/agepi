@@ -97,11 +97,15 @@ validate_transition_rate_table <- function(
     stop("transition_rate_table rate cannot contain negative values.", call. = FALSE)
   }
 
+  if (!"transition_type" %in% names(transition_rate_table)) {
+    transition_rate_table$transition_type <- ifelse(is.na(transition_rate_table$to), "outflow", "transition")
+  }
+
   if (!"transition_id" %in% names(transition_rate_table)) {
     transition_rate_table$transition_id <- transition_identifiers(
       from = transition_rate_table$from,
       to = transition_rate_table$to,
-      transition_type = ifelse(is.na(transition_rate_table$to), "outflow", "transition")
+      transition_type = transition_rate_table$transition_type
     )
   }
 

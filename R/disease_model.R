@@ -146,6 +146,11 @@ CompartmentModel <- function(
     compartments = compartments,
     name = "outflows"
   )
+  validate_transition_labels(
+    infection_transitions$transition_label,
+    transitions$transition_label,
+    outflows$transition_label
+  )
 
   if (is.null(infectious_compartments)) {
     infectious_compartments <- if ("I" %in% compartments) "I" else character()
@@ -301,7 +306,11 @@ validate_disease_model <- function(model) {
   }
 
   if (model$model_type == "CompartmentModel") {
-    validate_infection_transitions(model$infection_transitions, model$compartments)
+    validate_infection_transitions(
+      model$infection_transitions,
+      model$compartments,
+      allow_all_missing_labels = TRUE
+    )
     validate_compartment_model_transition_table(
       model$transitions,
       compartments = model$compartments
@@ -326,6 +335,10 @@ validate_disease_model <- function(model) {
       model$migration_compartment,
       model$compartments,
       "migration_compartment"
+    )
+    validate_transition_labels(
+      model$infection_transitions$transition_label,
+      model$transitions$transition_label
     )
 
     return(invisible(model))
@@ -493,7 +506,13 @@ validate_transition_schema <- function(transitions) {
   invisible(transitions)
 }
 
-validate_generic_transitions <- function(transitions, compartments, name, require_rate) {
+validate_generic_transitions <- function(
+  transitions,
+  compartments,
+  name,
+  require_rate,
+  allow_all_missing_labels = FALSE
+) {
   if (!is.data.frame(transitions)) {
     stop(name, " must be a data frame.", call. = FALSE)
   }
@@ -516,6 +535,13 @@ validate_generic_transitions <- function(transitions, compartments, name, requir
       any(transitions$from == "") || any(transitions$to == "")) {
     stop(name, " from and to cannot contain missing or empty values.", call. = FALSE)
   }
+
+  transitions$transition_label <- resolve_transition_label_values(
+    transitions,
+    candidate_fields = c("transition_label", "label", "name"),
+    context = name,
+    allow_all_missing = allow_all_missing_labels
+  )
 
   unknown_from <- setdiff(unique(transitions$from), compartments)
   if (length(unknown_from) > 0) {
@@ -560,10 +586,10 @@ validate_generic_transitions <- function(transitions, compartments, name, requir
     validate_generic_rate_column(transitions$rate, paste0(name, " rate"))
   }
 
-  transitions[, required_columns, drop = FALSE]
+  transitions[, c(required_columns, "transition_label"), drop = FALSE]
 }
 
-validate_generic_outflows <- function(outflows, compartments, name) {
+validate_generic_outflows <- function(outflows, compartments, name, allow_all_missing_labels = FALSE) {
   if (!is.data.frame(outflows)) {
     stop(name, " must be a data frame.", call. = FALSE)
   }
@@ -583,6 +609,13 @@ validate_generic_outflows <- function(outflows, compartments, name) {
     stop(name, " from cannot contain missing or empty values.", call. = FALSE)
   }
 
+  outflows$transition_label <- resolve_transition_label_values(
+    outflows,
+    candidate_fields = c("transition_label", "label", "id"),
+    context = name,
+    allow_all_missing = allow_all_missing_labels
+  )
+
   unknown_from <- setdiff(unique(outflows$from), compartments)
   if (length(unknown_from) > 0) {
     stop(
@@ -593,28 +626,13 @@ validate_generic_outflows <- function(outflows, compartments, name) {
     )
   }
 
-  if ("id" %in% names(outflows)) {
-    if (!is.character(outflows$id)) {
-      stop(name, " id must be a character vector.", call. = FALSE)
-    }
-    if (anyNA(outflows$id) || any(outflows$id == "")) {
-      stop(name, " id cannot contain missing or empty values.", call. = FALSE)
-    }
-    duplicated_ids <- unique(outflows$id[duplicated(outflows$id)])
-    if (length(duplicated_ids) > 0) {
+  duplicated_sources <- unique(outflows$from[duplicated(outflows$from)])
+  if (length(duplicated_sources) > 0) {
+    duplicate_rows <- outflows$from %in% duplicated_sources
+    if (any(is.na(outflows$transition_label[duplicate_rows]))) {
       stop(
         name,
-        " id must be unique; duplicate outflow id(s): ",
-        paste(duplicated_ids, collapse = ", "),
-        call. = FALSE
-      )
-    }
-  } else {
-    duplicated_sources <- unique(outflows$from[duplicated(outflows$from)])
-    if (length(duplicated_sources) > 0) {
-      stop(
-        name,
-        " contains multiple outflows from the same source without explicit id values: ",
+        " contains multiple outflows from the same source without explicit label or id values: ",
         paste(duplicated_sources, collapse = ", "),
         call. = FALSE
       )
@@ -623,7 +641,87 @@ validate_generic_outflows <- function(outflows, compartments, name) {
 
   validate_generic_rate_column(outflows$rate, paste0(name, " rate"))
 
-  outflows[, intersect(c("from", "rate", "id"), names(outflows)), drop = FALSE]
+  outflows[, c("from", "rate", "transition_label"), drop = FALSE]
+}
+
+resolve_transition_label_values <- function(
+  data,
+  candidate_fields,
+  context,
+  allow_all_missing = FALSE
+) {
+  if (!is.data.frame(data)) {
+    stop(context, " must be a data frame.", call. = FALSE)
+  }
+
+  if (length(candidate_fields) == 0) {
+    return(rep(NA_character_, nrow(data)))
+  }
+
+  n_rows <- nrow(data)
+  labels <- rep(NA_character_, n_rows)
+
+  for (field in candidate_fields) {
+    if (!field %in% names(data)) {
+      next
+    }
+
+    values <- data[[field]]
+    if (is.factor(values)) {
+      values <- as.character(values)
+    }
+    if (!is.character(values)) {
+      stop(context, " ", field, " must be a character vector.", call. = FALSE)
+    }
+    if (length(values) != n_rows) {
+      stop(context, " ", field, " must have one value per row.", call. = FALSE)
+    }
+    if (any(values == "", na.rm = TRUE)) {
+      stop(context, " ", field, " cannot contain missing or empty values.", call. = FALSE)
+    }
+    if (anyNA(values)) {
+      if (allow_all_missing && all(is.na(values))) {
+        next
+      }
+      stop(context, " ", field, " cannot contain missing or empty values.", call. = FALSE)
+    }
+
+    conflict <- !is.na(labels) & labels != values
+    if (any(conflict)) {
+      stop(
+        context,
+        " contains conflicting transition label values across columns.",
+        call. = FALSE
+      )
+    }
+
+    labels[is.na(labels)] <- values[is.na(labels)]
+  }
+
+  labels
+}
+
+validate_transition_labels <- function(...) {
+  labels <- unlist(list(...), use.names = FALSE)
+  labels <- labels[!is.na(labels)]
+  if (length(labels) == 0) {
+    return(invisible(NULL))
+  }
+
+  if (any(labels == "")) {
+    stop("transition labels must be non-empty.", call. = FALSE)
+  }
+
+  duplicated_labels <- unique(labels[duplicated(labels)])
+  if (length(duplicated_labels) > 0) {
+    stop(
+      "transition labels must be globally unique; duplicate label(s): ",
+      paste(duplicated_labels, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
 }
 
 combine_compartment_model_transitions <- function(transitions, outflows) {
@@ -648,18 +746,18 @@ combine_compartment_model_transitions <- function(transitions, outflows) {
       from = external$from,
       to = external$to,
       transition_type = "outflow",
-      id = if ("id" %in% names(external)) external$id else NULL
+      label = external$transition_label
     )
-    external$id <- NULL
   } else {
     external$to <- character()
     external$transition_type <- character()
     external$transition_id <- character()
+    external$transition_label <- character()
   }
 
   combined <- rbind(
-    internal[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE],
-    external[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE]
+    internal[, c("from", "to", "rate", "transition_label", "transition_type", "transition_id"), drop = FALSE],
+    external[, c("from", "to", "rate", "transition_label", "transition_type", "transition_id"), drop = FALSE]
   )
   row.names(combined) <- NULL
   combined
@@ -686,6 +784,10 @@ validate_compartment_model_transition_table <- function(transitions, compartment
 
   if (!"transition_type" %in% names(transitions)) {
     transitions$transition_type <- ifelse(is.na(transitions$to), "outflow", "internal")
+  }
+
+  if (!"transition_label" %in% names(transitions)) {
+    transitions$transition_label <- NA_character_
   }
 
   if (!"transition_id" %in% names(transitions)) {
@@ -716,6 +818,10 @@ validate_compartment_model_transition_table <- function(transitions, compartment
   }
   if (any(!outflow_rows & is.na(transitions$to))) {
     stop("internal transitions cannot have missing destinations.", call. = FALSE)
+  }
+
+  if (any(transitions$transition_label == "", na.rm = TRUE)) {
+    stop("transitions transition_label cannot contain empty values.", call. = FALSE)
   }
 
   unknown_from <- setdiff(unique(transitions$from), compartments)
@@ -752,10 +858,14 @@ validate_compartment_model_transition_table <- function(transitions, compartment
     )
   }
 
-  transitions[, c("from", "to", "rate", "transition_type", "transition_id"), drop = FALSE]
+  transitions[, c("from", "to", "rate", "transition_label", "transition_type", "transition_id"), drop = FALSE]
 }
 
-validate_infection_transitions <- function(transitions, compartments) {
+validate_infection_transitions <- function(
+  transitions,
+  compartments,
+  allow_all_missing_labels = FALSE
+) {
   if (!is.data.frame(transitions)) {
     if (is.list(transitions) &&
         !is.null(transitions$from) &&
@@ -780,6 +890,13 @@ validate_infection_transitions <- function(transitions, compartments) {
       any(transitions$from == "") || any(transitions$to == "")) {
     stop("infection_transitions from and to cannot contain missing or empty values.", call. = FALSE)
   }
+
+  transitions$transition_label <- resolve_transition_label_values(
+    transitions,
+    candidate_fields = c("transition_label", "label"),
+    context = "infection_transitions",
+    allow_all_missing = allow_all_missing_labels
+  )
 
   unknown_from <- setdiff(unique(transitions$from), compartments)
   if (length(unknown_from) > 0) {
@@ -826,7 +943,7 @@ validate_infection_transitions <- function(transitions, compartments) {
     )
   }
 
-  transitions[, c("from", "to", "susceptibility"), drop = FALSE]
+  transitions[, c("from", "to", "susceptibility", "transition_label"), drop = FALSE]
 }
 
 coerce_infection_transition_list <- function(transitions) {

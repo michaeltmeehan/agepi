@@ -149,6 +149,121 @@ test_that("CompartmentModel supports explicit outflows", {
   expect_silent(validate_disease_model(model))
 })
 
+test_that("CompartmentModel preserves explicit transition labels", {
+  model <- CompartmentModel(
+    compartments = c("S", "E", "I", "R"),
+    infection_transitions = data.frame(
+      from = "S",
+      to = "E",
+      label = "infection.SE",
+      stringsAsFactors = FALSE
+    ),
+    transitions = data.frame(
+      from = c("E", "I"),
+      to = c("I", "R"),
+      name = c("progression.EI", "recovery.IR"),
+      rate = c(0.3, 0.2),
+      stringsAsFactors = FALSE
+    ),
+    outflows = data.frame(
+      from = "I",
+      id = "removal.I",
+      rate = 0.1,
+      stringsAsFactors = FALSE
+    ),
+    infectious_compartments = "I"
+  )
+
+  expect_equal(model$infection_transitions$transition_label, "infection.SE")
+  expect_equal(
+    model$transitions$transition_label,
+    c("progression.EI", "recovery.IR", "removal.I")
+  )
+  expect_equal(
+    model$transitions$transition_label[model$transitions$transition_type == "outflow"],
+    "removal.I"
+  )
+  expect_equal(
+    model$transitions$transition_id,
+    c("transition:E->I", "transition:I->R", "outflow:removal.I")
+  )
+  expect_silent(validate_disease_model(model))
+})
+
+test_that("CompartmentModel rejects missing or empty explicit labels", {
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "E"),
+      infection_transitions = data.frame(
+        from = "S",
+        to = "E",
+        label = NA_character_,
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = character()
+    ),
+    "label cannot contain missing or empty values"
+  )
+
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I", "R"),
+      transitions = data.frame(
+        from = c("I", "I"),
+        to = c("R", "S"),
+        name = c("recovery", ""),
+        rate = c(0.2, 0.1),
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = character()
+    ),
+    "name cannot contain missing or empty values"
+  )
+
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "I", "R"),
+      transitions = data.frame(
+        from = "I",
+        to = "R",
+        rate = 0.2,
+        stringsAsFactors = FALSE
+      ),
+      outflows = data.frame(
+        from = "I",
+        id = "",
+        rate = 0.1,
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = character()
+    ),
+    "id cannot contain missing or empty values"
+  )
+})
+
+test_that("CompartmentModel rejects duplicate transition labels", {
+  expect_error(
+    CompartmentModel(
+      compartments = c("S", "E", "I"),
+      infection_transitions = data.frame(
+        from = "S",
+        to = "E",
+        label = "shared",
+        stringsAsFactors = FALSE
+      ),
+      transitions = data.frame(
+        from = "E",
+        to = "I",
+        name = "shared",
+        rate = 0.2,
+        stringsAsFactors = FALSE
+      ),
+      infectious_compartments = character()
+    ),
+    "globally unique"
+  )
+})
+
 test_that("generic SIR transition rates match SIRModel transition rates", {
   ages <- generic_test_ages()
   expected <- transition_rates(

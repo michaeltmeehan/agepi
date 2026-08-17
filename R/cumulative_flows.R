@@ -100,6 +100,7 @@ normalize_cumulative_flow_list <- function(cumulative_flows) {
     } else {
       rows[[i]] <- data.frame(
         cumulative_name = rep(flow_names[i], length(from)),
+        transition_id = rep(NA_character_, length(from)),
         from = from,
         to = to,
         transition_type = if (!is.null(transition_type)) rep(transition_type, length(from)) else rep(NA_character_, length(from)),

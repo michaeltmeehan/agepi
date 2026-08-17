@@ -86,6 +86,8 @@ transition_rates <- function(
         ),
         times = age_structure$n_age_groups
       ),
+      transition_label = rep(NA_character_, nrow(model$transitions) * age_structure$n_age_groups),
+      transition_type = rep(c("infection", "transition", "transition"), times = age_structure$n_age_groups),
       stringsAsFactors = FALSE
     ))
   }
@@ -105,6 +107,8 @@ transition_rates <- function(
       ),
       times = age_structure$n_age_groups
     ),
+    transition_label = rep(NA_character_, nrow(model$transitions) * age_structure$n_age_groups),
+    transition_type = rep(c("infection", "transition"), times = age_structure$n_age_groups),
     stringsAsFactors = FALSE
   )
 }
@@ -137,7 +141,7 @@ generic_transition_rates <- function(
   rates <- rates[order(rates$age_index, rates$.transition_order), ]
   row.names(rates) <- NULL
 
-  rates[, c("from", "to", "age_group", "rate", "transition_id")]
+  rates[, c("from", "to", "age_group", "rate", "transition_id", "transition_label", "transition_type")]
 }
 
 generic_infection_rates <- function(
@@ -197,6 +201,8 @@ generic_infection_rates <- function(
         to = model$infection_transitions$to[i],
         transition_type = "infection"
       ),
+      transition_label = model$infection_transitions$transition_label[i],
+      transition_type = "infection",
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
@@ -396,12 +402,18 @@ generic_per_capita_transition_rates <- function(state_long, model, age_structure
     } else {
       transition_row_identifier(model$transitions, i)
     }
+    transition_type <- if ("transition_type" %in% names(model$transitions)) {
+      model$transitions$transition_type[i]
+    } else ifelse(is.na(model$transitions$to[i]), "outflow", "transition")
+    transition_type[transition_type == "internal"] <- "transition"
     rows[[i]] <- data.frame(
       from = model$transitions$from[i],
       to = model$transitions$to[i],
       age_group = age_structure$age_groups,
       rate = per_capita_rate * from_values,
       transition_id = transition_id,
+      transition_label = if ("transition_label" %in% names(model$transitions)) model$transitions$transition_label[i] else NA_character_,
+      transition_type = transition_type,
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
@@ -417,24 +429,36 @@ generic_empty_rate_table <- function() {
     age_group = character(),
     rate = numeric(),
     transition_id = character(),
+    transition_label = character(),
+    transition_type = character(),
     age_index = integer(),
     stringsAsFactors = FALSE
   )
 }
 
-transition_identifiers <- function(from, to, transition_type, id = NULL) {
+transition_identifiers <- function(from, to, transition_type, id = NULL, label = NULL) {
   transition_type <- as.character(transition_type)
   from <- as.character(from)
   if (!is.null(id) && !is.character(id)) {
     id <- as.character(id)
   }
+  if (!is.null(label) && !is.character(label)) {
+    label <- as.character(label)
+  }
   out <- character(length(from))
 
   outflow <- transition_type == "outflow"
   if (any(outflow)) {
+    fallback <- from[outflow]
+    if (!is.null(label)) {
+      fallback <- ifelse(!is.na(label[outflow]), label[outflow], fallback)
+    }
+    if (!is.null(id)) {
+      fallback <- ifelse(!is.na(id[outflow]), id[outflow], fallback)
+    }
     out[outflow] <- paste0(
       "outflow:",
-      if (is.null(id)) from[outflow] else ifelse(is.na(id[outflow]), from[outflow], id[outflow])
+      fallback
     )
   }
 
@@ -452,6 +476,10 @@ transition_identifiers <- function(from, to, transition_type, id = NULL) {
 }
 
 transition_row_label <- function(transitions, i) {
+  if ("transition_label" %in% names(transitions) && !is.na(transitions$transition_label[i]) && transitions$transition_label[i] != "") {
+    return(transitions$transition_label[i])
+  }
+
   if (!"transition_type" %in% names(transitions)) {
     if (is.na(transitions$to[i])) {
       return(paste0(transitions$from[i], "->outside"))
@@ -475,7 +503,8 @@ transition_row_identifier <- function(transitions, i) {
     return(transition_identifiers(
       from = transitions$from[i],
       to = transitions$to[i],
-      transition_type = "outflow"
+      transition_type = "outflow",
+      label = if ("transition_label" %in% names(transitions)) transitions$transition_label[i] else NULL
     ))
   }
 
@@ -483,7 +512,8 @@ transition_row_identifier <- function(transitions, i) {
     return(transition_identifiers(
       from = transitions$from[i],
       to = transitions$to[i],
-      transition_type = "outflow"
+      transition_type = "outflow",
+      label = if ("transition_label" %in% names(transitions)) transitions$transition_label[i] else NULL
     ))
   }
 

@@ -830,11 +830,10 @@ test_that("invalid stochastic cumulative_flows inputs error clearly", {
   )
   expect_error(
     stochastic_test_run(cumulative_flows = list(bad = list(from = "X", to = "I"))),
-    "unknown source compartment"
+    "matched no transitions"
   )
-  expect_error(
-    stochastic_test_run(cumulative_flows = data.frame(name = "x", from = "S")),
-    "missing required column"
+  expect_silent(
+    stochastic_test_run(cumulative_flows = data.frame(name = "x", from = "S"))
   )
 })
 
