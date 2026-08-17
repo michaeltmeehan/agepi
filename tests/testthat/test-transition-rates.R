@@ -916,6 +916,42 @@ test_that("transition_rates returns the expected output columns", {
   )
 })
 
+test_that("generic infection transitions expand one row per age group", {
+  ages <- test_ages()
+  model <- CompartmentModel(
+    compartments = c("S", "I", "R"),
+    infection_transitions = data.frame(
+      from = "S",
+      to = "I",
+      susceptibility = I(list(c(0.5, 2))),
+      stringsAsFactors = FALSE
+    ),
+    transitions = data.frame(from = "I", to = "R", rate = 0.2, stringsAsFactors = FALSE),
+    infectious_compartments = "I"
+  )
+
+  rates <- transition_rates(
+    state = test_state(S = c(90, 180), I = c(10, 20), R = c(0, 0)),
+    model = model,
+    age_structure = ages,
+    contact_matrix = test_contacts()
+  )
+
+  expect_equal(
+    rates[, c("from", "to", "age_group", "transition_id", "transition_type")],
+    data.frame(
+      from = c("S", "I", "S", "I"),
+      to = c("I", "R", "I", "R"),
+      age_group = c("0-4", "0-4", "5-9", "5-9"),
+      transition_id = c("infection:S->I", "transition:I->R", "infection:S->I", "transition:I->R"),
+      transition_type = c("infection", "transition", "infection", "transition"),
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_equal(rates$rate[rates$transition_type == "transition"], c(2, 4))
+  expect_true(all(rates$rate[rates$transition_type == "infection"] >= 0))
+})
+
 test_that("transition_rates includes stable logical transition identifiers", {
   first <- transition_rates(
     state = test_seir_state(),

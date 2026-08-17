@@ -192,17 +192,20 @@ generic_infection_rates <- function(
         model$infection_transitions$from[i]
       )
     rows[[i]] <- data.frame(
-      from = model$infection_transitions$from[i],
-      to = model$infection_transitions$to[i],
+      from = rep(model$infection_transitions$from[i], age_structure$n_age_groups),
+      to = rep(model$infection_transitions$to[i], age_structure$n_age_groups),
       age_group = age_structure$age_groups,
       rate = as.numeric(lambda) * susceptibility_matrix[i, ] * from_values,
-      transition_id = transition_identifiers(
+      transition_id = rep(
+        transition_identifiers(
         from = model$infection_transitions$from[i],
         to = model$infection_transitions$to[i],
         transition_type = "infection"
+        ),
+        age_structure$n_age_groups
       ),
-      transition_label = model$infection_transitions$transition_label[i],
-      transition_type = "infection",
+      transition_label = rep(model$infection_transitions$transition_label[i], age_structure$n_age_groups),
+      transition_type = rep("infection", age_structure$n_age_groups),
       age_index = seq_len(age_structure$n_age_groups),
       stringsAsFactors = FALSE
     )
