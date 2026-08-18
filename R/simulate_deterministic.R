@@ -248,6 +248,7 @@ simulate_deterministic_annual_cohort_split <- function(
     time = times[1],
     age_structure = age_structure,
     compartments = model$compartments,
+    state_template = transition_context$state_output_template,
     cumulative_spec = cumulative_spec
   )
 
@@ -286,6 +287,7 @@ simulate_deterministic_annual_cohort_split <- function(
       time = times[time_index + 1],
       age_structure = age_structure,
       compartments = model$compartments,
+      state_template = transition_context$state_output_template,
       cumulative_spec = cumulative_spec
     )
   }
@@ -587,6 +589,7 @@ simulate_deterministic_integrated <- function(
         time = time,
         age_structure = age_structure,
         compartments = model$compartments,
+        state_template = transition_context$state_output_template,
         cumulative_spec = cumulative_spec
       )
     },
@@ -737,6 +740,7 @@ deterministic_augmented_state_output <- function(
   time,
   age_structure,
   compartments,
+  state_template = NULL,
   cumulative_spec = NULL
 ) {
   ordinary_state <- as.numeric(state)[seq_len(ordinary_state_length)]
@@ -744,7 +748,8 @@ deterministic_augmented_state_output <- function(
     ordinary_state,
     time = time,
     age_structure = age_structure,
-    compartments = compartments
+    compartments = compartments,
+    state_template = state_template
   )
 
   if (is.null(cumulative_spec)) {
@@ -892,20 +897,21 @@ compartment_demographic_derivative <- function(
     stop("migration_policy = \"susceptible\" requires a migration_compartment or an S compartment.", call. = FALSE)
   }
 
-  state_long <- state_vector_to_long(state_vector, age_structure, model$compartments)
   age_groups <- age_structure$age_groups
   n_age_groups <- age_structure$n_age_groups
+  state_matrix <- matrix(
+    as.numeric(state_vector),
+    nrow = n_age_groups,
+    ncol = length(model$compartments),
+    dimnames = list(age_groups, model$compartments)
+  )
 
   compartment_indices <- lapply(seq_along(model$compartments), function(compartment_position) {
     ((compartment_position - 1) * n_age_groups) + seq_len(n_age_groups)
   })
   names(compartment_indices) <- model$compartments
 
-  population <- numeric(n_age_groups)
-  for (compartment in model$compartments) {
-    population <- population +
-      transition_compartment_values(state_long, age_structure, compartment)
-  }
+  population <- rowSums(state_matrix)
 
   derivative <- numeric(length(state_vector))
   birth_index <- compartment_indices[[birth_compartment]]
@@ -1204,13 +1210,27 @@ validate_non_negative_euler_state <- function(state_vector, time) {
   invisible(state_vector)
 }
 
-simulation_state_output <- function(state_vector, time, age_structure, compartments) {
-  state_long <- state_vector_to_long(state_vector, age_structure, compartments)
+simulation_state_output <- function(state_vector,
+                                    time,
+                                    age_structure,
+                                    compartments,
+                                    state_template = NULL) {
+  if (is.null(state_template)) {
+    state_long <- state_vector_to_long(state_vector, age_structure, compartments)
+    return(data.frame(
+      time = rep(time, nrow(state_long)),
+      compartment = state_long$compartment,
+      age_group = state_long$age_group,
+      value = state_long$value,
+      stringsAsFactors = FALSE
+    ))
+  }
+
   data.frame(
-    time = rep(time, nrow(state_long)),
-    compartment = state_long$compartment,
-    age_group = state_long$age_group,
-    value = state_long$value,
+    time = rep(time, nrow(state_template)),
+    compartment = state_template$compartment,
+    age_group = state_template$age_group,
+    value = as.numeric(state_vector),
     stringsAsFactors = FALSE
   )
 }
