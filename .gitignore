@@ -9,6 +9,7 @@
 
 *.tar.gz
 *.Rcheck/
+*.rprof
 
 docs/*.html
 docs/*.pdf
@@ -20,3 +21,4 @@ cran-comments.md
 Thumbs.db
 
 Kiribati/*
+development/benchmarks/output/

@@ -13,6 +13,7 @@ Imports:
     deSolve
 Suggests: 
     ggplot2,
+    bench,
     contactdata,
     epiparameter,
     linelist,
