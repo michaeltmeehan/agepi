@@ -154,6 +154,13 @@ simulate_deterministic <- function(
     method <- "euler"
   }
 
+  transition_context <- prepare_transition_rate_context_validated(
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta
+  )
+
   state_vector <- simulation_state_to_vector(
     initial_state,
     age_structure,
@@ -185,7 +192,8 @@ simulate_deterministic <- function(
       demographic_process = demographic_process,
       time_policy = time_policy,
       migration_policy = migration_policy,
-      cumulative_spec = cumulative_spec
+      cumulative_spec = cumulative_spec,
+      transition_context = transition_context
     )
   } else {
     simulate_deterministic_integrated(
@@ -199,7 +207,8 @@ simulate_deterministic <- function(
       demographic_process = demographic_process,
       time_policy = time_policy,
       migration_policy = migration_policy,
-      cumulative_spec = cumulative_spec
+      cumulative_spec = cumulative_spec,
+      transition_context = transition_context
     )
   }
 
@@ -217,7 +226,8 @@ simulate_deterministic_annual_cohort_split <- function(
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
-  cumulative_spec = NULL
+  cumulative_spec = NULL,
+  transition_context = NULL
 ) {
   time_policy <- validate_demographic_time_policy(time_policy)
   migration_policy <- validate_migration_policy(migration_policy)
@@ -250,7 +260,8 @@ simulate_deterministic_annual_cohort_split <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      cumulative_spec = cumulative_spec
+      cumulative_spec = cumulative_spec,
+      transition_context = transition_context
     )
 
     current_state <- truncate_near_zero_state(current_state)
@@ -293,7 +304,8 @@ deterministic_annual_interval_epidemic_step <- function(
   age_structure,
   contact_matrix,
   beta,
-  cumulative_spec = NULL
+  cumulative_spec = NULL,
+  transition_context = NULL
 ) {
   if (is.null(cumulative_spec) && deterministic_epidemic_dynamics_disabled(model, beta)) {
     return(as.numeric(state))
@@ -313,7 +325,8 @@ deterministic_annual_interval_epidemic_step <- function(
         contact_matrix = contact_matrix,
         beta = beta,
         demographic_process = NULL,
-        cumulative_spec = cumulative_spec
+        cumulative_spec = cumulative_spec,
+        transition_context = transition_context
       )
     },
     output = function(state, time) {
@@ -537,7 +550,8 @@ simulate_deterministic_integrated <- function(
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
-  cumulative_spec = NULL
+  cumulative_spec = NULL,
+  transition_context = NULL
 ) {
   ordinary_state_length <- length(state_vector)
   if (!is.null(cumulative_spec)) {
@@ -560,7 +574,8 @@ simulate_deterministic_integrated <- function(
         demographic_process = demographic_process,
         time_policy = time_policy,
         migration_policy = migration_policy,
-        cumulative_spec = cumulative_spec
+        cumulative_spec = cumulative_spec,
+        transition_context = transition_context
       )
     },
     output = function(state, time) {
@@ -602,7 +617,8 @@ deterministic_derivative_augmented <- function(
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
   migration_policy = c("susceptible", "proportional", "error"),
-  cumulative_spec = NULL
+  cumulative_spec = NULL,
+  transition_context = NULL
 ) {
   ordinary_state <- as.numeric(state_vector)[seq_len(ordinary_state_length)]
   if (is.null(cumulative_spec)) {
@@ -615,22 +631,28 @@ deterministic_derivative_augmented <- function(
       beta = beta,
       demographic_process = demographic_process,
       time_policy = time_policy,
-      migration_policy = migration_policy
+      migration_policy = migration_policy,
+      transition_context = transition_context
     ))
   }
 
-  rates <- transition_rates(
-    state = ordinary_state,
-    model = model,
-    age_structure = age_structure,
-    contact_matrix = contact_matrix,
-    beta = beta
-  )
-  derivative <- rates_to_derivative(
-    transition_rate_table = rates,
-    compartments = model$compartments,
-    age_structure = age_structure
-  )
+  if (is.null(transition_context)) {
+    rates <- transition_rates(
+      state = ordinary_state,
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta
+    )
+    derivative <- rates_to_derivative(
+      transition_rate_table = rates,
+      compartments = model$compartments,
+      age_structure = age_structure
+    )
+  } else {
+    rates <- transition_rates_from_state_vector(ordinary_state, transition_context)
+    derivative <- rates_to_derivative_from_rates(rates, transition_context)
+  }
   compartment_derivative <- derivative$derivative
   if (!is.null(demographic_process)) {
     compartment_derivative <- compartment_derivative +
@@ -755,20 +777,26 @@ deterministic_derivative <- function(
   beta,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
-  migration_policy = c("susceptible", "proportional", "error")
+  migration_policy = c("susceptible", "proportional", "error"),
+  transition_context = NULL
 ) {
-  rates <- transition_rates(
-    state = as.numeric(state_vector),
-    model = model,
-    age_structure = age_structure,
-    contact_matrix = contact_matrix,
-    beta = beta
-  )
-  derivative <- rates_to_derivative(
-    transition_rate_table = rates,
-    compartments = model$compartments,
-    age_structure = age_structure
-  )
+  if (is.null(transition_context)) {
+    rates <- transition_rates(
+      state = as.numeric(state_vector),
+      model = model,
+      age_structure = age_structure,
+      contact_matrix = contact_matrix,
+      beta = beta
+    )
+    derivative <- rates_to_derivative(
+      transition_rate_table = rates,
+      compartments = model$compartments,
+      age_structure = age_structure
+    )
+  } else {
+    rates <- transition_rates_from_state_vector(as.numeric(state_vector), transition_context)
+    derivative <- rates_to_derivative_from_rates(rates, transition_context)
+  }
   infection_derivative <- derivative$derivative
 
   if (is.null(demographic_process)) {
@@ -820,7 +848,8 @@ deterministic_euler_derivative <- function(
   beta,
   demographic_process = NULL,
   time_policy = c("exact", "step", "linear"),
-  migration_policy = c("susceptible", "proportional", "error")
+  migration_policy = c("susceptible", "proportional", "error"),
+  transition_context = NULL
 ) {
   deterministic_derivative(
     state_vector = state_vector,
@@ -831,7 +860,8 @@ deterministic_euler_derivative <- function(
     beta = beta,
     demographic_process = demographic_process,
     time_policy = time_policy,
-    migration_policy = migration_policy
+    migration_policy = migration_policy,
+    transition_context = transition_context
   )
 }
 

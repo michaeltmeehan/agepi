@@ -32,85 +32,15 @@ transition_rates <- function(
   contact_matrix,
   beta = NULL
 ) {
-  validate_disease_model(model)
-  validate_age_structure(age_structure)
-  if (model_has_infection_process(model)) {
-    beta <- resolve_transmission_beta(model, beta)
-  } else if (!is.null(beta)) {
-    beta <- validate_force_beta(beta)
-  }
+  context <- prepare_transition_rate_context(
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta
+  )
 
   state_long <- transition_state_to_long(state, age_structure, model$compartments)
-  validate_non_negative_state_values(state_long)
-
-  if (model$model_type == "CompartmentModel") {
-    return(generic_transition_rates(
-      state_long = state_long,
-      model = model,
-      age_structure = age_structure,
-      contact_matrix = contact_matrix,
-      beta = beta
-    ))
-  }
-
-  S <- transition_compartment_values(state_long, age_structure, "S")
-  I <- transition_compartment_values(state_long, age_structure, "I")
-  population <- transition_population_by_age(state_long, age_structure, model$compartments)
-  validate_positive_age_populations(population, age_structure)
-
-  lambda <- force_of_infection(
-    infectious = I,
-    population = population,
-    contact_matrix = contact_matrix,
-    beta = beta,
-    age_structure = age_structure
-  )
-
-  infection_rates <- as.numeric(lambda) * S
-
-  if (model$model_type == "SEIR") {
-    E <- transition_compartment_values(state_long, age_structure, "E")
-    progression_rates <- model$sigma * E
-    recovery_rates <- model$gamma * I
-
-    return(data.frame(
-      from = rep(model$transitions$from, times = age_structure$n_age_groups),
-      to = rep(model$transitions$to, times = age_structure$n_age_groups),
-      age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
-      rate = as.numeric(rbind(infection_rates, progression_rates, recovery_rates)),
-      transition_id = rep(
-        transition_identifiers(
-          from = model$transitions$from,
-          to = model$transitions$to,
-          transition_type = c("infection", "transition", "transition")
-        ),
-        times = age_structure$n_age_groups
-      ),
-      transition_label = rep(NA_character_, nrow(model$transitions) * age_structure$n_age_groups),
-      transition_type = rep(c("infection", "transition", "transition"), times = age_structure$n_age_groups),
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  recovery_rates <- model$gamma * I
-
-  data.frame(
-    from = rep(model$transitions$from, times = age_structure$n_age_groups),
-    to = rep(model$transitions$to, times = age_structure$n_age_groups),
-    age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
-    rate = as.numeric(rbind(infection_rates, recovery_rates)),
-    transition_id = rep(
-      transition_identifiers(
-        from = model$transitions$from,
-        to = model$transitions$to,
-        transition_type = c("infection", "transition")
-      ),
-      times = age_structure$n_age_groups
-    ),
-    transition_label = rep(NA_character_, nrow(model$transitions) * age_structure$n_age_groups),
-    transition_type = rep(c("infection", "transition"), times = age_structure$n_age_groups),
-    stringsAsFactors = FALSE
-  )
+  transition_rates_from_state_long(state_long, context)
 }
 
 generic_transition_rates <- function(
