@@ -3,3 +3,5 @@
 ^agepi_[0-9.]+\.tar\.gz$
 ^agepi\.Rcheck$
 ^\.\.Rcheck$
+^AGENTS\.md$
+^development/benchmarks$
