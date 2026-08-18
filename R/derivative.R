@@ -32,27 +32,16 @@ rates_to_derivative <- function(
   )
 
   derivative <- state_order(age_structure, compartments)
-  derivative$derivative <- 0
-
-  for (i in seq_len(nrow(transition_rate_table))) {
-    from_index <- match_derivative_cell(
-      derivative,
-      transition_rate_table$from[i],
-      transition_rate_table$age_group[i]
-    )
-
-    derivative$derivative[from_index] <- derivative$derivative[from_index] -
-      transition_rate_table$rate[i]
-    if (!is.na(transition_rate_table$to[i])) {
-      to_index <- match_derivative_cell(
-        derivative,
-        transition_rate_table$to[i],
-        transition_rate_table$age_group[i]
-      )
-      derivative$derivative[to_index] <- derivative$derivative[to_index] +
-        transition_rate_table$rate[i]
-    }
-  }
+  derivative_index <- prepare_derivative_index_lookup(
+    transition_rate_table = transition_rate_table,
+    state_order_key = paste(derivative$compartment, derivative$age_group)
+  )
+  derivative$derivative <- accumulate_transition_derivative(
+    rate = transition_rate_table$rate,
+    from_state_index = derivative_index$from_state_index,
+    to_state_index = derivative_index$to_state_index,
+    state_length = nrow(derivative)
+  )
 
   derivative[, c("compartment", "age_group", "derivative")]
 }
@@ -162,6 +151,54 @@ validate_transition_rate_table <- function(
   }
 
   invisible(transition_rate_table)
+}
+
+prepare_derivative_index_lookup <- function(transition_rate_table, state_order_key) {
+  n_rows <- nrow(transition_rate_table)
+  from_state_index <- rep(NA_integer_, n_rows)
+  to_state_index <- rep(NA_integer_, n_rows)
+
+  has_from <- !is.na(transition_rate_table$from)
+  if (any(has_from)) {
+    from_state_index[has_from] <- match(
+      paste(transition_rate_table$from[has_from], transition_rate_table$age_group[has_from]),
+      state_order_key
+    )
+  }
+
+  has_to <- !is.na(transition_rate_table$to)
+  if (any(has_to)) {
+    to_state_index[has_to] <- match(
+      paste(transition_rate_table$to[has_to], transition_rate_table$age_group[has_to]),
+      state_order_key
+    )
+  }
+
+  list(
+    from_state_index = from_state_index,
+    to_state_index = to_state_index
+  )
+}
+
+accumulate_transition_derivative <- function(rate, from_state_index, to_state_index, state_length) {
+  derivative <- numeric(state_length)
+  if (length(rate) == 0) {
+    return(derivative)
+  }
+
+  for (i in seq_along(rate)) {
+    from_index <- from_state_index[i]
+    if (!is.na(from_index)) {
+      derivative[from_index] <- derivative[from_index] - rate[i]
+    }
+
+    to_index <- to_state_index[i]
+    if (!is.na(to_index)) {
+      derivative[to_index] <- derivative[to_index] + rate[i]
+    }
+  }
+
+  derivative
 }
 
 match_derivative_cell <- function(derivative, compartment, age_group) {
