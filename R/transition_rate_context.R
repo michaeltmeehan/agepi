@@ -1,15 +1,31 @@
-prepare_transition_rate_context <- function(model, age_structure, contact_matrix, beta = NULL) {
+prepare_transition_rate_context <- function(
+  model,
+  age_structure,
+  contact_matrix,
+  beta = NULL,
+  include_public_template = TRUE,
+  include_transition_id = FALSE
+) {
   validate_disease_model(model)
   validate_age_structure(age_structure)
   prepare_transition_rate_context_validated(
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta
+    beta = beta,
+    include_public_template = include_public_template,
+    include_transition_id = include_transition_id
   )
 }
 
-prepare_transition_rate_context_validated <- function(model, age_structure, contact_matrix, beta = NULL) {
+prepare_transition_rate_context_validated <- function(
+  model,
+  age_structure,
+  contact_matrix,
+  beta = NULL,
+  include_public_template = TRUE,
+  include_transition_id = FALSE
+) {
   validate_contact_matrix(contact_matrix, age_structure)
   beta <- resolve_transmission_beta_validated(model, beta)
 
@@ -19,12 +35,24 @@ prepare_transition_rate_context_validated <- function(model, age_structure, cont
     age_groups = age_structure$age_groups,
     n_age_groups = age_structure$n_age_groups,
     compartments = model$compartments,
+    compartment_index = stats::setNames(seq_along(model$compartments), model$compartments),
     contact_matrix = contact_matrix,
     beta = beta,
     has_infection_process = model_has_infection_process(model),
     state_order = state_order(age_structure, model$compartments),
-    stochastic_transition_order = stochastic_transition_order(model),
-    specialized_transition_ids = if (nrow(model$transitions) > 0) {
+    state_order_key = paste(
+      rep(model$compartments, each = age_structure$n_age_groups),
+      rep(age_structure$age_groups, times = length(model$compartments))
+    ),
+    transition_rate_structure = prepare_transition_rate_structure(
+      model,
+      age_structure,
+      include_transition_id = include_transition_id
+    )
+  )
+  if (include_public_template) {
+    context$stochastic_transition_order <- stochastic_transition_order(model)
+    context$specialized_transition_ids <- if (nrow(model$transitions) > 0) {
       if (identical(model$model_type, "CompartmentModel")) {
         transition_order_from_compartment_transitions(model$transitions)$transition_id
       } else {
@@ -33,7 +61,24 @@ prepare_transition_rate_context_validated <- function(model, age_structure, cont
     } else {
       character()
     }
-  )
+    context$transition_rate_template <- prepare_transition_rate_template(model, age_structure)
+    context$stochastic_event_order <- order(
+      match(
+        context$transition_rate_template$transition_id,
+        context$stochastic_transition_order$transition_id
+      ),
+      context$transition_rate_template$age_index
+    )
+    context$stochastic_event_template <- context$transition_rate_template[context$stochastic_event_order, c(
+      "event",
+      "transition_type",
+      "transition_id",
+      "age_group",
+      "age_index",
+      "from",
+      "to"
+    ), drop = FALSE]
+  }
 
   if (identical(model$model_type, "CompartmentModel")) {
     context$infection_susceptibility_matrix <- infection_transition_susceptibility_matrix_validated(
@@ -54,6 +99,284 @@ prepare_transition_rate_context_validated <- function(model, age_structure, cont
   }
 
   context
+}
+
+prepare_transition_rate_structure <- function(model, age_structure, include_transition_id = FALSE) {
+  if (identical(model$model_type, "CompartmentModel")) {
+    return(prepare_generic_transition_rate_structure(
+      model,
+      age_structure,
+      include_transition_id = include_transition_id
+    ))
+  }
+
+  prepare_specialized_transition_rate_structure(
+    model,
+    age_structure,
+    include_transition_id = include_transition_id
+  )
+}
+
+prepare_specialized_transition_rate_structure <- function(
+  model,
+  age_structure,
+  include_transition_id = FALSE
+) {
+  n_transitions <- nrow(model$transitions)
+  if (n_transitions == 0) {
+    return(empty_transition_rate_structure(include_transition_id = include_transition_id))
+  }
+
+  structure <- data.frame(
+    from = rep(model$transitions$from, times = age_structure$n_age_groups),
+    to = rep(model$transitions$to, times = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, each = n_transitions),
+    stringsAsFactors = FALSE
+  )
+  if (include_transition_id) {
+    structure$transition_id <- rep(
+      transition_order_from_specialized_transitions(model$transitions)$transition_id,
+      times = age_structure$n_age_groups
+    )
+    structure <- structure[, c("from", "to", "age_group", "transition_id"), drop = FALSE]
+  }
+  structure
+}
+
+prepare_generic_transition_rate_structure <- function(
+  model,
+  age_structure,
+  include_transition_id = FALSE
+) {
+  if (nrow(model$infection_transitions) == 0 && nrow(model$transitions) == 0) {
+    return(empty_transition_rate_structure(include_transition_id = include_transition_id))
+  }
+
+  infection_transition_ids <- if (nrow(model$infection_transitions) > 0) {
+    transition_order_from_infection_transitions(model$infection_transitions)$transition_id
+  } else {
+    character()
+  }
+
+  from_values <- c(
+    if (length(infection_transition_ids) > 0) model$infection_transitions$from else character(),
+    if (nrow(model$transitions) > 0) model$transitions$from else character()
+  )
+  to_values <- c(
+    if (length(infection_transition_ids) > 0) model$infection_transitions$to else character(),
+    if (nrow(model$transitions) > 0) model$transitions$to else character()
+  )
+  structure <- data.frame(
+    from = rep(from_values, times = age_structure$n_age_groups),
+    to = rep(to_values, times = age_structure$n_age_groups),
+    age_group = rep(age_structure$age_groups, each = length(from_values)),
+    stringsAsFactors = FALSE
+  )
+  if (include_transition_id) {
+    transition_ids <- c(
+      if (nrow(model$infection_transitions) > 0) {
+        transition_order_from_infection_transitions(model$infection_transitions)$transition_id
+      } else {
+        character()
+      },
+      if (nrow(model$transitions) > 0) {
+        if ("transition_id" %in% names(model$transitions)) {
+          model$transitions$transition_id
+        } else {
+          transition_order_from_compartment_transitions(model$transitions)$transition_id
+        }
+      } else {
+        character()
+      }
+    )
+    structure$transition_id <- rep(transition_ids, times = age_structure$n_age_groups)
+    structure <- structure[, c("from", "to", "age_group", "transition_id"), drop = FALSE]
+  }
+  structure
+}
+
+empty_transition_rate_structure <- function(include_transition_id = FALSE) {
+  if (include_transition_id) {
+    return(data.frame(
+      from = character(),
+      to = character(),
+      age_group = character(),
+      transition_id = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  data.frame(
+    from = character(),
+    to = character(),
+    age_group = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+prepare_transition_rate_template <- function(model, age_structure) {
+  if (identical(model$model_type, "CompartmentModel")) {
+    return(prepare_generic_transition_rate_template(model, age_structure))
+  }
+
+  prepare_specialized_transition_rate_template(model, age_structure)
+}
+
+prepare_specialized_transition_rate_template <- function(model, age_structure) {
+  n_transitions <- nrow(model$transitions)
+  if (n_transitions == 0) {
+    return(empty_transition_rate_template())
+  }
+
+  transition_ids <- transition_order_from_specialized_transitions(model$transitions)$transition_id
+  transition_labels <- if ("transition_label" %in% names(model$transitions)) {
+    model$transitions$transition_label
+  } else {
+    rep(NA_character_, n_transitions)
+  }
+  transition_types <- specialized_transition_types(model)
+  event_labels <- specialized_transition_event_labels(model)
+
+  rows <- vector("list", age_structure$n_age_groups)
+  for (age_index in seq_len(age_structure$n_age_groups)) {
+    rows[[age_index]] <- data.frame(
+      from = model$transitions$from,
+      to = model$transitions$to,
+      age_group = age_structure$age_groups[age_index],
+      transition_id = transition_ids,
+      transition_label = transition_labels,
+      transition_type = transition_types,
+      age_index = age_index,
+      event = event_labels,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  template <- do.call(rbind, rows)
+  row.names(template) <- NULL
+  template
+}
+
+prepare_generic_transition_rate_template <- function(model, age_structure) {
+  if (nrow(model$infection_transitions) == 0 && nrow(model$transitions) == 0) {
+    return(empty_transition_rate_template())
+  }
+
+  infection_transition_ids <- if (nrow(model$infection_transitions) > 0) {
+    transition_order_from_infection_transitions(model$infection_transitions)$transition_id
+  } else {
+    character()
+  }
+  infection_transition_labels <- if (nrow(model$infection_transitions) > 0) {
+    if ("transition_label" %in% names(model$infection_transitions)) {
+      model$infection_transitions$transition_label
+    } else {
+      rep(NA_character_, nrow(model$infection_transitions))
+    }
+  } else {
+    character()
+  }
+  infection_transition_types <- rep("infection", length(infection_transition_ids))
+  infection_event_labels <- rep("infection", length(infection_transition_ids))
+
+  per_capita_transition_ids <- if (nrow(model$transitions) > 0) {
+    if ("transition_id" %in% names(model$transitions)) {
+      model$transitions$transition_id
+    } else {
+      transition_order_from_compartment_transitions(model$transitions)$transition_id
+    }
+  } else {
+    character()
+  }
+  per_capita_transition_labels <- if (nrow(model$transitions) > 0) {
+    if ("transition_label" %in% names(model$transitions)) {
+      model$transitions$transition_label
+    } else {
+      rep(NA_character_, nrow(model$transitions))
+    }
+  } else {
+    character()
+  }
+  per_capita_transition_types <- if (nrow(model$transitions) > 0) {
+    if ("transition_type" %in% names(model$transitions)) {
+      transition_type <- model$transitions$transition_type
+      ifelse(transition_type == "internal", "transition", transition_type)
+    } else {
+      ifelse(is.na(model$transitions$to), "outflow", "transition")
+    }
+  } else {
+    character()
+  }
+  per_capita_event_labels <- if (nrow(model$transitions) > 0) {
+    stochastic_event_labels_from_metadata(
+      model = model,
+      transition_id = per_capita_transition_ids,
+      from = model$transitions$from,
+      to = model$transitions$to,
+      transition_type = per_capita_transition_types
+    )
+  } else {
+    character()
+  }
+
+  rows <- vector("list", age_structure$n_age_groups)
+  for (age_index in seq_len(age_structure$n_age_groups)) {
+    rows[[age_index]] <- data.frame(
+      from = c(
+        if (length(infection_transition_ids) > 0) model$infection_transitions$from else character(),
+        if (nrow(model$transitions) > 0) model$transitions$from else character()
+      ),
+      to = c(
+        if (length(infection_transition_ids) > 0) model$infection_transitions$to else character(),
+        if (nrow(model$transitions) > 0) model$transitions$to else character()
+      ),
+      age_group = age_structure$age_groups[age_index],
+      transition_id = c(infection_transition_ids, per_capita_transition_ids),
+      transition_label = c(infection_transition_labels, per_capita_transition_labels),
+      transition_type = c(infection_transition_types, per_capita_transition_types),
+      age_index = age_index,
+      event = c(infection_event_labels, per_capita_event_labels),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  template <- do.call(rbind, rows)
+  row.names(template) <- NULL
+  template
+}
+
+empty_transition_rate_template <- function() {
+  data.frame(
+    from = character(),
+    to = character(),
+    age_group = character(),
+    transition_id = character(),
+    transition_label = character(),
+    transition_type = character(),
+    age_index = integer(),
+    event = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
+specialized_transition_types <- function(model) {
+  if (identical(model$model_type, "SIR")) {
+    return(c("infection", "transition"))
+  }
+
+  c("infection", "transition", "transition")
+}
+
+specialized_transition_event_labels <- function(model) {
+  if (identical(model$model_type, "SIR")) {
+    return(c("infection", "recovery"))
+  }
+
+  if (identical(model$model_type, "SEIR")) {
+    return(c("infection", "progression", "recovery"))
+  }
+
+  rep("transition", nrow(model$transitions))
 }
 
 resolve_transmission_beta_validated <- function(model, beta = NULL) {
@@ -85,171 +408,211 @@ transition_rates_from_state_long <- function(state_long, context) {
 }
 
 transition_rates_from_state_vector <- function(state_vector, context) {
-  state_long <- state_vector_to_long_unchecked(
-    state_vector = state_vector,
-    age_structure = context$age_structure,
-    compartments = context$compartments
-  )
-  transition_rates_from_state_long_unchecked(state_long, context)
+  state_matrix <- transition_state_matrix_from_vector(state_vector, context)
+  if (!is.null(context$transition_rate_template)) {
+    return(transition_rates_from_state_matrix(state_matrix, context))
+  }
+
+  transition_rates_from_state_structure(state_matrix, context)
 }
 
 transition_rates_from_state_long_unchecked <- function(state_long, context) {
+  state_matrix <- transition_state_matrix_from_long(state_long, context)
+  transition_rates_from_state_matrix(state_matrix, context)
+}
+
+transition_rates_from_state_matrix <- function(state_matrix, context) {
+  model <- context$model
+
+  rate_values <- if (identical(model$model_type, "CompartmentModel")) {
+    generic_transition_rate_values_from_state_matrix(state_matrix, context)
+  } else {
+    specialized_transition_rate_values_from_state_matrix(state_matrix, context)
+  }
+
+  rates <- context$transition_rate_template
+  rates$rate <- rate_values
+  rates[, c("from", "to", "age_group", "rate", "transition_id", "transition_label", "transition_type")]
+}
+
+generic_transition_rates_from_state_long <- function(state_long, context) {
+  state_matrix <- transition_state_matrix_from_long(state_long, context)
+  generic_transition_rates_from_state_matrix(state_matrix, context)
+}
+
+generic_transition_rates_from_state_matrix <- function(state_matrix, context) {
+  rate_values <- generic_transition_rate_values_from_state_matrix(state_matrix, context)
+  rates <- context$transition_rate_template
+  rates$rate <- rate_values
+  rates[, c("from", "to", "age_group", "rate", "transition_id", "transition_label", "transition_type")]
+}
+
+transition_rates_from_state_structure <- function(state_matrix, context) {
+  model <- context$model
+
+  rate_values <- if (identical(model$model_type, "CompartmentModel")) {
+    generic_transition_rate_values_from_state_matrix(state_matrix, context)
+  } else {
+    specialized_transition_rate_values_from_state_matrix(state_matrix, context)
+  }
+
+  rates <- context$transition_rate_structure
+  rates$rate <- rate_values
+  rates
+}
+
+transition_state_matrix_from_long <- function(state_long, context) {
+  ordered_values <- state_long$value[match(
+    context$state_order_key,
+    paste(state_long$compartment, state_long$age_group)
+  )]
+
+  matrix(
+    ordered_values,
+    nrow = context$n_age_groups,
+    ncol = length(context$compartments),
+    dimnames = list(context$age_groups, context$compartments)
+  )
+}
+
+transition_state_matrix_from_vector <- function(state_vector, context) {
+  matrix(
+    as.numeric(state_vector),
+    nrow = context$n_age_groups,
+    ncol = length(context$compartments),
+    dimnames = list(context$age_groups, context$compartments)
+  )
+}
+
+transition_compartment_values_from_state_matrix <- function(state_matrix, compartment, context) {
+  state_matrix[, context$compartment_index[[compartment]]]
+}
+
+transition_population_by_age_from_state_matrix <- function(state_matrix) {
+  rowSums(state_matrix)
+}
+
+specialized_transition_rate_values_from_state_matrix <- function(state_matrix, context) {
   model <- context$model
   age_structure <- context$age_structure
 
-  if (identical(model$model_type, "CompartmentModel")) {
-    return(generic_transition_rates_from_state_long(state_long, context))
-  }
-
-  S <- transition_compartment_values(state_long, age_structure, "S")
-  I <- transition_compartment_values(state_long, age_structure, "I")
-  population <- transition_population_by_age(state_long, age_structure, model$compartments)
+  S <- transition_compartment_values_from_state_matrix(state_matrix, "S", context)
+  I <- transition_compartment_values_from_state_matrix(state_matrix, "I", context)
+  population <- transition_population_by_age_from_state_matrix(state_matrix)
   validate_positive_age_populations(population, age_structure)
 
   lambda <- as.numeric(context$beta * (context$contact_matrix %*% (I / population)))
   infection_rates <- lambda * S
 
   if (identical(model$model_type, "SEIR")) {
-    E <- transition_compartment_values(state_long, age_structure, "E")
+    E <- transition_compartment_values_from_state_matrix(state_matrix, "E", context)
     progression_rates <- model$sigma * E
     recovery_rates <- model$gamma * I
-
-    return(data.frame(
-      from = rep(model$transitions$from, times = age_structure$n_age_groups),
-      to = rep(model$transitions$to, times = age_structure$n_age_groups),
-      age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
-      rate = as.numeric(rbind(infection_rates, progression_rates, recovery_rates)),
-      transition_id = rep(
-        context$specialized_transition_ids,
-        times = age_structure$n_age_groups
-      ),
-      transition_label = rep(
-        if ("transition_label" %in% names(model$transitions)) model$transitions$transition_label else NA_character_,
-        times = age_structure$n_age_groups
-      ),
-      transition_type = rep(c("infection", "transition", "transition"), times = age_structure$n_age_groups),
-      stringsAsFactors = FALSE
-    ))
+    return(as.numeric(rbind(infection_rates, progression_rates, recovery_rates)))
   }
 
   recovery_rates <- model$gamma * I
-
-  data.frame(
-    from = rep(model$transitions$from, times = age_structure$n_age_groups),
-    to = rep(model$transitions$to, times = age_structure$n_age_groups),
-    age_group = rep(age_structure$age_groups, each = nrow(model$transitions)),
-    rate = as.numeric(rbind(infection_rates, recovery_rates)),
-    transition_id = rep(
-      context$specialized_transition_ids,
-      times = age_structure$n_age_groups
-    ),
-    transition_label = rep(
-      if ("transition_label" %in% names(model$transitions)) model$transitions$transition_label else NA_character_,
-      times = age_structure$n_age_groups
-    ),
-    transition_type = rep(c("infection", "transition"), times = age_structure$n_age_groups),
-    stringsAsFactors = FALSE
-  )
+  as.numeric(rbind(infection_rates, recovery_rates))
 }
 
-generic_transition_rates_from_state_long <- function(state_long, context) {
-  model <- context$model
-  age_structure <- context$age_structure
-  population <- transition_population_by_age(state_long, age_structure, model$compartments)
+stochastic_event_labels_from_metadata <- function(
+  model,
+  transition_id,
+  from,
+  to,
+  transition_type
+) {
+  labels <- ifelse(is.na(transition_type), transition_type_from_ids(transition_id), transition_type)
 
-  infection_rates <- generic_infection_rates_from_state_long(state_long, context, population)
-  per_capita_rates <- generic_per_capita_transition_rates_from_state_long(state_long, context)
+  if (identical(model$model_type, "SIR")) {
+    labels[transition_id == "infection:S->I"] <- "infection"
+    labels[transition_id == "transition:I->R"] <- "recovery"
+    return(labels)
+  }
 
-  rates <- rbind(infection_rates, per_capita_rates)
-  rates$.transition_order <- seq_len(nrow(rates))
-  rates <- rates[order(rates$age_index, rates$.transition_order), ]
-  row.names(rates) <- NULL
+  if (identical(model$model_type, "SEIR")) {
+    labels[transition_id == "infection:S->E"] <- "infection"
+    labels[transition_id == "transition:E->I"] <- "progression"
+    labels[transition_id == "transition:I->R"] <- "recovery"
+    return(labels)
+  }
 
-  rates[, c("from", "to", "age_group", "rate", "transition_id", "transition_label", "transition_type")]
+  if (identical(model$model_type, "CompartmentModel")) {
+    labels[transition_type == "outflow"] <- "outflow"
+    labels[transition_type == "infection"] <- "infection"
+    labels[transition_type == "transition" & from == "E" & to == "I"] <- "progression"
+    labels[transition_type == "transition" & to == "R"] <- "recovery"
+    return(labels)
+  }
+
+  labels
 }
 
-generic_infection_rates_from_state_long <- function(state_long, context, population) {
+generic_transition_rate_values_from_state_matrix <- function(state_matrix, context) {
   model <- context$model
-  age_structure <- context$age_structure
+  infection_rates <- generic_infection_rate_matrix_from_state_matrix(state_matrix, context)
+  per_capita_rates <- generic_per_capita_rate_matrix_from_state_matrix(state_matrix, context)
 
+  if (nrow(infection_rates) == 0 && nrow(per_capita_rates) == 0) {
+    return(numeric())
+  }
+
+  as.numeric(rbind(infection_rates, per_capita_rates))
+}
+
+generic_infection_rate_matrix_from_state_matrix <- function(state_matrix, context) {
+  model <- context$model
   if (nrow(model$infection_transitions) == 0) {
-    return(generic_empty_rate_table())
+    return(matrix(numeric(), nrow = 0, ncol = context$n_age_groups))
   }
 
-  infectious_state_matrix <- generic_infectious_state_matrix(
-    state_long = state_long,
-    model = model,
-    age_structure = age_structure
-  )
-  infectious <- if (nrow(infectious_state_matrix) == 0) {
-    numeric(context$n_age_groups)
-  } else {
-    colSums(infectious_state_matrix * context$infectiousness_matrix)
+  population <- transition_population_by_age_from_state_matrix(state_matrix)
+  validate_positive_age_populations(population, context$age_structure)
+
+  infectious <- numeric(context$n_age_groups)
+  if (length(model$infectious_compartments) > 0) {
+    for (i in seq_along(model$infectious_compartments)) {
+      compartment <- model$infectious_compartments[i]
+      infectious <- infectious +
+        state_matrix[, context$compartment_index[[compartment]]] *
+        context$infectiousness_matrix[i, ]
+    }
   }
 
-  validate_positive_age_populations(population, age_structure)
   lambda <- as.numeric(context$beta * (context$contact_matrix %*% (infectious / population)))
 
-  rows <- vector("list", nrow(model$infection_transitions))
+  rates <- matrix(
+    numeric(nrow(model$infection_transitions) * context$n_age_groups),
+    nrow = nrow(model$infection_transitions),
+    ncol = context$n_age_groups
+  )
+
   for (i in seq_len(nrow(model$infection_transitions))) {
-    from_values <- transition_compartment_values(
-      state_long,
-      age_structure,
-      model$infection_transitions$from[i]
-    )
-    rows[[i]] <- data.frame(
-      from = rep(model$infection_transitions$from[i], context$n_age_groups),
-      to = rep(model$infection_transitions$to[i], context$n_age_groups),
-      age_group = context$age_groups,
-      rate = lambda * context$infection_susceptibility_matrix[i, ] * from_values,
-      transition_id = rep(
-        row.names(context$infection_susceptibility_matrix)[i],
-        context$n_age_groups
-      ),
-      transition_label = rep(model$infection_transitions$transition_label[i], context$n_age_groups),
-      transition_type = rep("infection", context$n_age_groups),
-      age_index = seq_len(context$n_age_groups),
-      stringsAsFactors = FALSE
-    )
+    from_values <- state_matrix[, context$compartment_index[[model$infection_transitions$from[i]]]]
+    rates[i, ] <- lambda * context$infection_susceptibility_matrix[i, ] * from_values
   }
 
-  do.call(rbind, rows)
+  rates
 }
 
-generic_per_capita_transition_rates_from_state_long <- function(state_long, context) {
+generic_per_capita_rate_matrix_from_state_matrix <- function(state_matrix, context) {
   model <- context$model
-  age_structure <- context$age_structure
-
   if (nrow(model$transitions) == 0) {
-    return(generic_empty_rate_table())
+    return(matrix(numeric(), nrow = 0, ncol = context$n_age_groups))
   }
 
-  rows <- vector("list", nrow(model$transitions))
+  rates <- matrix(
+    numeric(nrow(model$transitions) * context$n_age_groups),
+    nrow = nrow(model$transitions),
+    ncol = context$n_age_groups
+  )
+
   for (i in seq_len(nrow(model$transitions))) {
-    from_values <- transition_compartment_values(
-      state_long,
-      age_structure,
-      model$transitions$from[i]
-    )
-    rows[[i]] <- data.frame(
-      from = model$transitions$from[i],
-      to = model$transitions$to[i],
-      age_group = context$age_groups,
-      rate = context$transition_rate_vectors[[i]] * from_values,
-      transition_id = model$transitions$transition_id[i],
-      transition_label = if ("transition_label" %in% names(model$transitions)) model$transitions$transition_label[i] else NA_character_,
-      transition_type = if ("transition_type" %in% names(model$transitions)) {
-        transition_type <- model$transitions$transition_type[i]
-        ifelse(transition_type == "internal", "transition", transition_type)
-      } else {
-        ifelse(is.na(model$transitions$to[i]), "outflow", "transition")
-      },
-      age_index = seq_len(context$n_age_groups),
-      stringsAsFactors = FALSE
-    )
+    from_values <- state_matrix[, context$compartment_index[[model$transitions$from[i]]]]
+    rates[i, ] <- context$transition_rate_vectors[[i]] * from_values
   }
 
-  do.call(rbind, rows)
+  rates
 }
 
 generic_transition_rate_vectors_validated <- function(model, age_groups, n_age_groups) {
@@ -375,16 +738,14 @@ rates_to_derivative_from_rates <- function(transition_rate_table, context) {
 }
 
 stochastic_event_table_from_state_vector <- function(state_vector, context) {
-  rates <- transition_rates_from_state_vector(state_vector, context)
-  transition_order <- context$stochastic_transition_order
-  rates$.transition_index <- match(rates$transition_id, transition_order$transition_id)
-  rates$age_index <- match(rates$age_group, context$age_groups)
-  if (!"transition_type" %in% names(rates)) {
-    rates$transition_type <- transition_type_from_ids(rates$transition_id)
+  state_matrix <- transition_state_matrix_from_vector(state_vector, context)
+  rate_values <- if (identical(context$model$model_type, "CompartmentModel")) {
+    generic_transition_rate_values_from_state_matrix(state_matrix, context)
+  } else {
+    specialized_transition_rate_values_from_state_matrix(state_matrix, context)
   }
-  rates$event <- stochastic_event_labels(rates, context$model)
-  rates <- rates[order(rates$.transition_index, rates$age_index), ]
-  row.names(rates) <- NULL
 
-  rates[, c("event", "transition_type", "transition_id", "age_group", "age_index", "from", "to", "rate")]
+  event_table <- context$stochastic_event_template
+  event_table$rate <- rate_values[context$stochastic_event_order]
+  event_table
 }

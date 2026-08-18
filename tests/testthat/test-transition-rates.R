@@ -916,6 +916,76 @@ test_that("transition_rates returns the expected output columns", {
   )
 })
 
+test_that("transition context caches a static transition template", {
+  ages <- test_ages()
+  context <- prepare_transition_rate_context_validated(
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = test_contacts(),
+    beta = NULL
+  )
+
+  expect_identical(
+    names(context$transition_rate_template),
+    c(
+      "from",
+      "to",
+      "age_group",
+      "transition_id",
+      "transition_label",
+      "transition_type",
+      "age_index",
+      "event"
+    )
+  )
+  expect_identical(
+    context$transition_rate_template[, c("from", "to", "age_group", "transition_id", "age_index")],
+    data.frame(
+      from = c("S", "I", "S", "I"),
+      to = c("I", "R", "I", "R"),
+      age_group = c("0-4", "0-4", "5-9", "5-9"),
+      transition_id = c(
+        "infection:S->I",
+        "transition:I->R",
+        "infection:S->I",
+        "transition:I->R"
+      ),
+      age_index = c(1L, 1L, 2L, 2L),
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_identical(
+    context$stochastic_event_template$event,
+    c("infection", "infection", "recovery", "recovery")
+  )
+})
+
+test_that("transition context can cache a lighter internal transition structure", {
+  ages <- test_ages()
+  context <- prepare_transition_rate_context_validated(
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = test_contacts(),
+    beta = NULL,
+    include_public_template = FALSE
+  )
+
+  expect_true(is.null(context$transition_rate_template))
+  expect_identical(
+    names(context$transition_rate_structure),
+    c("from", "to", "age_group")
+  )
+  expect_identical(
+    context$transition_rate_structure,
+    data.frame(
+      from = c("S", "I", "S", "I"),
+      to = c("I", "R", "I", "R"),
+      age_group = c("0-4", "0-4", "5-9", "5-9"),
+      stringsAsFactors = FALSE
+    )
+  )
+})
+
 test_that("generic infection transitions expand one row per age group", {
   ages <- test_ages()
   model <- CompartmentModel(
