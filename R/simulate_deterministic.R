@@ -158,7 +158,9 @@ simulate_deterministic <- function(
     model = model,
     age_structure = age_structure,
     contact_matrix = contact_matrix,
-    beta = beta
+    beta = beta,
+    include_public_template = FALSE,
+    include_transition_id = !is.null(cumulative_flows)
   )
 
   state_vector <- simulation_state_to_vector(
