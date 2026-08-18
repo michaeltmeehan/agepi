@@ -85,12 +85,18 @@ simulate_stochastic <- function(
   validate_age_structure(age_structure)
   validate_stochastic_model(model)
   validate_stochastic_no_demography(demographic_process)
-  validate_contact_matrix(contact_matrix, age_structure)
   if (model_has_infection_process(model)) {
     beta <- resolve_transmission_beta(model, beta)
   } else if (!is.null(beta)) {
     beta <- validate_force_beta(beta)
   }
+
+  transition_context <- prepare_transition_rate_context_validated(
+    model = model,
+    age_structure = age_structure,
+    contact_matrix = contact_matrix,
+    beta = beta
+  )
 
   state_vector <- simulation_state_to_vector(
     initial_state,
@@ -129,7 +135,8 @@ simulate_stochastic <- function(
       beta = beta,
       population = population,
       return_events = return_events,
-      cumulative_spec = cumulative_spec
+      cumulative_spec = cumulative_spec,
+      transition_context = transition_context
     )
   })
 }
@@ -143,7 +150,8 @@ stochastic_gillespie_fixed_population <- function(
   beta,
   population,
   return_events,
-  cumulative_spec = NULL
+  cumulative_spec = NULL,
+  transition_context = NULL
 ) {
   current_state <- as.numeric(state_vector)
   current_time <- times[1]
@@ -165,7 +173,8 @@ stochastic_gillespie_fixed_population <- function(
       age_structure = age_structure,
       contact_matrix = contact_matrix,
       beta = beta,
-      population = population
+      population = population,
+      transition_context = transition_context
     )
     total_rate <- sum(propensities$rate)
 
@@ -267,7 +276,8 @@ stochastic_propensities <- function(
   age_structure,
   contact_matrix,
   beta,
-  population
+  population,
+  transition_context = NULL
 ) {
   stochastic_event_table(
     state_vector = state_vector,
@@ -275,7 +285,8 @@ stochastic_propensities <- function(
     age_structure = age_structure,
     contact_matrix = contact_matrix,
     beta = beta,
-    population = population
+    population = population,
+    transition_context = transition_context
   )
 }
 
@@ -285,8 +296,13 @@ stochastic_event_table <- function(
   age_structure,
   contact_matrix,
   beta,
-  population
+  population,
+  transition_context = NULL
 ) {
+  if (!is.null(transition_context)) {
+    return(stochastic_event_table_from_state_vector(state_vector, transition_context))
+  }
+
   rates <- transition_rates(
     state = as.numeric(state_vector),
     model = model,

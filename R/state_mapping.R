@@ -54,6 +54,15 @@ state_vector_to_long <- function(state_vector, age_structure, compartments) {
   )
 }
 
+state_vector_to_long_unchecked <- function(state_vector, age_structure, compartments) {
+  data.frame(
+    age_group = rep(age_structure$age_groups, times = length(compartments)),
+    compartment = rep(compartments, each = age_structure$n_age_groups),
+    value = as.numeric(state_vector),
+    stringsAsFactors = FALSE
+  )
+}
+
 #' Initialise compartment counts from scalar or age-specific proportions
 #'
 #' Allocates an age-specific population vector into compartments by multiplying
