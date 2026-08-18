@@ -50,6 +50,10 @@ prepare_transition_rate_context_validated <- function(
       include_transition_id = include_transition_id
     )
   )
+  context$derivative_index_lookup <- prepare_derivative_index_lookup(
+    transition_rate_table = context$transition_rate_structure,
+    state_order_key = context$state_order_key
+  )
   if (include_public_template) {
     context$stochastic_transition_order <- stochastic_transition_order(model)
     context$specialized_transition_ids <- if (nrow(model$transitions) > 0) {
@@ -714,25 +718,21 @@ infection_transition_susceptibility_matrix_validated <- function(model, age_grou
 
 rates_to_derivative_from_rates <- function(transition_rate_table, context) {
   derivative <- context$state_order
-  derivative$derivative <- 0
-
-  for (i in seq_len(nrow(transition_rate_table))) {
-    from_index <- match_derivative_cell(
-      derivative,
-      transition_rate_table$from[i],
-      transition_rate_table$age_group[i]
+  derivative_index_lookup <- context$derivative_index_lookup
+  if (is.null(derivative_index_lookup) ||
+      length(derivative_index_lookup$from_state_index) != nrow(transition_rate_table)) {
+    derivative_index_lookup <- prepare_derivative_index_lookup(
+      transition_rate_table = transition_rate_table,
+      state_order_key = context$state_order_key
     )
-
-    derivative$derivative[from_index] <- derivative$derivative[from_index] - transition_rate_table$rate[i]
-    if (!is.na(transition_rate_table$to[i])) {
-      to_index <- match_derivative_cell(
-        derivative,
-        transition_rate_table$to[i],
-        transition_rate_table$age_group[i]
-      )
-      derivative$derivative[to_index] <- derivative$derivative[to_index] + transition_rate_table$rate[i]
-    }
   }
+
+  derivative$derivative <- accumulate_transition_derivative(
+    rate = transition_rate_table$rate,
+    from_state_index = derivative_index_lookup$from_state_index,
+    to_state_index = derivative_index_lookup$to_state_index,
+    state_length = nrow(derivative)
+  )
 
   derivative[, c("compartment", "age_group", "derivative")]
 }

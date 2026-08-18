@@ -33,6 +33,51 @@ test_that("rates_to_derivative computes a simple two-age-group SIR derivative", 
   expect_equal(derivative, expected)
 })
 
+test_that("precomputed derivative indices match existing lookup behaviour", {
+  ages <- derivative_test_ages()
+  state_order <- state_order(ages, c("S", "I", "R"))
+  rate_table <- data.frame(
+    from = c("S", NA_character_, "I"),
+    to = c("I", "S", NA_character_),
+    age_group = c("0-4", "5-9", "5-9"),
+    rate = c(1, 2, 3),
+    stringsAsFactors = FALSE
+  )
+
+  indices <- prepare_derivative_index_lookup(
+    transition_rate_table = rate_table,
+    state_order_key = paste(state_order$compartment, state_order$age_group)
+  )
+
+  expect_identical(
+    indices$from_state_index,
+    c(
+      match_derivative_cell(state_order, "S", "0-4"),
+      NA_integer_,
+      match_derivative_cell(state_order, "I", "5-9")
+    )
+  )
+  expect_identical(
+    indices$to_state_index,
+    c(
+      match_derivative_cell(state_order, "I", "0-4"),
+      match_derivative_cell(state_order, "S", "5-9"),
+      NA_integer_
+    )
+  )
+})
+
+test_that("duplicate source and destination indices accumulate safely", {
+  derivative <- accumulate_transition_derivative(
+    rate = c(2, 3, 5, 7, 4),
+    from_state_index = c(1L, 1L, 2L, NA_integer_, 3L),
+    to_state_index = c(2L, 3L, 3L, 1L, NA_integer_),
+    state_length = 3
+  )
+
+  expect_equal(derivative, c(2, -3, 4))
+})
+
 test_that("transition_rates output can be passed directly to rates_to_derivative", {
   ages <- derivative_test_ages()
   state <- data.frame(
@@ -55,6 +100,41 @@ test_that("transition_rates output can be passed directly to rates_to_derivative
   derivative <- rates_to_derivative(rates, c("S", "I", "R"), ages)
 
   expect_equal(derivative$derivative, c(-27, -126, 25, 122, 2, 4))
+})
+
+test_that("prepared context derivative fast path matches the public fallback", {
+  ages <- derivative_test_ages()
+  state <- data.frame(
+    compartment = rep(c("S", "I", "R"), each = 2),
+    age_group = rep(c("0-4", "5-9"), times = 3),
+    value = c(90, 180, 10, 20, 0, 0),
+    stringsAsFactors = FALSE
+  )
+  contact_matrix <- matrix(c(
+    2, 1,
+    3, 4
+  ), nrow = 2, byrow = TRUE)
+  model <- SIRModel(gamma = 0.2, beta = 0.4)
+  context <- prepare_transition_rate_context_validated(
+    model = model,
+    age_structure = ages,
+    contact_matrix = contact_matrix,
+    beta = 0.4,
+    include_public_template = FALSE
+  )
+
+  rates <- transition_rates(
+    state = state,
+    model = model,
+    age_structure = ages,
+    contact_matrix = contact_matrix,
+    beta = 0.4
+  )
+
+  expect_equal(
+    rates_to_derivative_from_rates(rates, context),
+    rates_to_derivative(rates, c("S", "I", "R"), ages)
+  )
 })
 
 test_that("rates_to_derivative returns exactly the expected output columns", {
