@@ -241,16 +241,16 @@ simulate_deterministic_annual_cohort_split <- function(
     current_state <- c(current_state, numeric(nrow(cumulative_spec$state_order)))
   }
 
-  output <- vector("list", length(times))
-  output[[1]] <- deterministic_augmented_state_output(
-    state = current_state,
-    ordinary_state_length = ordinary_state_length,
-    time = times[1],
-    age_structure = age_structure,
-    compartments = model$compartments,
-    state_template = transition_context$state_output_template,
-    cumulative_spec = cumulative_spec
-  )
+  trajectory <- matrix(NA_real_, nrow = length(times), ncol = ordinary_state_length)
+  trajectory[1, ] <- current_state[seq_len(ordinary_state_length)]
+  cumulative_values <- if (is.null(cumulative_spec)) {
+    NULL
+  } else {
+    matrix(NA_real_, nrow = length(times), ncol = nrow(cumulative_spec$state_order))
+  }
+  if (!is.null(cumulative_values)) {
+    cumulative_values[1, ] <- current_state[ordinary_state_length + seq_len(ncol(cumulative_values))]
+  }
 
   for (time_index in seq_len(length(times) - 1)) {
     interval_times <- times[time_index + 0:1]
@@ -281,22 +281,32 @@ simulate_deterministic_annual_cohort_split <- function(
     }
 
     validate_non_negative_simulation_state(current_state, "annual_cohort state")
-    output[[time_index + 1]] <- deterministic_augmented_state_output(
-      state = current_state,
-      ordinary_state_length = ordinary_state_length,
-      time = times[time_index + 1],
-      age_structure = age_structure,
-      compartments = model$compartments,
-      state_template = transition_context$state_output_template,
-      cumulative_spec = cumulative_spec
-    )
+    trajectory[time_index + 1, ] <- current_state[seq_len(ordinary_state_length)]
+    if (!is.null(cumulative_values)) {
+      cumulative_values[time_index + 1, ] <- current_state[ordinary_state_length + seq_len(ncol(cumulative_values))]
+    }
   }
 
   if (is.null(cumulative_spec)) {
-    return(bind_integrated_outputs(output))
+    return(state_trajectory_to_data_frame(
+      trajectory,
+      times,
+      transition_context$state_output_template
+    ))
   }
 
-  bind_integrated_outputs(output)
+  list(
+    trajectory = state_trajectory_to_data_frame(
+      trajectory,
+      times,
+      transition_context$state_output_template
+    ),
+    cumulative = deterministic_cumulative_state_trajectory_to_data_frame(
+      cumulative_values,
+      times,
+      cumulative_spec$state_order
+    )
+  )
 }
 
 deterministic_annual_interval_epidemic_step <- function(
@@ -315,7 +325,7 @@ deterministic_annual_interval_epidemic_step <- function(
     return(as.numeric(state))
   }
 
-  integrated <- integrate_state_trajectory(
+  integrated <- integrate_state_trajectory_values(
     initial_state = state,
     times = times,
     method = method,
@@ -333,14 +343,6 @@ deterministic_annual_interval_epidemic_step <- function(
         transition_context = transition_context
       )
     },
-    output = function(state, time) {
-      data.frame(
-        time = unname(time),
-        state_index = seq_len(length(state)),
-        value = as.numeric(state),
-        stringsAsFactors = FALSE
-      )
-    },
     non_negative = validate_non_negative_euler_state,
     desolve_error = paste(
       "ageing_policy = \"annual_cohort\" requires the deSolve package",
@@ -348,7 +350,7 @@ deterministic_annual_interval_epidemic_step <- function(
     )
   )
 
-  as.numeric(integrated$value[integrated$time == times[2]])
+  as.numeric(integrated[2, ])
 }
 
 deterministic_epidemic_dynamics_disabled <- function(model, beta) {
@@ -562,7 +564,7 @@ simulate_deterministic_integrated <- function(
     state_vector <- c(state_vector, numeric(nrow(cumulative_spec$state_order)))
   }
 
-  integrated <- integrate_state_trajectory(
+  integrated <- integrate_state_trajectory_values(
     initial_state = state_vector,
     times = times,
     method = method,
@@ -582,17 +584,6 @@ simulate_deterministic_integrated <- function(
         transition_context = transition_context
       )
     },
-    output = function(state, time) {
-      deterministic_augmented_state_output(
-        state = state,
-        ordinary_state_length = ordinary_state_length,
-        time = time,
-        age_structure = age_structure,
-        compartments = model$compartments,
-        state_template = transition_context$state_output_template,
-        cumulative_spec = cumulative_spec
-      )
-    },
     non_negative = validate_non_negative_euler_state,
     tcrit = if (is.null(demographic_process)) NULL else desolve_schedule_tcrit(demographic_process, times),
     desolve_error = paste(
@@ -601,13 +592,22 @@ simulate_deterministic_integrated <- function(
     )
   )
 
+  trajectory <- state_trajectory_to_data_frame(
+    integrated[, seq_len(ordinary_state_length), drop = FALSE],
+    times,
+    transition_context$state_output_template
+  )
   if (is.null(cumulative_spec)) {
-    return(integrated)
+    return(trajectory)
   }
 
   list(
-    trajectory = integrated$trajectory,
-    cumulative = integrated$cumulative
+    trajectory = trajectory,
+    cumulative = deterministic_cumulative_state_trajectory_to_data_frame(
+      integrated[, ordinary_state_length + seq_len(nrow(cumulative_spec$state_order)), drop = FALSE],
+      times,
+      cumulative_spec$state_order
+    )
   )
 }
 
@@ -1231,6 +1231,39 @@ simulation_state_output <- function(state_vector,
     compartment = state_template$compartment,
     age_group = state_template$age_group,
     value = as.numeric(state_vector),
+    stringsAsFactors = FALSE
+  )
+}
+
+deterministic_cumulative_state_trajectory_to_data_frame <- function(cumulative_matrix,
+                                                                    times,
+                                                                    cumulative_template) {
+  if (is.null(cumulative_matrix) || ncol(cumulative_matrix) == 0) {
+    return(data.frame(
+      time = numeric(),
+      cumulative_name = character(),
+      transition_id = character(),
+      from = character(),
+      to = character(),
+      age_group = character(),
+      value = numeric(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  if (nrow(cumulative_matrix) != length(times)) {
+    stop("cumulative_matrix row count must match length(times).", call. = FALSE)
+  }
+
+  n_state <- ncol(cumulative_matrix)
+  data.frame(
+    time = rep(times, each = n_state),
+    cumulative_name = rep(cumulative_template$cumulative_name, times = length(times)),
+    transition_id = rep(cumulative_template$transition_id, times = length(times)),
+    from = rep(cumulative_template$from, times = length(times)),
+    to = rep(cumulative_template$to, times = length(times)),
+    age_group = rep(cumulative_template$age_group, times = length(times)),
+    value = as.numeric(t(cumulative_matrix)),
     stringsAsFactors = FALSE
   )
 }

@@ -28,6 +28,33 @@ integrate_state_trajectory <- function(initial_state,
   )
 }
 
+integrate_state_trajectory_values <- function(initial_state,
+                                              times,
+                                              method,
+                                              derivative,
+                                              non_negative = NULL,
+                                              tcrit = NULL,
+                                              desolve_error = NULL) {
+  method <- validate_simulation_method(method)
+
+  if (method == "euler") {
+    return(integrate_state_trajectory_values_euler(
+      initial_state = initial_state,
+      times = times,
+      derivative = derivative,
+      non_negative = non_negative
+    ))
+  }
+
+  integrate_state_trajectory_values_desolve(
+    initial_state = initial_state,
+    times = times,
+    derivative = derivative,
+    tcrit = tcrit,
+    desolve_error = desolve_error
+  )
+}
+
 integrate_state_trajectory_euler <- function(initial_state,
                                              times,
                                              derivative,
@@ -50,6 +77,29 @@ integrate_state_trajectory_euler <- function(initial_state,
   }
 
   bind_integrated_outputs(values)
+}
+
+integrate_state_trajectory_values_euler <- function(initial_state,
+                                                    times,
+                                                    derivative,
+                                                    non_negative = NULL) {
+  trajectory <- matrix(NA_real_, nrow = length(times), ncol = length(initial_state))
+  trajectory[1, ] <- as.numeric(initial_state)
+
+  current_state <- as.numeric(initial_state)
+  for (i in seq_len(length(times) - 1)) {
+    dt <- times[i + 1] - times[i]
+    next_state <- current_state + dt * as.numeric(derivative(times[i], current_state))
+
+    if (!is.null(non_negative)) {
+      non_negative(next_state, times[i + 1])
+    }
+
+    current_state <- next_state
+    trajectory[i + 1, ] <- current_state
+  }
+
+  trajectory
 }
 
 integrate_state_trajectory_desolve <- function(initial_state,
@@ -91,6 +141,40 @@ integrate_state_trajectory_desolve <- function(initial_state,
   }
 
   bind_integrated_outputs(values)
+}
+
+integrate_state_trajectory_values_desolve <- function(initial_state,
+                                                      times,
+                                                      derivative,
+                                                      tcrit = NULL,
+                                                      desolve_error = NULL) {
+  if (!desolve_is_available()) {
+    if (is.null(desolve_error)) {
+      desolve_error <- paste(
+        "method = \"deSolve\" requires the deSolve package.",
+        "Install deSolve or use method = \"euler\"."
+      )
+    }
+    stop(desolve_error, call. = FALSE)
+  }
+
+  critical_times <- desolve_tcrit(times, tcrit)
+  solved <- if (length(critical_times) == 0) {
+    integrate_state_trajectory_desolve_interval(
+      initial_state = initial_state,
+      times = times,
+      derivative = derivative
+    )
+  } else {
+    integrate_state_trajectory_desolve_segmented(
+      initial_state = initial_state,
+      times = times,
+      derivative = derivative,
+      critical_times = critical_times
+    )
+  }
+
+  solved[, -1, drop = FALSE]
 }
 
 integrate_state_trajectory_desolve_interval <- function(initial_state,
@@ -147,6 +231,21 @@ integrate_state_trajectory_desolve_segmented <- function(initial_state,
     stop("deSolve segmented integration did not return all requested output times.", call. = FALSE)
   }
   solved[requested_rows, , drop = FALSE]
+}
+
+state_trajectory_to_data_frame <- function(state_matrix, times, state_template) {
+  if (nrow(state_matrix) != length(times)) {
+    stop("state_matrix row count must match length(times).", call. = FALSE)
+  }
+
+  state_count <- ncol(state_matrix)
+  data.frame(
+    time = rep(times, each = state_count),
+    compartment = rep(state_template$compartment, times = length(times)),
+    age_group = rep(state_template$age_group, times = length(times)),
+    value = as.numeric(t(state_matrix)),
+    stringsAsFactors = FALSE
+  )
 }
 
 bind_integrated_outputs <- function(values) {

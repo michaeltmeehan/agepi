@@ -212,6 +212,47 @@ test_that("cached output templates and numeric state matrices match public state
   )
 })
 
+test_that("state trajectory materialisation matches repeated single-time outputs", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  compartments <- c("S", "I", "R")
+  state_template <- agepi:::state_order(ages, compartments)[, c("compartment", "age_group"), drop = FALSE]
+  trajectory_matrix <- matrix(
+    c(100, 120, 2, 3, 0, 1, 90, 110, 5, 7, 1, 2),
+    nrow = 2,
+    byrow = TRUE
+  )
+  expected <- do.call(
+    rbind,
+    list(
+      agepi:::simulation_state_output(
+        trajectory_matrix[1, ],
+        time = 0,
+        age_structure = ages,
+        compartments = compartments,
+        state_template = state_template
+      ),
+      agepi:::simulation_state_output(
+        trajectory_matrix[2, ],
+        time = 1,
+        age_structure = ages,
+        compartments = compartments,
+        state_template = state_template
+      )
+    )
+  )
+  actual <- agepi:::state_trajectory_to_data_frame(
+    trajectory_matrix,
+    times = c(0, 1),
+    state_template = state_template
+  )
+
+  expect_identical(actual, expected)
+})
+
 test_that("initialise_compartments_from_proportions allocates residual population", {
   ages <- AgeStructure(
     age_groups = c("0-4", "5-9"),
