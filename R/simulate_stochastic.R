@@ -160,7 +160,8 @@ stochastic_gillespie_fixed_population <- function(
     current_state,
     time = times[1],
     age_structure = age_structure,
-    compartments = model$compartments
+    compartments = model$compartments,
+    state_template = transition_context$state_output_template
   )
   event_rows <- list()
   event_count <- 0L
@@ -184,7 +185,8 @@ stochastic_gillespie_fixed_population <- function(
           current_state,
           time = times[output_index],
           age_structure = age_structure,
-          compartments = model$compartments
+          compartments = model$compartments,
+          state_template = transition_context$state_output_template
         )
         output_index <- output_index + 1L
       }
@@ -198,7 +200,8 @@ stochastic_gillespie_fixed_population <- function(
         current_state,
         time = times[output_index],
         age_structure = age_structure,
-        compartments = model$compartments
+        compartments = model$compartments,
+        state_template = transition_context$state_output_template
       )
       output_index <- output_index + 1L
     }
@@ -237,7 +240,8 @@ stochastic_gillespie_fixed_population <- function(
         current_state,
         time = times[output_index],
         age_structure = age_structure,
-        compartments = model$compartments
+        compartments = model$compartments,
+        state_template = transition_context$state_output_template
       )
       output_index <- output_index + 1L
     }

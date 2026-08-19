@@ -29,6 +29,8 @@ prepare_transition_rate_context_validated <- function(
   validate_contact_matrix(contact_matrix, age_structure)
   beta <- resolve_transmission_beta_validated(model, beta)
 
+  state_order <- state_order(age_structure, model$compartments)
+
   context <- list(
     model = model,
     age_structure = age_structure,
@@ -39,7 +41,8 @@ prepare_transition_rate_context_validated <- function(
     contact_matrix = contact_matrix,
     beta = beta,
     has_infection_process = model_has_infection_process(model),
-    state_order = state_order(age_structure, model$compartments),
+    state_order = state_order,
+    state_output_template = state_order[, c("compartment", "age_group"), drop = FALSE],
     state_order_key = paste(
       rep(model$compartments, each = age_structure$n_age_groups),
       rep(age_structure$age_groups, times = length(model$compartments))

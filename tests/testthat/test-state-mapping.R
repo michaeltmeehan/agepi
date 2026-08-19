@@ -166,6 +166,52 @@ test_that("state vector names are ignored when converting to long format", {
   expect_equal(state_long$value, c(100, 120, 2, 3))
 })
 
+test_that("cached output templates and numeric state matrices match public state mappings", {
+  ages <- AgeStructure(
+    age_groups = c("0-4", "5-9"),
+    lower_bounds = c(0, 5),
+    upper_bounds = c(4, 9)
+  )
+  compartments <- c("S", "I", "R")
+  state_vector <- c(100, 120, 2, 3, 0, 1)
+
+  context <- agepi:::prepare_transition_rate_context_validated(
+    model = SIRModel(gamma = 0.2),
+    age_structure = ages,
+    contact_matrix = matrix(1, nrow = 2, ncol = 2),
+    beta = 0.1,
+    include_public_template = FALSE
+  )
+  expected_template <- agepi:::state_order(ages, compartments)[, c("compartment", "age_group"), drop = FALSE]
+  expected_matrix <- matrix(
+    state_vector,
+    nrow = ages$n_age_groups,
+    ncol = length(compartments),
+    dimnames = list(ages$age_groups, compartments)
+  )
+
+  expect_identical(context$state_output_template, expected_template)
+  expect_identical(
+    agepi:::transition_state_matrix_from_vector(state_vector, context),
+    expected_matrix
+  )
+  expect_equal(
+    agepi:::simulation_state_output(
+      state_vector,
+      time = 7,
+      age_structure = ages,
+      compartments = compartments
+    ),
+    agepi:::simulation_state_output(
+      state_vector,
+      time = 7,
+      age_structure = ages,
+      compartments = compartments,
+      state_template = expected_template
+    )
+  )
+})
+
 test_that("initialise_compartments_from_proportions allocates residual population", {
   ages <- AgeStructure(
     age_groups = c("0-4", "5-9"),
