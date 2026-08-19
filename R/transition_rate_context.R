@@ -103,6 +103,27 @@ prepare_transition_rate_context_validated <- function(
       age_groups = context$age_groups,
       n_age_groups = context$n_age_groups
     )
+    context$generic_infectious_compartment_indices <- if (length(model$infectious_compartments) > 0) {
+      unname(context$compartment_index[model$infectious_compartments])
+    } else {
+      integer()
+    }
+    context$generic_infectiousness_matrix_by_age <- t(context$infectiousness_matrix)
+    context$generic_infection_from_indices <- if (nrow(model$infection_transitions) > 0) {
+      unname(context$compartment_index[model$infection_transitions$from])
+    } else {
+      integer()
+    }
+    context$generic_transition_from_indices <- if (nrow(model$transitions) > 0) {
+      unname(context$compartment_index[model$transitions$from])
+    } else {
+      integer()
+    }
+    context$generic_transition_rate_matrix <- if (nrow(model$transitions) > 0) {
+      do.call(rbind, context$transition_rate_vectors)
+    } else {
+      matrix(numeric(), nrow = 0, ncol = context$n_age_groups)
+    }
   }
 
   context
@@ -515,11 +536,22 @@ specialized_transition_rate_values_from_state_matrix <- function(state_matrix, c
     E <- transition_compartment_values_from_state_matrix(state_matrix, "E", context)
     progression_rates <- model$sigma * E
     recovery_rates <- model$gamma * I
-    return(as.numeric(rbind(infection_rates, progression_rates, recovery_rates)))
+    n_age_groups <- context$n_age_groups
+    rates <- numeric(3L * n_age_groups)
+    infection_index <- seq.int(from = 1L, by = 3L, length.out = n_age_groups)
+    rates[infection_index] <- infection_rates
+    rates[infection_index + 1L] <- progression_rates
+    rates[infection_index + 2L] <- recovery_rates
+    return(rates)
   }
 
   recovery_rates <- model$gamma * I
-  as.numeric(rbind(infection_rates, recovery_rates))
+  n_age_groups <- context$n_age_groups
+  rates <- numeric(2L * n_age_groups)
+  infection_index <- seq.int(from = 1L, by = 2L, length.out = n_age_groups)
+  rates[infection_index] <- infection_rates
+  rates[infection_index + 1L] <- recovery_rates
+  rates
 }
 
 stochastic_event_labels_from_metadata <- function(
@@ -556,7 +588,6 @@ stochastic_event_labels_from_metadata <- function(
 }
 
 generic_transition_rate_values_from_state_matrix <- function(state_matrix, context) {
-  model <- context$model
   infection_rates <- generic_infection_rate_matrix_from_state_matrix(state_matrix, context)
   per_capita_rates <- generic_per_capita_rate_matrix_from_state_matrix(state_matrix, context)
 
@@ -564,7 +595,23 @@ generic_transition_rate_values_from_state_matrix <- function(state_matrix, conte
     return(numeric())
   }
 
-  as.numeric(rbind(infection_rates, per_capita_rates))
+  n_infection_rates <- nrow(infection_rates)
+  n_per_capita_rates <- nrow(per_capita_rates)
+  n_age_groups <- context$n_age_groups
+  rates <- matrix(
+    numeric((n_infection_rates + n_per_capita_rates) * n_age_groups),
+    nrow = n_infection_rates + n_per_capita_rates,
+    ncol = n_age_groups
+  )
+
+  if (n_infection_rates > 0) {
+    rates[seq_len(n_infection_rates), ] <- infection_rates
+  }
+  if (n_per_capita_rates > 0) {
+    rates[n_infection_rates + seq_len(n_per_capita_rates), ] <- per_capita_rates
+  }
+
+  as.numeric(rates)
 }
 
 generic_infection_rate_matrix_from_state_matrix <- function(state_matrix, context) {
@@ -577,25 +624,21 @@ generic_infection_rate_matrix_from_state_matrix <- function(state_matrix, contex
   validate_positive_age_populations(population, context$age_structure)
 
   infectious <- numeric(context$n_age_groups)
-  if (length(model$infectious_compartments) > 0) {
-    for (i in seq_along(model$infectious_compartments)) {
-      compartment <- model$infectious_compartments[i]
+  if (length(context$generic_infectious_compartment_indices) > 0) {
+    for (i in seq_along(context$generic_infectious_compartment_indices)) {
       infectious <- infectious +
-        state_matrix[, context$compartment_index[[compartment]]] *
-        context$infectiousness_matrix[i, ]
+        state_matrix[, context$generic_infectious_compartment_indices[i]] *
+        context$generic_infectiousness_matrix_by_age[, i]
     }
   }
 
   lambda <- as.numeric(context$beta * (context$contact_matrix %*% (infectious / population)))
 
-  rates <- matrix(
-    numeric(nrow(model$infection_transitions) * context$n_age_groups),
-    nrow = nrow(model$infection_transitions),
-    ncol = context$n_age_groups
-  )
+  n_infection_transitions <- nrow(model$infection_transitions)
+  rates <- matrix(numeric(n_infection_transitions * context$n_age_groups), nrow = n_infection_transitions, ncol = context$n_age_groups)
 
-  for (i in seq_len(nrow(model$infection_transitions))) {
-    from_values <- state_matrix[, context$compartment_index[[model$infection_transitions$from[i]]]]
+  for (i in seq_len(n_infection_transitions)) {
+    from_values <- state_matrix[, context$generic_infection_from_indices[i]]
     rates[i, ] <- lambda * context$infection_susceptibility_matrix[i, ] * from_values
   }
 
@@ -608,15 +651,12 @@ generic_per_capita_rate_matrix_from_state_matrix <- function(state_matrix, conte
     return(matrix(numeric(), nrow = 0, ncol = context$n_age_groups))
   }
 
-  rates <- matrix(
-    numeric(nrow(model$transitions) * context$n_age_groups),
-    nrow = nrow(model$transitions),
-    ncol = context$n_age_groups
-  )
+  n_transitions <- nrow(model$transitions)
+  rates <- matrix(numeric(n_transitions * context$n_age_groups), nrow = n_transitions, ncol = context$n_age_groups)
 
-  for (i in seq_len(nrow(model$transitions))) {
-    from_values <- state_matrix[, context$compartment_index[[model$transitions$from[i]]]]
-    rates[i, ] <- context$transition_rate_vectors[[i]] * from_values
+  for (i in seq_len(n_transitions)) {
+    from_values <- state_matrix[, context$generic_transition_from_indices[i]]
+    rates[i, ] <- context$generic_transition_rate_matrix[i, ] * from_values
   }
 
   rates
