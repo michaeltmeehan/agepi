@@ -155,14 +155,9 @@ stochastic_gillespie_fixed_population <- function(
 ) {
   current_state <- as.numeric(state_vector)
   current_time <- times[1]
-  output_states <- vector("list", length(times))
-  output_states[[1]] <- simulation_state_output(
-    current_state,
-    time = times[1],
-    age_structure = age_structure,
-    compartments = model$compartments,
-    state_template = transition_context$state_output_template
-  )
+  state_count <- length(current_state)
+  output_states <- matrix(NA_real_, nrow = length(times), ncol = state_count)
+  output_states[1, ] <- current_state
   event_rows <- list()
   event_count <- 0L
   output_index <- 2L
@@ -181,13 +176,7 @@ stochastic_gillespie_fixed_population <- function(
 
     if (total_rate <= 0) {
       while (output_index <= length(times)) {
-        output_states[[output_index]] <- simulation_state_output(
-          current_state,
-          time = times[output_index],
-          age_structure = age_structure,
-          compartments = model$compartments,
-          state_template = transition_context$state_output_template
-        )
+        output_states[output_index, ] <- current_state
         output_index <- output_index + 1L
       }
       break
@@ -196,13 +185,7 @@ stochastic_gillespie_fixed_population <- function(
     next_event_time <- current_time + stats::rexp(1, rate = total_rate)
 
     while (output_index <= length(times) && times[output_index] < next_event_time) {
-      output_states[[output_index]] <- simulation_state_output(
-        current_state,
-        time = times[output_index],
-        age_structure = age_structure,
-        compartments = model$compartments,
-        state_template = transition_context$state_output_template
-      )
+      output_states[output_index, ] <- current_state
       output_index <- output_index + 1L
     }
 
@@ -236,19 +219,16 @@ stochastic_gillespie_fixed_population <- function(
     }
 
     while (output_index <= length(times) && times[output_index] == current_time) {
-      output_states[[output_index]] <- simulation_state_output(
-        current_state,
-        time = times[output_index],
-        age_structure = age_structure,
-        compartments = model$compartments,
-        state_template = transition_context$state_output_template
-      )
+      output_states[output_index, ] <- current_state
       output_index <- output_index + 1L
     }
   }
 
-  trajectory <- do.call(rbind, output_states)
-  row.names(trajectory) <- NULL
+  trajectory <- state_trajectory_to_data_frame(
+    output_states,
+    times,
+    transition_context$state_output_template
+  )
 
   if (!return_events && is.null(cumulative_spec)) {
     return(trajectory)
@@ -536,39 +516,34 @@ prepare_stochastic_cumulative_flows <- function(
 
 stochastic_cumulative_output <- function(events, times, cumulative_spec) {
   output_order <- cumulative_spec$output_order
-  rows <- vector("list", length(times))
+  value_matrix <- matrix(0, nrow = length(times), ncol = nrow(output_order))
 
   for (i in seq_along(times)) {
-    cumulative <- output_order
-    cumulative$time <- times[i]
-    cumulative$value <- numeric(nrow(cumulative))
-
-    for (j in seq_len(nrow(cumulative))) {
+    for (j in seq_len(nrow(output_order))) {
       transition_ids <- if (is.null(cumulative_spec$output_transitions)) {
-        cumulative$transition_id[j]
+        output_order$transition_id[j]
       } else {
         cumulative_spec$output_transitions[[j]]
       }
-      cumulative$value[j] <- sum(
+      value_matrix[i, j] <- sum(
         events$time <= times[i] &
           events$transition_id %in% transition_ids &
-          events$age_group == cumulative$age_group[j]
+          events$age_group == output_order$age_group[j]
       )
     }
-
-    rows[[i]] <- cumulative[, c(
-      "time",
-      "cumulative_name",
-      "transition_id",
-      "from",
-      "to",
-      "age_group",
-      "value"
-    )]
   }
 
-  cumulative <- do.call(rbind, rows)
-  row.names(cumulative) <- NULL
+  cumulative <- data.frame(
+    time = rep(times, each = nrow(output_order)),
+    cumulative_name = rep(output_order$cumulative_name, times = length(times)),
+    transition_id = rep(output_order$transition_id, times = length(times)),
+    from = rep(output_order$from, times = length(times)),
+    to = rep(output_order$to, times = length(times)),
+    age_group = rep(output_order$age_group, times = length(times)),
+    value = as.numeric(t(value_matrix)),
+    stringsAsFactors = FALSE
+  )
+
   cumulative
 }
 

@@ -109,9 +109,9 @@ simulate_demography_annual_cohort <- function(process,
   )
 
   age_groups <- process$age_structure$age_groups
-  output <- vector("list", length(times))
+  output <- matrix(NA_real_, nrow = length(times), ncol = length(age_groups))
   state <- stats::setNames(as.numeric(initial_state), age_groups)
-  output[[1]] <- demographic_state_output(state, time = times[1], process = process)
+  output[1, ] <- state
 
   for (time_index in seq_len(length(times) - 1)) {
     interval_start <- times[time_index]
@@ -145,14 +145,15 @@ simulate_demography_annual_cohort <- function(process,
     )
 
     state <- stats::setNames(step$population, age_groups)
-    output[[time_index + 1]] <- demographic_state_output(
-      state,
-      time = times[time_index + 1],
-      process = process
-    )
+    output[time_index + 1, ] <- state
   }
 
-  do.call(rbind, output)
+  data.frame(
+    time = rep(times, each = length(age_groups)),
+    age_group = rep(age_groups, times = length(times)),
+    population = as.numeric(t(output)),
+    stringsAsFactors = FALSE
+  )
 }
 
 annual_cohort_migration_values_at <- function(schedule,
@@ -234,7 +235,7 @@ simulate_demography_integrated <- function(process,
     include_output_times = TRUE
   )
 
-  integrate_state_trajectory(
+  trajectory <- integrate_state_trajectory_values(
     initial_state = initial_state,
     times = times,
     method = method,
@@ -246,19 +247,19 @@ simulate_demography_integrated <- function(process,
         time_policy = time_policy
       )
     },
-    output = function(state, time) {
-      demographic_state_output(
-        stats::setNames(as.numeric(state), process$age_structure$age_groups),
-        time = time,
-        process = process
-      )
-    },
     non_negative = validate_non_negative_demography_euler_state,
     tcrit = desolve_schedule_tcrit(process, times),
     desolve_error = paste(
       "method = \"deSolve\" requires the deSolve package.",
       "Install deSolve or use method = \"euler\"."
     )
+  )
+
+  data.frame(
+    time = rep(times, each = ncol(trajectory)),
+    age_group = rep(process$age_structure$age_groups, times = length(times)),
+    population = as.numeric(t(trajectory)),
+    stringsAsFactors = FALSE
   )
 }
 
